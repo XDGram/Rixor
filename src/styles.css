@@ -18,6 +18,8 @@ body,
 }
 
 .hero-background {
+  display: grid;
+  place-items: end center;
   width: 100%;
   height: 100vh;
   min-height: 720px;
@@ -25,12 +27,13 @@ body,
   background: #faf9f3;
 }
 
-.hero-background__image {
+.hero-background__media {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+  width: min(92vw, 1600px);
+  height: auto;
+  max-height: 92vh;
+  object-fit: contain;
+  object-position: center bottom;
   user-select: none;
   pointer-events: none;
 }
