@@ -2238,7 +2238,7 @@ body {
 .hero-kicker {
   margin-bottom: 18px;
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(13px, 1vw, 16px);
+  font-size: clamp(18px, 1.55vw, 24px);
   line-height: 1;
   font-weight: 700;
   letter-spacing: .12em;
