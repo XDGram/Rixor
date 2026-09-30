@@ -35,8 +35,7 @@ body,
   height: 111%;
   object-fit: cover;
   object-position: center 54%;
-  mix-blend-mode: screen;
-  filter: saturate(1.06) contrast(1.02);
+  filter: saturate(1.06) contrast(1.01);
   user-select: none;
   pointer-events: none;
 }
