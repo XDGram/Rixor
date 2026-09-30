@@ -191,6 +191,32 @@ export default function App() {
           </p>
         </div>
 
+        <div className="how-intro-flow" aria-label="Rixor savings flow">
+          <div className="how-intro-copy">
+            <span className="how-intro-label">THE SIMPLE VERSION</span>
+            <h3>Your money moves through one clear path.</h3>
+            <p>
+              Connect your wallet, fund Rixor, move into USDG savings, then choose whether
+              to stay flexible or lock for longer. From there, Rixor keeps the position,
+              progress and next action visible in one place.
+            </p>
+          </div>
+
+          <div className="how-flow-illustration" aria-hidden="true">
+            <span className="flow-node">Wallet</span>
+            <svg viewBox="0 0 120 34" role="presentation">
+              <path d="M4 17C32 17 43 4 68 4C90 4 94 17 114 17" />
+              <path d="M105 9L114 17L105 25" />
+            </svg>
+            <span className="flow-node flow-node--accent">USDG</span>
+            <svg viewBox="0 0 120 34" role="presentation">
+              <path d="M4 17C32 17 43 30 68 30C90 30 94 17 114 17" />
+              <path d="M105 9L114 17L105 25" />
+            </svg>
+            <span className="flow-node">Plan</span>
+          </div>
+        </div>
+
         <div className="how-grid">
           <article className={`how-card how-card--connect ${openHowCard === 'connect' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
