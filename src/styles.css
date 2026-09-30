@@ -43,9 +43,13 @@ body {
   margin: 0 auto;
   padding: 104px 0 118px;
   scroll-margin-top: 80px;
-  font-family: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
   perspective: 1300px;
   perspective-origin: 50% 38%;
+}
+
+.how-section * {
+  font-family: 'Times New Roman', Times, serif !important;
 }
 
 .how-heading,
