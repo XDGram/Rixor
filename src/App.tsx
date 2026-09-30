@@ -6,6 +6,8 @@ export default function App() {
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
   const [openHowCard, setOpenHowCard] = useState<string | null>(null)
   const [howInView, setHowInView] = useState(false)
+  const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
+  const [planAmount, setPlanAmount] = useState(2500)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const apy = plan === 'flexible' ? 3.8 : 6.8
@@ -32,6 +34,13 @@ export default function App() {
     })
   }
 
+  const scrollToPlans = () => {
+    document.getElementById('plans')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
+
   const toggleHowCard = (card: string) => {
     setOpenHowCard((current) => current === card ? null : card)
   }
@@ -53,6 +62,30 @@ export default function App() {
     observer.observe(section)
     return () => observer.disconnect()
   }, [])
+
+  const planOptions = [
+    { id: 'flexible', label: 'Flexible', apy: 3.8, days: 365, access: 'Withdraw anytime' },
+    { id: '30', label: '30 days', apy: 5.2, days: 30, access: '30-day lock' },
+    { id: '90', label: '90 days', apy: 6.8, days: 90, access: '90-day lock' },
+    { id: '180', label: '180 days', apy: 8.1, days: 180, access: '180-day lock' },
+    { id: '365', label: '1 year', apy: 9.4, days: 365, access: '1-year lock' },
+  ] as const
+
+  const selectedPlan = planOptions.find((option) => option.id === planTerm) ?? planOptions[2]
+  const selectedPlanIndex = planOptions.findIndex((option) => option.id === planTerm)
+  const planEarnings = planTerm === 'flexible'
+    ? (planAmount * selectedPlan.apy) / 100
+    : (planAmount * selectedPlan.apy * selectedPlan.days) / 36500
+  const maturityDate = useMemo(() => {
+    if (planTerm === 'flexible') return 'Anytime'
+    const date = new Date()
+    date.setDate(date.getDate() + selectedPlan.days)
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }, [planTerm, selectedPlan.days])
 
   const actionArrow = (
     <svg
@@ -90,7 +123,7 @@ export default function App() {
           <label className="tab_label" htmlFor="tab2" onClick={scrollToHowItWorks}>How it works</label>
 
           <input type="radio" name="tab" id="tab3" className="tab tab--3" />
-          <label className="tab_label" htmlFor="tab3">Plans</label>
+          <label className="tab_label" htmlFor="tab3" onClick={scrollToPlans}>Plans</label>
 
           <input type="radio" name="tab" id="tab4" className="tab tab--4" />
           <label className="tab_label" htmlFor="tab4">Security</label>
@@ -389,6 +422,136 @@ export default function App() {
         <div className="how-close">
           <span>Built for saving, not watching charts.</span>
           <p>Put money aside, choose a timeline, and keep the progress clear.</p>
+        </div>
+      </section>
+
+      <section id="plans" className="plans-section" aria-labelledby="plans-title">
+        <div className="plans-heading">
+          <span className="plans-kicker">PLANS</span>
+          <h2 id="plans-title">Choose the pace.</h2>
+          <p>
+            Keep access flexible or lock your USDG for longer. Move the amount, switch the
+            timeline, and see what the plan could look like before you start.
+          </p>
+        </div>
+
+        <div className="plans-shell">
+          <div className="plans-config">
+            <div className="plans-config-head">
+              <div>
+                <span>Plan type</span>
+                <strong>{selectedPlan.label}</strong>
+              </div>
+              <span className="plans-apy-chip">{selectedPlan.apy}% APY</span>
+            </div>
+
+            <div className="glass-radio-group plans-radio-group">
+              {planOptions.map((option) => (
+                <label key={option.id} className={planTerm === option.id ? 'is-active' : ''}>
+                  <input
+                    type="radio"
+                    name="savings-plan"
+                    value={option.id}
+                    checked={planTerm === option.id}
+                    onChange={() => setPlanTerm(option.id)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+              <div className={'plans-glider plans-glider--' + selectedPlanIndex} />
+            </div>
+
+            <div className="plans-amount-card">
+              <div className="plans-amount-head">
+                <div>
+                  <span className="plans-amount-label">Savings amount</span>
+                  <span className="plans-amount-sub">Set how much USDG you want in this plan.</span>
+                </div>
+                <span className="plans-status">USDG</span>
+              </div>
+
+              <div className="plans-live-value">
+                <span className="plans-currency">$</span>
+                <strong>{planAmount.toLocaleString()}</strong>
+              </div>
+
+              <div className="plans-slider-wrap">
+                <div
+                  className="plans-slider-tooltip"
+                  style={{ left: String(((planAmount - 500) / 9500) * 100) + '%' }}
+                >
+                  {'$'}{planAmount.toLocaleString()}
+                </div>
+                <div className="plans-track">
+                  <div
+                    className="plans-track-fill"
+                    style={{ width: String(((planAmount - 500) / 9500) * 100) + '%' }}
+                  />
+                </div>
+                <input
+                  className="plans-range"
+                  type="range"
+                  min="500"
+                  max="10000"
+                  step="500"
+                  value={planAmount}
+                  onChange={(event) => setPlanAmount(Number(event.target.value))}
+                  aria-label="Savings amount"
+                />
+              </div>
+
+              <div className="plans-scale">
+                <span>$500</span>
+                <span>$5,000</span>
+                <span>$10,000</span>
+              </div>
+            </div>
+          </div>
+
+          <aside className="plans-preview" aria-label="Selected savings plan preview">
+            <div className="plans-preview-top">
+              <span>YOUR PLAN</span>
+              <span className="plans-preview-dot" />
+            </div>
+
+            <div className="plans-preview-rate">
+              <strong>{selectedPlan.apy}%</strong>
+              <span>illustrative APY</span>
+            </div>
+
+            <div className="plans-preview-list">
+              <div>
+                <span>Deposit</span>
+                <strong>{planAmount.toLocaleString()} USDG</strong>
+              </div>
+              <div>
+                <span>Access</span>
+                <strong>{selectedPlan.access}</strong>
+              </div>
+              <div>
+                <span>{planTerm === 'flexible' ? 'Estimated / year' : 'At maturity'}</span>
+                <strong>+{planEarnings.toFixed(2)} USDG</strong>
+              </div>
+              <div>
+                <span>Maturity</span>
+                <strong>{maturityDate}</strong>
+              </div>
+            </div>
+
+            {planTerm !== 'flexible' && (
+              <p className="plans-warning">
+                Early withdrawal keeps your principal intact but forfeits 50% of interest
+                earned so far.
+              </p>
+            )}
+
+            <p className="plans-disclaimer">Illustrative rate. Not guaranteed.</p>
+
+            <button className="plans-action" type="button" onClick={focusSavingsPanel}>
+              <span>Start this plan</span>
+              {actionArrow}
+            </button>
+          </aside>
         </div>
       </section>
     </main>
