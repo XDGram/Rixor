@@ -4,6 +4,7 @@ export default function App() {
   const [lightMode, setLightMode] = useState(false)
   const [amount, setAmount] = useState('1000')
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
+  const [openHowCard, setOpenHowCard] = useState<string | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const apy = plan === 'flexible' ? 3.8 : 6.8
   const projected = useMemo(() => {
@@ -27,6 +28,10 @@ export default function App() {
       behavior: 'smooth',
       block: 'start',
     })
+  }
+
+  const toggleHowCard = (card: string) => {
+    setOpenHowCard((current) => current === card ? null : card)
   }
 
   const actionArrow = (
@@ -187,7 +192,7 @@ export default function App() {
         </div>
 
         <div className="how-grid">
-          <article className="how-card how-card--connect" tabIndex={0}>
+          <article className={`how-card how-card--connect ${openHowCard === 'connect' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
               <span className="how-step">01</span>
               <span className="how-dot" />
@@ -199,6 +204,10 @@ export default function App() {
                 Connect an EVM or Solana wallet and sign a simple ownership message. Rixor
                 reads your public address only — never your seed phrase or private key.
               </p>
+              <button className="how-card-action" type="button" onClick={() => toggleHowCard('connect')}>
+                <span>{openHowCard === 'connect' ? 'Close' : 'Explore'}</span>
+                {actionArrow}
+              </button>
             </div>
             <div className="how-visual how-visual--wallet" aria-hidden="true">
               <div className="wallet-shell">
@@ -210,7 +219,7 @@ export default function App() {
             </div>
           </article>
 
-          <article className="how-card how-card--convert" tabIndex={0}>
+          <article className={`how-card how-card--convert ${openHowCard === 'convert' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
               <span className="how-step">02</span>
               <span className="how-dot" />
@@ -222,6 +231,10 @@ export default function App() {
                 Supported deposits are valued and brought into one USDG-denominated balance,
                 so your savings stay simple even when the funds came from different networks.
               </p>
+              <button className="how-card-action" type="button" onClick={() => toggleHowCard('convert')}>
+                <span>{openHowCard === 'convert' ? 'Close' : 'See flow'}</span>
+                {actionArrow}
+              </button>
             </div>
             <div className="how-visual how-visual--convert" aria-hidden="true">
               <div className="asset-stack">
@@ -234,7 +247,7 @@ export default function App() {
             </div>
           </article>
 
-          <article className="how-card how-card--choose how-card--wide" tabIndex={0}>
+          <article className={`how-card how-card--choose how-card--wide ${openHowCard === 'choose' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
               <span className="how-step">03</span>
               <span className="how-dot" />
@@ -247,6 +260,10 @@ export default function App() {
                 you’re comfortable committing for longer. You review the amount, term and
                 illustrative rate before anything moves.
               </p>
+              <button className="how-card-action" type="button" onClick={() => toggleHowCard('choose')}>
+                <span>{openHowCard === 'choose' ? 'Close' : 'Compare'}</span>
+                {actionArrow}
+              </button>
             </div>
             <div className="how-visual how-visual--plans" aria-hidden="true">
               <div className="mini-plan mini-plan--active">
@@ -260,7 +277,7 @@ export default function App() {
             </div>
           </article>
 
-          <article className="how-card how-card--track" tabIndex={0}>
+          <article className={`how-card how-card--track ${openHowCard === 'track' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
               <span className="how-step">04</span>
               <span className="how-dot" />
@@ -272,6 +289,10 @@ export default function App() {
                 Follow plan balances, earnings, maturity dates and activity from one place.
                 Locked plans show the time remaining; Flexible plans stay available.
               </p>
+              <button className="how-card-action" type="button" onClick={() => toggleHowCard('track')}>
+                <span>{openHowCard === 'track' ? 'Close' : 'View progress'}</span>
+                {actionArrow}
+              </button>
             </div>
             <div className="how-visual how-visual--track" aria-hidden="true">
               <div className="track-meta">
@@ -286,7 +307,7 @@ export default function App() {
             </div>
           </article>
 
-          <article className="how-card how-card--review" tabIndex={0}>
+          <article className={`how-card how-card--review ${openHowCard === 'review' ? 'is-open' : ''}`} tabIndex={0}>
             <div className="how-card-top">
               <span className="how-step">05</span>
               <span className="how-dot" />
@@ -298,6 +319,10 @@ export default function App() {
                 Before a money-moving action is confirmed, Rixor shows the important details
                 in plain language so you know exactly what you’re agreeing to.
               </p>
+              <button className="how-card-action" type="button" onClick={() => toggleHowCard('review')}>
+                <span>{openHowCard === 'review' ? 'Close' : 'Preview'}</span>
+                {actionArrow}
+              </button>
             </div>
             <div className="how-visual how-visual--review" aria-hidden="true">
               <div className="review-sheet">
