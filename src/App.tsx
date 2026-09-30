@@ -11,8 +11,8 @@ export default function App() {
         poster="/images/rixor-hero-background.webp"
         aria-hidden="true"
       >
-        <source src="/video/rixor-hero-loop.webm" type="video/webm" />
-        <source src="/video/rixor-hero-loop.mp4" type="video/mp4" />
+        <source src="/video/rixor-hero-motion.webm" type="video/webm" />
+        <source src="/video/rixor-hero-motion.mp4" type="video/mp4" />
       </video>
     </main>
   )
