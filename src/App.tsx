@@ -6,10 +6,12 @@ export default function App() {
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
   const [openHowCard, setOpenHowCard] = useState<string | null>(null)
   const [howInView, setHowInView] = useState(false)
+  const [plansInView, setPlansInView] = useState(false)
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [planAmount, setPlanAmount] = useState(2500)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
+  const plansSectionRef = useRef<HTMLElement>(null)
   const apy = plan === 'flexible' ? 3.8 : 6.8
   const projected = useMemo(() => {
     const parsed = Number(amount.replace(/,/g, '')) || 0
@@ -56,6 +58,24 @@ export default function App() {
       {
         threshold: 0.16,
         rootMargin: '0px 0px -8% 0px',
+      },
+    )
+
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const section = plansSectionRef.current
+    if (!section) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setPlansInView(entry.isIntersecting)
+      },
+      {
+        threshold: 0.18,
+        rootMargin: '0px 0px -10% 0px',
       },
     )
 
@@ -425,7 +445,12 @@ export default function App() {
         </div>
       </section>
 
-      <section id="plans" className="plans-section" aria-labelledby="plans-title">
+      <section
+        id="plans"
+        ref={plansSectionRef}
+        className={`plans-section ${plansInView ? 'is-visible' : ''}`}
+        aria-labelledby="plans-title"
+      >
         <div className="plans-heading">
           <span className="plans-kicker">PLANS</span>
           <h2 id="plans-title">Choose the pace.</h2>

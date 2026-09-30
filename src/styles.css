@@ -69,6 +69,20 @@ body {
 .plans-heading {
   max-width: 760px;
   margin-bottom: 44px;
+  opacity: 0;
+  filter: blur(10px);
+  transform: translate3d(0, 48px, -90px) rotateX(6deg) scale(.97);
+  transform-origin: 50% 100%;
+  transition:
+    opacity .82s cubic-bezier(.16,1,.3,1),
+    transform 1s cubic-bezier(.16,1,.3,1),
+    filter .82s ease;
+}
+
+.plans-section.is-visible .plans-heading {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0,0,0) rotateX(0deg) scale(1);
 }
 
 .plans-kicker {
@@ -107,10 +121,24 @@ body {
   border-radius: 24px;
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  will-change: transform, opacity, filter;
 }
 
 .plans-config {
   padding: 26px;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translate3d(-70px, 42px, -120px) rotateY(5deg) scale(.965);
+  transition:
+    opacity .85s cubic-bezier(.16,1,.3,1) .14s,
+    transform 1.05s cubic-bezier(.16,1,.3,1) .14s,
+    filter .82s ease .14s;
+}
+
+.plans-section.is-visible .plans-config {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0,0,0) rotateY(0deg) scale(1);
 }
 
 .plans-config-head {
@@ -389,6 +417,105 @@ body {
   position: relative;
   padding: 28px;
   overflow: hidden;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translate3d(70px, 42px, -120px) rotateY(-5deg) scale(.965);
+  transition:
+    opacity .85s cubic-bezier(.16,1,.3,1) .24s,
+    transform 1.05s cubic-bezier(.16,1,.3,1) .24s,
+    filter .82s ease .24s;
+}
+
+.plans-section.is-visible .plans-preview {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0,0,0) rotateY(0deg) scale(1);
+}
+
+.plans-radio-group,
+.plans-amount-card,
+.plans-preview-rate,
+.plans-preview-list,
+.plans-warning,
+.plans-disclaimer,
+.plans-action {
+  opacity: 0;
+  transform: translateY(18px) scale(.985);
+}
+
+.plans-section.is-visible .plans-radio-group {
+  animation: plans-settle .72s cubic-bezier(.2,.9,.2,1) .42s forwards;
+}
+
+.plans-section.is-visible .plans-amount-card {
+  animation: plans-settle .74s cubic-bezier(.2,.9,.2,1) .5s forwards;
+}
+
+.plans-section.is-visible .plans-preview-rate {
+  animation: plans-settle .72s cubic-bezier(.2,.9,.2,1) .54s forwards;
+}
+
+.plans-section.is-visible .plans-preview-list {
+  animation: plans-settle .72s cubic-bezier(.2,.9,.2,1) .62s forwards;
+}
+
+.plans-section.is-visible .plans-warning,
+.plans-section.is-visible .plans-disclaimer,
+.plans-section.is-visible .plans-action {
+  animation: plans-settle .68s cubic-bezier(.2,.9,.2,1) .7s forwards;
+}
+
+.plans-section.is-visible .plans-glider {
+  animation: plans-glider-pop .72s cubic-bezier(.34,1.56,.64,1) .5s both;
+}
+
+.plans-section.is-visible .plans-slider-wrap::after {
+  animation: plans-thumb-pop .62s cubic-bezier(.34,1.56,.64,1) .62s both;
+}
+
+@keyframes plans-settle {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(.985);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.004);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes plans-glider-pop {
+  0% {
+    opacity: .25;
+    scale: .9;
+  }
+  65% {
+    opacity: 1;
+    scale: 1.04;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes plans-thumb-pop {
+  0% {
+    opacity: 0;
+    scale: .65;
+  }
+  70% {
+    opacity: 1;
+    scale: 1.1;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
 }
 
 .plans-preview::before {
@@ -2506,10 +2633,25 @@ body {
   .how-heading,
   .how-intro-flow,
   .how-card,
-  .how-close {
+  .how-close,
+  .plans-heading,
+  .plans-config,
+  .plans-preview,
+  .plans-radio-group,
+  .plans-amount-card,
+  .plans-preview-rate,
+  .plans-preview-list,
+  .plans-warning,
+  .plans-disclaimer,
+  .plans-action {
     opacity: 1;
     filter: none;
     transform: none !important;
+    animation: none !important;
+  }
+
+  .plans-glider,
+  .plans-slider-wrap::after {
     animation: none !important;
   }
 
