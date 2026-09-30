@@ -320,6 +320,30 @@ body {
   transition: width .16s ease;
 }
 
+.plans-slider-wrap::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  top: 43px;
+  left: var(--plans-thumb, 21.05%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--accent);
+  box-shadow:
+    0 0 0 3px rgba(17,17,17,.9),
+    0 4px 14px rgba(0,0,0,.24),
+    0 0 16px rgba(207,239,0,.18);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left .16s ease, transform .18s ease;
+}
+
+.plans-slider-wrap:has(.plans-range:active)::after {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
 .plans-range {
   position: absolute;
   inset: 25px 0 auto 0;
@@ -330,6 +354,27 @@ body {
   opacity: 0;
   cursor: pointer;
 }
+
+.plans-slider-wrap:has(.plans-range[value="500"]) { --plans-thumb: 0%; }
+.plans-slider-wrap:has(.plans-range[value="1000"]) { --plans-thumb: 5.263%; }
+.plans-slider-wrap:has(.plans-range[value="1500"]) { --plans-thumb: 10.526%; }
+.plans-slider-wrap:has(.plans-range[value="2000"]) { --plans-thumb: 15.789%; }
+.plans-slider-wrap:has(.plans-range[value="2500"]) { --plans-thumb: 21.053%; }
+.plans-slider-wrap:has(.plans-range[value="3000"]) { --plans-thumb: 26.316%; }
+.plans-slider-wrap:has(.plans-range[value="3500"]) { --plans-thumb: 31.579%; }
+.plans-slider-wrap:has(.plans-range[value="4000"]) { --plans-thumb: 36.842%; }
+.plans-slider-wrap:has(.plans-range[value="4500"]) { --plans-thumb: 42.105%; }
+.plans-slider-wrap:has(.plans-range[value="5000"]) { --plans-thumb: 47.368%; }
+.plans-slider-wrap:has(.plans-range[value="5500"]) { --plans-thumb: 52.632%; }
+.plans-slider-wrap:has(.plans-range[value="6000"]) { --plans-thumb: 57.895%; }
+.plans-slider-wrap:has(.plans-range[value="6500"]) { --plans-thumb: 63.158%; }
+.plans-slider-wrap:has(.plans-range[value="7000"]) { --plans-thumb: 68.421%; }
+.plans-slider-wrap:has(.plans-range[value="7500"]) { --plans-thumb: 73.684%; }
+.plans-slider-wrap:has(.plans-range[value="8000"]) { --plans-thumb: 78.947%; }
+.plans-slider-wrap:has(.plans-range[value="8500"]) { --plans-thumb: 84.211%; }
+.plans-slider-wrap:has(.plans-range[value="9000"]) { --plans-thumb: 89.474%; }
+.plans-slider-wrap:has(.plans-range[value="9500"]) { --plans-thumb: 94.737%; }
+.plans-slider-wrap:has(.plans-range[value="10000"]) { --plans-thumb: 100%; }
 
 .plans-scale {
   display: flex;
@@ -1875,6 +1920,38 @@ body {
   transition: transform .28s ease, border-color .28s ease, background-color .35s ease;
 }
 
+@media (min-width: 961px) {
+  .savings-panel {
+    transform: translateX(-18px);
+  }
+
+  .savings-panel:hover {
+    transform: translateX(-18px) translateY(-2px);
+  }
+
+  .savings-panel--reveal {
+    animation-name: savings-panel-impact-left;
+  }
+}
+
+@keyframes savings-panel-impact-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-18px) translateY(14px) scale(.985);
+  }
+  48% {
+    opacity: 1;
+    transform: translateX(-18px) translateY(-4px) scale(1.008);
+  }
+  72% {
+    transform: translateX(-18px) translateY(2px) scale(.997);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-18px) translateY(0) scale(1);
+  }
+}
+
 .savings-panel:focus-visible {
   outline: 1px solid rgba(207,239,0,.55);
   outline-offset: 5px;
@@ -1894,6 +1971,12 @@ body {
 }
 
 .savings-panel:hover { transform: translateY(-2px); }
+
+@media (min-width: 961px) {
+  .savings-panel:hover {
+    transform: translateX(-18px) translateY(-2px);
+  }
+}
 
 .panel-head,
 .earnings-row {
