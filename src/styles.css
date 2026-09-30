@@ -44,6 +44,32 @@ body {
   padding: 104px 0 118px;
   scroll-margin-top: 80px;
   font-family: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  perspective: 1300px;
+  perspective-origin: 50% 38%;
+}
+
+.how-heading,
+.how-intro-flow,
+.how-card,
+.how-close {
+  will-change: transform, opacity, filter;
+}
+
+.how-heading {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translate3d(0, 58px, -120px) rotateX(7deg) scale(.96);
+  transform-origin: 50% 100%;
+  transition:
+    opacity .85s cubic-bezier(.16,1,.3,1),
+    transform 1.05s cubic-bezier(.16,1,.3,1),
+    filter .9s ease;
+}
+
+.how-section.is-visible .how-heading {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0, 0, 0) rotateX(0deg) scale(1);
 }
 
 .how-heading {
@@ -85,6 +111,20 @@ body {
   align-items: center;
   gap: 42px;
   overflow: hidden;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translate3d(0, 54px, -150px) rotateX(6deg) scale(.955);
+  transform-origin: 50% 0%;
+  transition:
+    opacity .82s cubic-bezier(.16,1,.3,1) .14s,
+    transform 1.05s cubic-bezier(.16,1,.3,1) .14s,
+    filter .82s ease .14s;
+}
+
+.how-section.is-visible .how-intro-flow {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0, 0, 0) rotateX(0deg) scale(1);
 }
 
 .how-intro-copy {
@@ -133,6 +173,13 @@ body {
   stroke-linejoin: round;
   opacity: .35;
   stroke-dasharray: 5 6;
+  stroke-dashoffset: 38;
+  transition: stroke-dashoffset 1.35s cubic-bezier(.16,1,.3,1) .58s, opacity .8s ease .5s;
+}
+
+.how-section.is-visible .how-flow-illustration path {
+  stroke-dashoffset: 0;
+  opacity: .5;
 }
 
 .flow-node {
@@ -149,6 +196,16 @@ body {
   background: var(--accent) !important;
   color: #111 !important;
   border-color: transparent !important;
+}
+
+.how-section.is-visible .flow-node--accent {
+  animation: how-node-settle .72s cubic-bezier(.2,.9,.2,1) .72s both;
+}
+
+@keyframes how-node-settle {
+  0% { transform: scale(.82); }
+  58% { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 .how-grid {
@@ -168,11 +225,38 @@ body {
   transition: min-height .46s cubic-bezier(.2,.8,.2,1), transform .42s ease, border-color .35s ease, background-color .35s ease, box-shadow .35s ease;
   cursor: default;
   outline: none;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translate3d(0, 70px, -170px) rotateX(8deg) rotateZ(-1.2deg) scale(.95);
+  transition:
+    min-height .46s cubic-bezier(.2,.8,.2,1),
+    opacity .72s cubic-bezier(.16,1,.3,1),
+    filter .72s ease,
+    transform .95s cubic-bezier(.16,1,.3,1),
+    border-color .35s ease,
+    background-color .35s ease,
+    box-shadow .35s ease;
 }
 
 .how-card:nth-child(even) {
-  transform: rotate(1.2deg);
+  transform: translate3d(0, 70px, -170px) rotateX(8deg) rotateZ(1.2deg) scale(.95);
 }
+
+.how-section.is-visible .how-card {
+  opacity: 1;
+  filter: blur(0);
+  transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(-1.2deg) scale(1);
+}
+
+.how-section.is-visible .how-card:nth-child(even) {
+  transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(1.2deg) scale(1);
+}
+
+.how-section.is-visible .how-card:nth-child(1) { transition-delay: .28s, .28s, .28s, .28s, 0s, 0s, 0s; }
+.how-section.is-visible .how-card:nth-child(2) { transition-delay: .38s, .38s, .38s, .38s, 0s, 0s, 0s; }
+.how-section.is-visible .how-card:nth-child(3) { transition-delay: .49s, .49s, .49s, .49s, 0s, 0s, 0s; }
+.how-section.is-visible .how-card:nth-child(4) { transition-delay: .60s, .60s, .60s, .60s, 0s, 0s, 0s; }
+.how-section.is-visible .how-card:nth-child(5) { transition-delay: .70s, .70s, .70s, .70s, 0s, 0s, 0s; }
 
 .how-card--wide {
   grid-column: 1 / -1;
@@ -183,7 +267,7 @@ body {
 .how-card:focus-visible,
 .how-card.is-open {
   min-height: 320px;
-  transform: rotate(0deg) translateY(-4px);
+  transform: translate3d(0, -4px, 0) rotateX(0deg) rotateZ(0deg) scale(1);
 }
 
 .how-card--wide:hover,
@@ -549,6 +633,19 @@ body {
   margin-top: 44px;
   padding-top: 26px;
   border-top: 1px solid;
+  opacity: 0;
+  filter: blur(5px);
+  transform: translateY(28px);
+  transition:
+    opacity .7s ease .82s,
+    filter .7s ease .82s,
+    transform .85s cubic-bezier(.16,1,.3,1) .82s;
+}
+
+.how-section.is-visible .how-close {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
 }
 
 .how-close span {
@@ -731,7 +828,11 @@ body {
   .how-card,
   .how-card--wide {
     min-height: 200px;
-    transform: none;
+  }
+
+  .how-section.is-visible .how-card,
+  .how-section.is-visible .how-card:nth-child(even) {
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
 
   .how-card:hover,
@@ -1737,6 +1838,20 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .how-heading,
+  .how-intro-flow,
+  .how-card,
+  .how-close {
+    opacity: 1;
+    filter: none;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .how-flow-illustration path {
+    stroke-dashoffset: 0;
+  }
+
   .hero-enter {
     opacity: 1;
     transform: none;

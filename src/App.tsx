@@ -1,11 +1,13 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export default function App() {
   const [lightMode, setLightMode] = useState(false)
   const [amount, setAmount] = useState('1000')
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
   const [openHowCard, setOpenHowCard] = useState<string | null>(null)
+  const [howInView, setHowInView] = useState(false)
   const savingsPanelRef = useRef<HTMLElement>(null)
+  const howSectionRef = useRef<HTMLElement>(null)
   const apy = plan === 'flexible' ? 3.8 : 6.8
   const projected = useMemo(() => {
     const parsed = Number(amount.replace(/,/g, '')) || 0
@@ -33,6 +35,26 @@ export default function App() {
   const toggleHowCard = (card: string) => {
     setOpenHowCard((current) => current === card ? null : card)
   }
+
+  useEffect(() => {
+    const section = howSectionRef.current
+    if (!section || howInView) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        setHowInView(true)
+        observer.disconnect()
+      },
+      {
+        threshold: 0.16,
+        rootMargin: '0px 0px -8% 0px',
+      },
+    )
+
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [howInView])
 
   const actionArrow = (
     <svg
@@ -181,7 +203,12 @@ export default function App() {
         </div>
       </section>
 
-      <section id="how-it-works" className="how-section" aria-labelledby="how-title">
+      <section
+        id="how-it-works"
+        ref={howSectionRef}
+        className={`how-section ${howInView ? 'is-visible' : ''}`}
+        aria-labelledby="how-title"
+      >
         <div className="how-heading">
           <span className="how-kicker">HOW RIXOR WORKS</span>
           <h2 id="how-title">One balance. Your timeline.</h2>
