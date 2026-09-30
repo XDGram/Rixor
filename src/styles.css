@@ -1086,6 +1086,11 @@ body {
   justify-content: flex-start;
 }
 
+.hero-copy-shell,
+.hero-copy-shell * {
+  font-family: 'Times New Roman', Times, serif !important;
+}
+
 .hero-copy {
   width: 100%;
   max-width: 1080px;
