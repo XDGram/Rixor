@@ -38,13 +38,11 @@ export default function App() {
 
   useEffect(() => {
     const section = howSectionRef.current
-    if (!section || howInView) return
+    if (!section) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return
-        setHowInView(true)
-        observer.disconnect()
+        setHowInView(entry.isIntersecting)
       },
       {
         threshold: 0.16,
@@ -54,7 +52,7 @@ export default function App() {
 
     observer.observe(section)
     return () => observer.disconnect()
-  }, [howInView])
+  }, [])
 
   const actionArrow = (
     <svg
