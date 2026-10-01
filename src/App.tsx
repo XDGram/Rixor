@@ -74,6 +74,8 @@ export default function App() {
   const [walletConnecting, setWalletConnecting] = useState<string | null>(null)
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
+  const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
+  const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
   const [connectedEvmProvider, setConnectedEvmProvider] = useState<EvmProvider | null>(null)
   const [evmChainId, setEvmChainId] = useState<number | null>(null)
@@ -139,6 +141,14 @@ export default function App() {
       const chainId = await ethereum.request({ method: 'eth_chainId' }) as string
       setEvmChainId(Number.parseInt(chainId, 16))
       setWalletModalOpen(false)
+      if (pendingWalletAction === 'start-plan') {
+        setStartPlanStep('setup')
+        if (pendingPlanTerm) setStartPlanTerm(pendingPlanTerm)
+        setStartPlanAmount('')
+        setStartPlanOpen(true)
+      }
+      setPendingWalletAction(null)
+      setPendingPlanTerm(null)
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'EVM wallet connection failed.')
     } finally {
@@ -160,6 +170,8 @@ export default function App() {
 
       setWalletSession({ kind: 'solana', address, name: wallet.name })
       setWalletModalOpen(false)
+      setPendingWalletAction(null)
+      setPendingPlanTerm(null)
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'Solana wallet connection failed.')
     } finally {
@@ -174,6 +186,8 @@ export default function App() {
     setNativeBalance('0.0000')
     setWalletError('')
     setWalletModalOpen(false)
+    setPendingWalletAction(null)
+    setPendingPlanTerm(null)
   }
 
   const evmNetworks = [
@@ -402,6 +416,16 @@ export default function App() {
     }, 550)
   }
 
+  const openWalletFor = (
+    action: 'dashboard' | 'start-plan' = 'dashboard',
+    term?: 'flexible' | '30' | '90' | '180' | '365',
+  ) => {
+    setWalletError('')
+    setPendingWalletAction(action)
+    setPendingPlanTerm(term ?? null)
+    setWalletModalOpen(true)
+  }
+
   const scrollToHowItWorks = () => {
     document.getElementById('how-it-works')?.scrollIntoView({
       behavior: 'smooth',
@@ -570,6 +594,7 @@ export default function App() {
   }
 
   const openWithdraw = () => {
+    setSelectedPlanId(null)
     setWithdrawStep('setup')
     setWithdrawSource('available')
     setWithdrawAmount('')
@@ -1192,7 +1217,7 @@ export default function App() {
         <div className="carbon-layer carbon-grain" aria-hidden="true" />
 
         <header className="dashboard-topbar">
-          <button className="dashboard-brand" type="button" onClick={disconnectWallet}>
+          <button className="dashboard-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             RIXOR
           </button>
 
@@ -2048,7 +2073,7 @@ export default function App() {
             </p>
 
             <div className="hero-actions">
-              <button className="hero-primary" type="button" onClick={focusSavingsPanel}>
+              <button className="hero-primary" type="button" onClick={() => openWalletFor('dashboard')}>
                 <span>Start saving</span>
                 {actionArrow}
               </button>
@@ -2115,10 +2140,7 @@ export default function App() {
               <strong>+{projected.toFixed(4)} ETH / year</strong>
             </div>
 
-            <button className="connect-wallet" type="button" onClick={() => {
-              setWalletError('')
-              setWalletModalOpen(true)
-            }}>
+            <button className="connect-wallet" type="button" onClick={() => openWalletFor('dashboard')}>
               <span>Connect Wallet</span>
             </button>
           </aside>
@@ -2443,7 +2465,7 @@ export default function App() {
 
             <p className="plans-disclaimer">Illustrative rate. Not guaranteed.</p>
 
-            <button className="plans-action" type="button" onClick={focusSavingsPanel}>
+            <button className="plans-action" type="button" onClick={() => openWalletFor('start-plan', planTerm)}>
               <span>Start this plan</span>
               {actionArrow}
             </button>
