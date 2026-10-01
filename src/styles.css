@@ -2967,10 +2967,30 @@ body {
   font-weight: 700;
 }
 
+.wallet-option-mark svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.wallet-option-mark--eth {
+  background: rgba(255,255,255,.94);
+  color: #111;
+}
+
+.wallet-option-mark--eth svg {
+  width: 22px;
+  height: 30px;
+}
+
 .wallet-option-mark--sol {
-  background: transparent;
-  border: 1px solid rgba(207,239,0,.55);
-  color: var(--accent);
+  background: #070707;
+  border: 1px solid rgba(255,255,255,.1);
+}
+
+.wallet-option-mark--sol svg {
+  width: 27px;
+  height: 22px;
 }
 
 .wallet-option > span:nth-child(2) {

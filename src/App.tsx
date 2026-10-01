@@ -333,7 +333,16 @@ export default function App() {
 
                 <div className="wallet-options">
                   <button type="button" className="wallet-option" onClick={connectEvmWallet} disabled={walletConnecting !== null}>
-                    <span className="wallet-option-mark">E</span>
+                    <span className="wallet-option-mark wallet-option-mark--eth" aria-hidden="true">
+                      <svg viewBox="0 0 256 417" role="presentation">
+                        <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
+                        <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
+                        <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
+                        <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
+                        <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
+                        <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
+                      </svg>
+                    </span>
                     <span>
                       <strong>EVM wallet</strong>
                       <small>MetaMask and injected wallets</small>
@@ -342,7 +351,19 @@ export default function App() {
                   </button>
 
                   <button type="button" className="wallet-option" onClick={connectSolanaWallet} disabled={walletConnecting !== null}>
-                    <span className="wallet-option-mark wallet-option-mark--sol">S</span>
+                    <span className="wallet-option-mark wallet-option-mark--sol" aria-hidden="true">
+                      <svg viewBox="0 0 397 311" role="presentation">
+                        <defs>
+                          <linearGradient id="solana-gradient-a" x1="360" y1="17" x2="141" y2="335" gradientUnits="userSpaceOnUse">
+                            <stop stopColor="#00FFA3" />
+                            <stop offset="1" stopColor="#DC1FFF" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M64.8 237.9c2.6-2.6 6.2-4.1 9.9-4.1h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7c-6.2 0-9.3-7.5-4.9-11.9l62.7-62.7Z" fill="url(#solana-gradient-a)" />
+                        <path d="M64.8 4.1C67.4 1.5 71 0 74.7 0h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7C.8 78.7-2.3 71.2 2.1 66.8L64.8 4.1Z" fill="url(#solana-gradient-a)" />
+                        <path d="M332.4 120.4c-2.6-2.6-6.2-4.1-9.9-4.1H5c-6.2 0-9.3 7.5-4.9 11.9l62.7 62.7c2.6 2.6 6.2 4.1 9.9 4.1h317.5c6.2 0 9.3-7.5 4.9-11.9l-62.7-62.7Z" fill="url(#solana-gradient-a)" />
+                      </svg>
+                    </span>
                     <span>
                       <strong>Solana wallet</strong>
                       <small>Phantom</small>
