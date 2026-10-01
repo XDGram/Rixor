@@ -81,6 +81,8 @@ export default function App() {
   const [evmChainId, setEvmChainId] = useState<number | null>(null)
   const [networkSwitching, setNetworkSwitching] = useState<number | null>(null)
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
+  const [nativeBalanceStatus, setNativeBalanceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [nativeBalanceError, setNativeBalanceError] = useState('')
   const [addMoneyOpen, setAddMoneyOpen] = useState(false)
   const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
   const [addMoneyAmount, setAddMoneyAmount] = useState('')
@@ -246,17 +248,69 @@ export default function App() {
   const refreshNativeBalance = async () => {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm') {
       setNativeBalance('0.0000')
+      setNativeBalanceStatus('idle')
+      setNativeBalanceError('')
       return
     }
 
+    setNativeBalanceStatus('loading')
+    setNativeBalanceError('')
+
     try {
-      const balance = await connectedEvmProvider.request({
+      const walletBalance = await connectedEvmProvider.request({
         method: 'eth_getBalance',
         params: [walletSession.address, 'latest'],
       }) as string
+
+      let balance = walletBalance
+
+      if (currentEvmNetwork) {
+        try {
+          const response = await fetch(currentEvmNetwork.rpcUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'eth_getBalance',
+              params: [walletSession.address, 'latest'],
+            }),
+          })
+          const rpcResult = await response.json() as { result?: string }
+          if (rpcResult.result) balance = rpcResult.result
+        } catch {
+          // Keep the injected-provider result if the public RPC fallback is unavailable.
+        }
+      }
+
       setNativeBalance(formatNativeBalance(balance))
-    } catch {
-      setNativeBalance('0.0000')
+      setNativeBalanceStatus('ready')
+    } catch (error) {
+      if (currentEvmNetwork) {
+        try {
+          const response = await fetch(currentEvmNetwork.rpcUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'eth_getBalance',
+              params: [walletSession.address, 'latest'],
+            }),
+          })
+          const rpcResult = await response.json() as { result?: string }
+          if (rpcResult.result) {
+            setNativeBalance(formatNativeBalance(rpcResult.result))
+            setNativeBalanceStatus('ready')
+            return
+          }
+        } catch {
+          // Fall through to the visible error state below.
+        }
+      }
+
+      setNativeBalanceStatus('error')
+      setNativeBalanceError(error instanceof Error ? error.message : 'Could not read the testnet wallet balance.')
     }
   }
 
@@ -1389,8 +1443,8 @@ export default function App() {
               <strong>{currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}</strong>
             </span>
             <span>
-              <small>NATIVE BALANCE</small>
-              <strong>{nativeBalance} ETH</strong>
+              <small>{currentEvmNetwork ? `${currentEvmNetwork.shortName.toUpperCase()} WALLET BALANCE` : 'TESTNET WALLET BALANCE'}</small>
+              <strong>{nativeBalanceStatus === 'loading' ? 'Refreshing…' : `${nativeBalance} ETH`}</strong>
             </span>
             <button
               type="button"
@@ -1399,6 +1453,13 @@ export default function App() {
             >
               Refresh
             </button>
+          </div>
+        )}
+
+        {walletSession.kind === 'evm' && nativeBalanceStatus === 'error' && (
+          <div className="dashboard-balance-read-error">
+            <strong>Could not read {currentEvmNetwork?.shortName ?? 'testnet'} balance.</strong>
+            <span>{nativeBalanceError || 'Try Refresh or reconnect the wallet.'}</span>
           </div>
         )}
 
