@@ -637,14 +637,15 @@ export default function App() {
                 </div>
               ) : addMoneyStep === 'amount' ? (
                 <>
-                  <div className="add-money-network-row">
-                    <div>
-                      <small>NETWORK</small>
-                      <strong>{currentEvmNetwork?.shortName ?? 'Unsupported network'}</strong>
+                  <div className="add-money-chain-summary">
+                    <div className="add-money-chain-copy">
+                      <span>AVAILABLE ON THIS CHAIN</span>
+                      <h3>{currentEvmNetwork?.shortName ?? 'Unsupported network'}</h3>
+                      <p>This is the amount available from your connected wallet on this network.</p>
                     </div>
-                    <div>
-                      <small>WALLET BALANCE</small>
-                      <strong>{nativeBalance} ETH</strong>
+                    <div className="add-money-chain-balance">
+                      <small>YOU CAN ADD UP TO</small>
+                      <strong>{nativeBalance} <em>ETH</em></strong>
                     </div>
                   </div>
 
@@ -662,14 +663,11 @@ export default function App() {
 
                   <div className="add-money-amount-card dashboard-soft-card">
                     <div className="add-money-amount-head">
-                      <label htmlFor="add-money-amount">Amount</label>
-                      <button
-                        type="button"
-                        onClick={() => setAddMoneyAmount(nativeBalance)}
-                        disabled={Number(nativeBalance) <= 0}
-                      >
-                        Max
-                      </button>
+                      <div>
+                        <label htmlFor="add-money-amount">Amount to add</label>
+                        <small>From {currentEvmNetwork?.shortName ?? 'current chain'}</small>
+                      </div>
+                      <span className="add-money-available-pill">{nativeBalance} ETH available</span>
                     </div>
                     <div className="add-money-input-wrap">
                       <input
@@ -691,7 +689,37 @@ export default function App() {
                         }}
                       />
                     </div>
-                    <small>Available: {nativeBalance} ETH</small>
+
+                    <div className="add-money-quick-amounts" aria-label="Quick amount selection">
+                      {[25, 50, 75].map((percent) => (
+                        <button
+                          key={percent}
+                          type="button"
+                          disabled={Number(nativeBalance) <= 0}
+                          onClick={() => setAddMoneyAmount(((Number(nativeBalance) * percent) / 100).toFixed(4))}
+                        >
+                          {percent}%
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={Number(nativeBalance) <= 0}
+                        onClick={() => setAddMoneyAmount(nativeBalance)}
+                      >
+                        Max
+                      </button>
+                    </div>
+
+                    <div className="add-money-balance-line">
+                      <span>
+                        <small>CHAIN BALANCE</small>
+                        <strong>{nativeBalance} ETH</strong>
+                      </span>
+                      <span>
+                        <small>AFTER THIS</small>
+                        <strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong>
+                      </span>
+                    </div>
                   </div>
 
                   {!currentEvmNetwork && (
@@ -732,6 +760,10 @@ export default function App() {
                       <div>
                         <small>ASSET</small>
                         <strong>ETH</strong>
+                      </div>
+                      <div>
+                        <small>REMAINING WALLET BALANCE</small>
+                        <strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong>
                       </div>
                     </div>
                   </div>

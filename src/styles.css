@@ -215,6 +215,66 @@ body {
   margin-bottom: 14px;
 }
 
+.add-money-chain-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 20px;
+  margin-bottom: 14px;
+  padding: 20px;
+  border-radius: 22px;
+}
+
+.add-money-chain-copy > span {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  color: var(--accent);
+}
+
+.add-money-chain-copy h3 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+
+.add-money-chain-copy p {
+  max-width: 310px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: .5;
+}
+
+.add-money-chain-balance {
+  min-width: 190px;
+  text-align: right;
+}
+
+.add-money-chain-balance small {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .11em;
+  opacity: .45;
+}
+
+.add-money-chain-balance strong {
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+
+.add-money-chain-balance em {
+  font-size: .45em;
+  font-style: normal;
+  color: var(--accent);
+}
+
 .add-money-network-row > div {
   padding: 16px;
   border-radius: 18px;
@@ -298,6 +358,27 @@ body {
   gap: 12px;
 }
 
+.add-money-amount-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.add-money-amount-head > div small {
+  font-size: 10px;
+  opacity: .45;
+}
+
+.add-money-available-pill {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .add-money-amount-head label {
   font-size: 14px;
   font-weight: 700;
@@ -350,6 +431,62 @@ body {
 
 .add-money-range {
   margin-top: 18px;
+}
+
+.add-money-quick-amounts {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.add-money-quick-amounts button {
+  min-height: 38px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  transition: transform .18s ease, background-color .18s ease, border-color .18s ease;
+}
+
+.add-money-quick-amounts button:hover:not(:disabled),
+.add-money-quick-amounts button:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.add-money-quick-amounts button:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.add-money-balance-line {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid rgba(127,127,127,.16);
+}
+
+.add-money-balance-line > span {
+  display: grid;
+  gap: 3px;
+}
+
+.add-money-balance-line > span:last-child {
+  text-align: right;
+}
+
+.add-money-balance-line small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  opacity: .42;
+}
+
+.add-money-balance-line strong {
+  font-size: 13px;
 }
 
 .add-money-amount-card > small {
@@ -508,7 +645,10 @@ body {
 }
 
 .dark-mode .add-money-network-row > div,
+.dark-mode .add-money-chain-summary,
 .dark-mode .add-money-amount-head button,
+.dark-mode .add-money-available-pill,
+.dark-mode .add-money-quick-amounts button,
 .dark-mode .add-money-warning,
 .dark-mode .add-money-review-note,
 .dark-mode .add-money-back,
@@ -526,7 +666,10 @@ body {
 }
 
 .light-mode .add-money-network-row > div,
+.light-mode .add-money-chain-summary,
 .light-mode .add-money-amount-head button,
+.light-mode .add-money-available-pill,
+.light-mode .add-money-quick-amounts button,
 .light-mode .add-money-warning,
 .light-mode .add-money-review-note,
 .light-mode .add-money-back,
@@ -545,9 +688,25 @@ body {
   }
 
   .add-money-network-row,
+  .add-money-chain-summary,
   .add-money-review-grid,
   .add-money-review-actions {
     grid-template-columns: 1fr;
+  }
+
+  .add-money-chain-balance {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .add-money-balance-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .add-money-balance-line > span:last-child {
+    text-align: left;
   }
 
   .add-money-review-main > strong {
