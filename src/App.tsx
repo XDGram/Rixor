@@ -452,68 +452,162 @@ export default function App() {
             </span>
           </div>
 
-          <div className="dashboard-balance-card">
-            <div className="dashboard-balance-main">
-              <span>Total savings</span>
-              <strong>0.00 <em>USDG</em></strong>
-              <small>No savings position yet</small>
+          <div className="dashboard-hero-grid">
+            <div className="dashboard-summary">
+              <div className="dashboard-total-card dashboard-soft-card">
+                <span className="dashboard-card-label">TOTAL SAVINGS</span>
+                <strong>0.00 <em>USDG</em></strong>
+                <p>No savings position yet.</p>
+
+                <div className="dashboard-actions dashboard-actions--compact">
+                  <button type="button" className="dashboard-action dashboard-action--primary">
+                    <span>Add money</span>
+                    {actionArrow}
+                  </button>
+                  <button type="button" className="dashboard-action">
+                    <span>Start a plan</span>
+                    {actionArrow}
+                  </button>
+                  <button type="button" className="dashboard-action">
+                    <span>Withdraw</span>
+                    {actionArrow}
+                  </button>
+                </div>
+              </div>
+
+              <div className="dashboard-metric-grid">
+                <article className="dashboard-metric-card dashboard-soft-card">
+                  <div className="dashboard-metric-title">
+                    <span className="dashboard-metric-icon">↗</span>
+                    <strong>Earned</strong>
+                    <em>0%</em>
+                  </div>
+                  <div className="dashboard-metric-data">
+                    <p>0.00 <small>USDG</small></p>
+                    <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
+                  </div>
+                </article>
+
+                <article className="dashboard-metric-card dashboard-soft-card">
+                  <div className="dashboard-metric-title">
+                    <span className="dashboard-metric-icon">◎</span>
+                    <strong>Available</strong>
+                    <em>Ready</em>
+                  </div>
+                  <div className="dashboard-metric-data">
+                    <p>0.00 <small>USDG</small></p>
+                    <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
+                  </div>
+                </article>
+              </div>
             </div>
 
-            <div className="dashboard-balance-meta">
-              <div>
-                <span>Earned</span>
-                <strong>0.00 USDG</strong>
+            <div className="rixor-wallet-stage">
+              <div className="rixor-wallet-copy">
+                <span>SAVINGS POCKET</span>
+                <h2>Choose how your money sits.</h2>
+                <p>Hover the pocket to explore the plans available to you.</p>
               </div>
-              <div>
-                <span>Available</span>
-                <strong>0.00 USDG</strong>
+
+              <div className="rixor-wallet" aria-label="Rixor savings plan wallet">
+                <div className="rixor-wallet-back" />
+
+                <div className="rixor-plan-card rixor-plan-card--year">
+                  <div className="rixor-plan-card-inner">
+                    <div className="rixor-plan-card-top">
+                      <span>1 Year</span>
+                      <div className="rixor-plan-chip">9.4%</div>
+                    </div>
+                    <div className="rixor-plan-card-bottom">
+                      <div>
+                        <span className="rixor-plan-label">PLAN</span>
+                        <span className="rixor-plan-value">Highest rate</span>
+                      </div>
+                      <strong>365D</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rixor-plan-card rixor-plan-card--ninety">
+                  <div className="rixor-plan-card-inner">
+                    <div className="rixor-plan-card-top">
+                      <span>90 Day</span>
+                      <div className="rixor-plan-chip">6.8%</div>
+                    </div>
+                    <div className="rixor-plan-card-bottom">
+                      <div>
+                        <span className="rixor-plan-label">PLAN</span>
+                        <span className="rixor-plan-value">Balanced lock</span>
+                      </div>
+                      <strong>90D</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rixor-plan-card rixor-plan-card--flex">
+                  <div className="rixor-plan-card-inner">
+                    <div className="rixor-plan-card-top">
+                      <span>Flexible</span>
+                      <div className="rixor-plan-chip">3.8%</div>
+                    </div>
+                    <div className="rixor-plan-card-bottom">
+                      <div>
+                        <span className="rixor-plan-label">ACCESS</span>
+                        <span className="rixor-plan-value">Withdraw anytime</span>
+                      </div>
+                      <strong>LIVE</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rixor-pocket">
+                  <svg className="rixor-pocket-svg" viewBox="0 0 280 160" fill="none" aria-hidden="true">
+                    <path
+                      d="M 0 20 C 0 10, 5 10, 10 10 C 20 10, 25 25, 40 25 L 240 25 C 255 25, 260 10, 270 10 C 275 10, 280 10, 280 20 L 280 120 C 280 155, 260 160, 240 160 L 40 160 C 20 160, 0 155, 0 120 Z"
+                    />
+                    <path
+                      d="M 8 22 C 8 16, 12 16, 15 16 C 23 16, 27 29, 40 29 L 240 29 C 253 29, 257 16, 265 16 C 268 16, 272 16, 272 22 L 272 120 C 272 150, 255 152, 240 152 L 40 152 C 25 152, 8 152, 8 120 Z"
+                      className="rixor-pocket-stitch"
+                    />
+                  </svg>
+                  <div className="rixor-pocket-content">
+                    <div className="rixor-pocket-balance">
+                      <span className="rixor-balance-stars">••••••</span>
+                      <span className="rixor-balance-real">0.00 USDG</span>
+                    </div>
+                    <small>Total savings</small>
+                    <span className="rixor-eye" aria-hidden="true">◉</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="dashboard-actions">
-            <button type="button" className="dashboard-action dashboard-action--primary">
-              <span>Add money</span>
-              {actionArrow}
-            </button>
-            <button type="button" className="dashboard-action">
-              <span>Start a plan</span>
-              {actionArrow}
-            </button>
-            <button type="button" className="dashboard-action">
-              <span>Withdraw</span>
-              {actionArrow}
-            </button>
-          </div>
-
-          <div className="dashboard-grid">
-            <article className="dashboard-panel dashboard-plans-panel">
+          <div className="dashboard-lower-grid">
+            <article className="dashboard-panel dashboard-soft-card">
               <div className="dashboard-panel-head">
                 <div>
                   <span>ACTIVE PLANS</span>
                   <h2>Your savings plans</h2>
                 </div>
-                <button type="button">View all</button>
               </div>
-
               <div className="dashboard-empty-plan">
                 <span className="dashboard-empty-orb">+</span>
                 <div>
                   <strong>No active plans yet.</strong>
-                  <p>Start flexible savings or choose a fixed timeline when you are ready.</p>
+                  <p>Choose Flexible, 90 Day or 1 Year when you are ready to put USDG to work.</p>
                 </div>
                 <button type="button">Start a plan</button>
               </div>
             </article>
 
-            <article className="dashboard-panel dashboard-activity-panel">
+            <article className="dashboard-panel dashboard-soft-card">
               <div className="dashboard-panel-head">
                 <div>
                   <span>ACTIVITY</span>
                   <h2>Recent movement</h2>
                 </div>
               </div>
-
               <div className="dashboard-empty-activity">
                 <span />
                 <p>Your deposits, plan starts and withdrawals will appear here.</p>

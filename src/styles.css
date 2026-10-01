@@ -516,6 +516,563 @@ body {
   }
 }
 
+.dashboard-hero-grid {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+  gap: 28px;
+  align-items: stretch;
+}
+
+.dashboard-summary {
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-soft-card {
+  border-radius: 28px;
+}
+
+.dashboard-total-card {
+  min-height: 330px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  animation: dashboard-rise .82s cubic-bezier(.16,1,.3,1) .06s both;
+}
+
+.dashboard-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  opacity: .5;
+}
+
+.dashboard-total-card > strong {
+  margin-top: 12px;
+  font-size: clamp(58px, 6.6vw, 92px);
+  line-height: .92;
+  letter-spacing: -.06em;
+}
+
+.dashboard-total-card > strong em {
+  font-size: .27em;
+  font-style: normal;
+  letter-spacing: .02em;
+  color: var(--accent);
+}
+
+.dashboard-total-card > p {
+  margin: 16px 0 0;
+  font-size: 13px;
+  opacity: .5;
+}
+
+.dashboard-actions--compact {
+  margin-top: auto;
+  padding-top: 32px;
+}
+
+.dashboard-actions--compact .dashboard-action {
+  min-height: 58px;
+  font-size: 14px;
+}
+
+.dashboard-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.dashboard-metric-card {
+  min-height: 172px;
+  padding: 20px;
+  animation: dashboard-rise .82s cubic-bezier(.16,1,.3,1) .13s both;
+}
+
+.dashboard-metric-card:nth-child(2) {
+  animation-delay: .18s;
+}
+
+.dashboard-metric-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.dashboard-metric-title > strong {
+  font-size: 16px;
+}
+
+.dashboard-metric-title > em {
+  margin-left: auto;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  color: #6f8200;
+}
+
+.dashboard-metric-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #111;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.dashboard-metric-data {
+  margin-top: 22px;
+}
+
+.dashboard-metric-data p {
+  margin: 0 0 18px;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -.04em;
+}
+
+.dashboard-metric-data p small {
+  font-size: 11px;
+  letter-spacing: .02em;
+  opacity: .45;
+}
+
+.dashboard-range {
+  position: relative;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dashboard-range > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 7px;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.rixor-wallet-stage {
+  position: relative;
+  min-height: 520px;
+  padding: 30px;
+  border-radius: 28px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  animation: dashboard-rise .9s cubic-bezier(.16,1,.3,1) .1s both;
+}
+
+.rixor-wallet-copy {
+  position: relative;
+  z-index: 3;
+  max-width: 360px;
+}
+
+.rixor-wallet-copy > span {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: var(--accent);
+}
+
+.rixor-wallet-copy h2 {
+  margin: 0;
+  max-width: 320px;
+  font-size: clamp(34px, 3.7vw, 52px);
+  line-height: .96;
+  letter-spacing: -.045em;
+}
+
+.rixor-wallet-copy p {
+  max-width: 320px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: .5;
+}
+
+.rixor-wallet {
+  position: relative;
+  width: 280px;
+  height: 230px;
+  align-self: center;
+  margin: 76px auto 12px;
+  cursor: pointer;
+  perspective: 1000px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  transition: transform .4s ease;
+}
+
+.rixor-wallet::after {
+  content: "Hover to explore";
+  position: absolute;
+  bottom: -28px;
+  font-size: 11px;
+  font-style: italic;
+  opacity: .42;
+}
+
+.rixor-wallet-back {
+  position: absolute;
+  bottom: 0;
+  width: 280px;
+  height: 200px;
+  border-radius: 22px 22px 60px 60px;
+  z-index: 5;
+  box-shadow:
+    inset 0 25px 35px rgba(0,0,0,.28),
+    inset 0 5px 15px rgba(0,0,0,.26);
+}
+
+.rixor-plan-card {
+  position: absolute;
+  width: 260px;
+  height: 140px;
+  left: 10px;
+  border-radius: 16px;
+  padding: 18px;
+  transition:
+    transform .6s cubic-bezier(.34,1.56,.64,1),
+    z-index 0s;
+  animation: rixor-slide-pocket .8s cubic-bezier(.2,.8,.2,1) backwards;
+}
+
+.rixor-plan-card-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.rixor-plan-card-top,
+.rixor-plan-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rixor-plan-card-top > span {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 700;
+}
+
+.rixor-plan-chip {
+  min-width: 48px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rixor-plan-card-bottom > div {
+  display: grid;
+  gap: 3px;
+}
+
+.rixor-plan-label {
+  font-size: 8px;
+  opacity: .55;
+  letter-spacing: .12em;
+}
+
+.rixor-plan-value {
+  font-size: 11px;
+}
+
+.rixor-plan-card-bottom > strong {
+  font-size: 14px;
+  letter-spacing: .05em;
+}
+
+.rixor-plan-card--year {
+  bottom: 90px;
+  z-index: 10;
+  animation-delay: .1s;
+  background: #20261a;
+  color: #f4f4f1;
+}
+
+.rixor-plan-card--ninety {
+  bottom: 65px;
+  z-index: 20;
+  animation-delay: .2s;
+  background: var(--accent);
+  color: #111;
+}
+
+.rixor-plan-card--flex {
+  bottom: 40px;
+  z-index: 30;
+  animation-delay: .3s;
+  background: #f5f5ef;
+  color: #111;
+}
+
+.rixor-plan-card--year .rixor-plan-chip,
+.rixor-plan-card--flex .rixor-plan-chip {
+  background: rgba(127,127,127,.12);
+  border: 1px solid rgba(127,127,127,.12);
+}
+
+.rixor-plan-card--ninety .rixor-plan-chip {
+  background: rgba(17,17,17,.08);
+  border: 1px solid rgba(17,17,17,.1);
+}
+
+.rixor-pocket {
+  position: absolute;
+  bottom: 0;
+  width: 280px;
+  height: 160px;
+  z-index: 40;
+  filter: drop-shadow(0 15px 25px rgba(0,0,0,.24));
+}
+
+.rixor-pocket-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.rixor-pocket-svg path:first-child {
+  fill: #1c2818;
+}
+
+.rixor-pocket-stitch {
+  stroke: rgba(207,239,0,.24);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.rixor-pocket-content {
+  position: absolute;
+  top: 44px;
+  width: 100%;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.rixor-pocket-balance {
+  position: relative;
+  width: 100%;
+  height: 26px;
+}
+
+.rixor-balance-stars,
+.rixor-balance-real {
+  position: absolute;
+  left: 50%;
+  transition: .3s ease;
+}
+
+.rixor-balance-stars {
+  transform: translateX(-50%);
+  color: #81917a;
+  font-size: 20px;
+  letter-spacing: 4px;
+}
+
+.rixor-balance-real {
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  color: #dbe7d5;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rixor-pocket-content small {
+  color: #81917a;
+  font-size: 11px;
+}
+
+.rixor-eye {
+  margin-top: 3px;
+  color: var(--accent);
+  opacity: .25;
+  transition: .3s ease;
+}
+
+.rixor-wallet:hover {
+  transform: translateY(-5px);
+}
+
+.rixor-wallet:hover .rixor-plan-card--year {
+  transform: translateY(-75px) rotate(-3deg);
+}
+
+.rixor-wallet:hover .rixor-plan-card--ninety {
+  transform: translateY(-45px) rotate(2deg);
+}
+
+.rixor-wallet:hover .rixor-plan-card--flex {
+  transform: translateY(-10px);
+}
+
+.rixor-plan-card:hover {
+  z-index: 100 !important;
+}
+
+.rixor-wallet:hover .rixor-plan-card--year:hover {
+  transform: translateY(-62px) scale(1.045) rotate(0);
+}
+
+.rixor-wallet:hover .rixor-plan-card--ninety:hover {
+  transform: translateY(-72px) scale(1.045) rotate(0);
+}
+
+.rixor-wallet:hover .rixor-plan-card--flex:hover {
+  transform: translateY(-62px) scale(1.045) rotate(0);
+}
+
+.rixor-wallet:hover .rixor-balance-stars {
+  opacity: 0;
+}
+
+.rixor-wallet:hover .rixor-balance-real {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.rixor-wallet:hover .rixor-eye {
+  opacity: .9;
+  transform: scale(1.08);
+}
+
+.dashboard-lower-grid {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 18px;
+}
+
+.dark-mode .dashboard-soft-card,
+.dark-mode .rixor-wallet-stage {
+  color: #f4f4f1;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    18px 18px 44px rgba(0,0,0,.24),
+    -10px -10px 28px rgba(255,255,255,.018);
+}
+
+.dark-mode .dashboard-range {
+  background: rgba(255,255,255,.08);
+}
+
+.light-mode .dashboard-soft-card,
+.light-mode .rixor-wallet-stage {
+  color: #111;
+  background: #ecece8;
+  border: 1px solid rgba(17,17,17,.04);
+  box-shadow:
+    18px 18px 42px rgba(180,180,174,.55),
+    -18px -18px 42px rgba(255,255,255,.92);
+}
+
+.light-mode .dashboard-range {
+  background: rgba(17,17,17,.08);
+}
+
+.light-mode .rixor-wallet-back,
+.light-mode .rixor-pocket-svg path:first-child {
+  background: #dfe2d8;
+  fill: #dfe2d8;
+}
+
+.light-mode .rixor-pocket-content small,
+.light-mode .rixor-balance-stars {
+  color: #788270;
+}
+
+.light-mode .rixor-balance-real {
+  color: #20271c;
+}
+
+@keyframes rixor-slide-pocket {
+  0% {
+    transform: translateY(-100px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1020px) {
+  .dashboard-hero-grid,
+  .dashboard-lower-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rixor-wallet-stage {
+    min-height: 560px;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-total-card {
+    padding: 24px;
+  }
+
+  .dashboard-actions--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .rixor-wallet-stage {
+    min-height: 520px;
+    padding: 24px 18px;
+  }
+
+  .rixor-wallet {
+    transform: scale(.88);
+    transform-origin: center bottom;
+  }
+
+  .rixor-wallet:hover {
+    transform: scale(.88) translateY(-5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rixor-plan-card,
+  .rixor-wallet,
+  .rixor-balance-stars,
+  .rixor-balance-real,
+  .rixor-eye {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 .how-section {
   position: relative;
   z-index: 2;
