@@ -8,6 +8,8 @@ export default function App() {
   const [howInView, setHowInView] = useState(false)
   const [plansInView, setPlansInView] = useState(false)
   const [securityInView, setSecurityInView] = useState(false)
+  const [activeSection, setActiveSection] = useState<'save' | 'how' | 'plans' | 'security'>('save')
+  const [navCompact, setNavCompact] = useState(false)
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [planAmount, setPlanAmount] = useState(2500)
   const savingsPanelRef = useRef<HTMLElement>(null)
@@ -110,6 +112,42 @@ export default function App() {
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    const updateNavState = () => {
+      setNavCompact(window.scrollY > 90)
+
+      const sections = [
+        { id: 'save', element: document.getElementById('save') },
+        { id: 'how', element: document.getElementById('how-it-works') },
+        { id: 'plans', element: document.getElementById('plans') },
+        { id: 'security', element: document.getElementById('security') },
+      ] as const
+
+      const probe = window.innerHeight * 0.34
+      let current: 'save' | 'how' | 'plans' | 'security' = 'save'
+
+      for (const section of sections) {
+        if (!section.element) continue
+        const rect = section.element.getBoundingClientRect()
+        if (rect.top <= probe && rect.bottom > probe) {
+          current = section.id
+          break
+        }
+      }
+
+      setActiveSection(current)
+    }
+
+    updateNavState()
+    window.addEventListener('scroll', updateNavState, { passive: true })
+    window.addEventListener('resize', updateNavState)
+
+    return () => {
+      window.removeEventListener('scroll', updateNavState)
+      window.removeEventListener('resize', updateNavState)
+    }
+  }, [])
+
   const planOptions = [
     { id: 'flexible', label: 'Flexible', apy: 3.8, days: 365, access: 'Withdraw anytime' },
     { id: '30', label: '30 days', apy: 5.2, days: 30, access: '30-day lock' },
@@ -161,18 +199,18 @@ export default function App() {
       <div className="carbon-layer carbon-vignette" aria-hidden="true" />
       <div className="carbon-layer carbon-grain" aria-hidden="true" />
 
-      <header className="top-shell">
+      <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
         <div className="tab-container" aria-label="Primary navigation">
-          <input type="radio" name="tab" id="tab1" className="tab tab--1" defaultChecked />
+          <input type="radio" name="tab" id="tab1" className="tab tab--1" checked={activeSection === 'save'} readOnly />
           <label className="tab_label" htmlFor="tab1" onClick={focusSavingsPanel}>Save</label>
 
-          <input type="radio" name="tab" id="tab2" className="tab tab--2" />
+          <input type="radio" name="tab" id="tab2" className="tab tab--2" checked={activeSection === 'how'} readOnly />
           <label className="tab_label" htmlFor="tab2" onClick={scrollToHowItWorks}>How it works</label>
 
-          <input type="radio" name="tab" id="tab3" className="tab tab--3" />
+          <input type="radio" name="tab" id="tab3" className="tab tab--3" checked={activeSection === 'plans'} readOnly />
           <label className="tab_label" htmlFor="tab3" onClick={scrollToPlans}>Plans</label>
 
-          <input type="radio" name="tab" id="tab4" className="tab tab--4" />
+          <input type="radio" name="tab" id="tab4" className="tab tab--4" checked={activeSection === 'security'} readOnly />
           <label className="tab_label" htmlFor="tab4" onClick={scrollToSecurity}>Security</label>
 
           <div className="indicator" />
@@ -191,7 +229,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className="hero-copy-shell" aria-labelledby="hero-title">
+      <section id="save" className="hero-copy-shell" aria-labelledby="hero-title">
         <div className="hero-layout">
           <div className="hero-copy">
           <div className="hero-kicker hero-enter hero-enter--1">ONCHAIN SAVINGS</div>
