@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+type WalletKind = 'evm' | 'solana'
+
+type WalletSession = {
+  kind: WalletKind
+  address: string
+}
+
 export default function App() {
   const [lightMode, setLightMode] = useState(false)
   const [amount, setAmount] = useState('1000')
@@ -12,6 +19,10 @@ export default function App() {
   const [navCompact, setNavCompact] = useState(false)
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [planAmount, setPlanAmount] = useState(2500)
+  const [walletModalOpen, setWalletModalOpen] = useState(false)
+  const [walletConnecting, setWalletConnecting] = useState<WalletKind | null>(null)
+  const [walletError, setWalletError] = useState('')
+  const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -21,6 +32,92 @@ export default function App() {
     const parsed = Number(amount.replace(/,/g, '')) || 0
     return (parsed * apy) / 100
   }, [amount, apy])
+
+  const shortAddress = (address: string) => {
+    if (address.length <= 12) return address
+    return address.slice(0, 6) + '…' + address.slice(-4)
+  }
+
+  const ownershipMessage = (address: string, kind: WalletKind) => [
+    'Rixor wallet verification',
+    '',
+    'Sign this message to confirm you own this wallet.',
+    'This does not create a transaction or move funds.',
+    '',
+    'Wallet: ' + address,
+    'Network: ' + (kind === 'evm' ? 'EVM' : 'Solana'),
+  ].join('\n')
+
+  const connectEvmWallet = async () => {
+    setWalletConnecting('evm')
+    setWalletError('')
+
+    try {
+      const ethereum = (window as unknown as {
+        ethereum?: {
+          request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+        }
+      }).ethereum
+
+      if (!ethereum) {
+        throw new Error('No EVM wallet detected. Install MetaMask or another browser wallet.')
+      }
+
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+      const address = accounts?.[0]
+      if (!address) throw new Error('No wallet account was returned.')
+
+      await ethereum.request({
+        method: 'personal_sign',
+        params: [ownershipMessage(address, 'evm'), address],
+      })
+
+      setWalletSession({ kind: 'evm', address })
+      setWalletModalOpen(false)
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : 'EVM wallet connection failed.')
+    } finally {
+      setWalletConnecting(null)
+    }
+  }
+
+  const connectSolanaWallet = async () => {
+    setWalletConnecting('solana')
+    setWalletError('')
+
+    try {
+      const solana = (window as unknown as {
+        solana?: {
+          isPhantom?: boolean
+          publicKey?: { toString: () => string }
+          connect: () => Promise<{ publicKey: { toString: () => string } }>
+          signMessage: (message: Uint8Array, encoding?: string) => Promise<unknown>
+        }
+      }).solana
+
+      if (!solana?.isPhantom) {
+        throw new Error('Phantom was not detected in this browser.')
+      }
+
+      const response = await solana.connect()
+      const address = response.publicKey.toString()
+      const message = new TextEncoder().encode(ownershipMessage(address, 'solana'))
+      await solana.signMessage(message, 'utf8')
+
+      setWalletSession({ kind: 'solana', address })
+      setWalletModalOpen(false)
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : 'Solana wallet connection failed.')
+    } finally {
+      setWalletConnecting(null)
+    }
+  }
+
+  const disconnectWallet = () => {
+    setWalletSession(null)
+    setWalletError('')
+    setWalletModalOpen(false)
+  }
 
   const focusSavingsPanel = () => {
     savingsPanelRef.current?.scrollIntoView({
@@ -199,6 +296,69 @@ export default function App() {
       <div className="carbon-layer carbon-vignette" aria-hidden="true" />
       <div className="carbon-layer carbon-grain" aria-hidden="true" />
 
+      {walletModalOpen && (
+        <div className="wallet-modal-backdrop" role="presentation" onMouseDown={() => setWalletModalOpen(false)}>
+          <section
+            className="wallet-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wallet-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="wallet-modal-head">
+              <div>
+                <span>RIXOR ACCESS</span>
+                <h2 id="wallet-modal-title">{walletSession ? 'Wallet connected' : 'Connect your wallet'}</h2>
+              </div>
+              <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
+                ×
+              </button>
+            </div>
+
+            {walletSession ? (
+              <div className="wallet-connected-view">
+                <span className="wallet-connected-dot" />
+                <div>
+                  <small>{walletSession.kind === 'evm' ? 'EVM WALLET' : 'SOLANA WALLET'}</small>
+                  <strong>{shortAddress(walletSession.address)}</strong>
+                </div>
+                <button type="button" onClick={disconnectWallet}>Disconnect</button>
+              </div>
+            ) : (
+              <>
+                <p className="wallet-modal-copy">
+                  Your wallet is your Rixor account. Choose a network, connect, then sign a
+                  free ownership message. No funds move during this step.
+                </p>
+
+                <div className="wallet-options">
+                  <button type="button" className="wallet-option" onClick={connectEvmWallet} disabled={walletConnecting !== null}>
+                    <span className="wallet-option-mark">E</span>
+                    <span>
+                      <strong>EVM wallet</strong>
+                      <small>MetaMask and injected wallets</small>
+                    </span>
+                    <em>{walletConnecting === 'evm' ? 'Connecting…' : 'Connect'}</em>
+                  </button>
+
+                  <button type="button" className="wallet-option" onClick={connectSolanaWallet} disabled={walletConnecting !== null}>
+                    <span className="wallet-option-mark wallet-option-mark--sol">S</span>
+                    <span>
+                      <strong>Solana wallet</strong>
+                      <small>Phantom</small>
+                    </span>
+                    <em>{walletConnecting === 'solana' ? 'Connecting…' : 'Connect'}</em>
+                  </button>
+                </div>
+
+                {walletError && <p className="wallet-error">{walletError}</p>}
+                <p className="wallet-modal-foot">Rixor never asks for your seed phrase or private key.</p>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
       <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
         <div className="tab-container" aria-label="Primary navigation">
           <input type="radio" name="tab" id="tab1" className="tab tab--1" checked={activeSection === 'save'} readOnly />
@@ -312,8 +472,11 @@ export default function App() {
               <strong>+{projected.toFixed(2)} USDG / year</strong>
             </div>
 
-            <button className="connect-wallet" type="button">
-              <span>Connect Wallet</span>
+            <button className={`connect-wallet ${walletSession ? 'is-connected' : ''}`} type="button" onClick={() => {
+              setWalletError('')
+              setWalletModalOpen(true)
+            }}>
+              <span>{walletSession ? shortAddress(walletSession.address) : 'Connect Wallet'}</span>
             </button>
           </aside>
         </div>
