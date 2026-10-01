@@ -380,10 +380,27 @@ export default function App() {
 
       setAddMoneyTxError('')
       setAddMoneyTxStatus('awaiting-wallet')
+
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: currentEvmNetwork.hexId }],
+      })
+
+      const confirmedChainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
+      const confirmedChainId = Number.parseInt(confirmedChainHex, 16)
+      if (confirmedChainId !== currentEvmNetwork.id) {
+        throw new Error(`Switch your wallet to ${currentEvmNetwork.shortName} before depositing.`)
+      }
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const depositFrom = accounts?.[0]
+      if (!depositFrom) throw new Error('No active EVM wallet account found.')
+
       const hash = await connectedEvmProvider.request({
         method: 'eth_sendTransaction',
         params: [{
-          from: walletSession.address,
+          from: depositFrom,
           to: currentRixorContractAddress,
           value: `0x${value.toString(16)}`,
         }],
@@ -422,10 +439,27 @@ export default function App() {
       setDeployTxHash('')
       setDeployStatus('awaiting-wallet')
 
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: currentEvmNetwork.hexId }],
+      })
+
+      const confirmedChainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
+      const confirmedChainId = Number.parseInt(confirmedChainHex, 16)
+      if (confirmedChainId !== currentEvmNetwork.id) {
+        throw new Error(`Switch your wallet to ${currentEvmNetwork.shortName} before deploying.`)
+      }
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const deployFrom = accounts?.[0]
+      if (!deployFrom) throw new Error('No active EVM wallet account found.')
+
+      setEvmChainId(confirmedChainId)
+
       const hash = await connectedEvmProvider.request({
         method: 'eth_sendTransaction',
         params: [{
-          from: walletSession.address,
+          from: deployFrom,
           data: rixorSavingsArtifact.bytecode,
         }],
       }) as string
