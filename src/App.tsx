@@ -84,6 +84,10 @@ export default function App() {
   const [addMoneyOpen, setAddMoneyOpen] = useState(false)
   const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
   const [addMoneyAmount, setAddMoneyAmount] = useState('')
+  const [addMoneyTxStatus, setAddMoneyTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [addMoneyTxHash, setAddMoneyTxHash] = useState('')
+  const [addMoneyTxError, setAddMoneyTxError] = useState('')
+  const [contractAvailableBalance, setContractAvailableBalance] = useState('0.0000')
   const [startPlanOpen, setStartPlanOpen] = useState(false)
   const [startPlanStep, setStartPlanStep] = useState<'setup' | 'review'>('setup')
   const [startPlanTerm, setStartPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
@@ -210,6 +214,11 @@ export default function App() {
   ] as const
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
+  const currentRixorContractAddress = evmChainId === 11155111
+    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS
+    : evmChainId === 46630
+      ? import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS
+      : undefined
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
   const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
@@ -224,6 +233,14 @@ export default function App() {
     } catch {
       return '0.0000'
     }
+  }
+
+  const parseEthToWei = (value: string) => {
+    const normalized = value.trim()
+    if (!/^\d+(\.\d+)?$/.test(normalized)) throw new Error('Enter a valid ETH amount.')
+    const [whole, fraction = ''] = normalized.split('.')
+    if (fraction.length > 18) throw new Error('ETH supports up to 18 decimal places.')
+    return (BigInt(whole) * 1_000_000_000_000_000_000n) + BigInt((fraction.padEnd(18, '0') || '0'))
   }
 
   const refreshNativeBalance = async () => {
@@ -243,10 +260,81 @@ export default function App() {
     }
   }
 
+  const refreshContractAvailableBalance = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress) {
+      setContractAvailableBalance('0.0000')
+      return
+    }
+
+    try {
+      // availableBalance(address) => 0xa0821be3
+      const encodedAddress = walletSession.address.replace(/^0x/, '').padStart(64, '0')
+      const result = await connectedEvmProvider.request({
+        method: 'eth_call',
+        params: [{
+          to: currentRixorContractAddress,
+          data: `0xa0821be3${encodedAddress}`,
+        }, 'latest'],
+      }) as string
+      setContractAvailableBalance(formatNativeBalance(result))
+    } catch {
+      setContractAvailableBalance('0.0000')
+    }
+  }
+
   const openAddMoney = () => {
     setAddMoneyAmount('')
     setAddMoneyStep('amount')
+    setAddMoneyTxStatus('idle')
+    setAddMoneyTxHash('')
+    setAddMoneyTxError('')
     setAddMoneyOpen(true)
+  }
+
+  const depositToRixor = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm') return
+    if (!currentRixorContractAddress) {
+      setAddMoneyTxError('Rixor testnet contract is not deployed on this network yet.')
+      return
+    }
+
+    try {
+      const value = parseEthToWei(addMoneyAmount)
+      if (value <= 0n) throw new Error('Enter an amount above 0.')
+
+      setAddMoneyTxError('')
+      setAddMoneyTxStatus('awaiting-wallet')
+      const hash = await connectedEvmProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: walletSession.address,
+          to: currentRixorContractAddress,
+          value: `0x${value.toString(16)}`,
+        }],
+      }) as string
+
+      setAddMoneyTxHash(hash)
+      setAddMoneyTxStatus('pending')
+
+      let receipt: { status?: string } | null = null
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        receipt = await connectedEvmProvider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [hash],
+        }) as { status?: string } | null
+        if (receipt) break
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
+
+      if (!receipt) throw new Error('Transaction is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('The deposit transaction reverted.')
+
+      setAddMoneyTxStatus('confirmed')
+      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+    } catch (error) {
+      setAddMoneyTxStatus('failed')
+      setAddMoneyTxError(error instanceof Error ? error.message : 'Deposit transaction failed.')
+    }
   }
 
   const switchEvmNetwork = async (networkId: number) => {
@@ -316,7 +404,7 @@ export default function App() {
 
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
-    void refreshNativeBalance()
+    void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
   }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId])
 
   useEffect(() => {
@@ -1349,7 +1437,7 @@ export default function App() {
                       </div>
                       <em>Testnet</em>
                     </div>
-                    <p>Use native testnet ETH for the funding flow while the Rixor savings adapter is still being built.</p>
+                    <p>Native testnet ETH is the principal asset for this first Rixor contract version.</p>
                   </div>
 
                   <div className="add-money-amount-card dashboard-soft-card">
@@ -1445,7 +1533,11 @@ export default function App() {
                     <div className="add-money-review-main dashboard-soft-card">
                       <span>YOU ARE ADDING</span>
                       <strong>{addMoneyAmount} <em>ETH</em></strong>
-                      <p>This is a testnet funding rehearsal. No Rixor contract is being called yet.</p>
+                      <p>
+                        {currentRixorContractAddress
+                          ? 'This deposit will move testnet ETH into the Rixor savings contract.'
+                          : 'The Rixor testnet contract has not been deployed on this network yet.'}
+                      </p>
                     </div>
 
                     <div className="add-money-review-side dashboard-soft-card">
@@ -1471,17 +1563,47 @@ export default function App() {
                   <div className="add-money-review-note">
                     <span className="dashboard-footnote-dot" />
                     <p>
-                      The final transaction stays disabled until we connect the Rixor testnet deposit adapter.
-                      This keeps us from sending test ETH somewhere meaningless.
+                      {currentRixorContractAddress
+                        ? `Contract: ${shortAddress(currentRixorContractAddress)}. Your wallet will ask you to approve the testnet transaction.`
+                        : 'Deployment is the only remaining blocker for this network. No funds will be sent to a placeholder address.'}
                     </p>
                   </div>
+
+                  {addMoneyTxStatus !== 'idle' && (
+                    <div className={`add-money-tx-state is-${addMoneyTxStatus}`}>
+                      <strong>
+                        {addMoneyTxStatus === 'awaiting-wallet' ? 'Approve in wallet' :
+                          addMoneyTxStatus === 'pending' ? 'Deposit pending' :
+                            addMoneyTxStatus === 'confirmed' ? 'Deposit confirmed' : 'Deposit failed'}
+                      </strong>
+                      {addMoneyTxHash && currentEvmNetwork && (
+                        <a href={`${currentEvmNetwork.explorerUrl}/tx/${addMoneyTxHash}`} target="_blank" rel="noreferrer">
+                          View transaction ↗
+                        </a>
+                      )}
+                      {addMoneyTxError && <span>{addMoneyTxError}</span>}
+                    </div>
+                  )}
 
                   <div className="add-money-review-actions">
                     <button type="button" className="add-money-back" onClick={() => setAddMoneyStep('amount')}>
                       Back
                     </button>
-                    <button type="button" className="add-money-submit" disabled>
-                      Test deposit — contract not connected
+                    <button
+                      type="button"
+                      className="add-money-submit"
+                      disabled={!currentRixorContractAddress || addMoneyTxStatus === 'awaiting-wallet' || addMoneyTxStatus === 'pending' || addMoneyTxStatus === 'confirmed'}
+                      onClick={depositToRixor}
+                    >
+                      {!currentRixorContractAddress
+                        ? 'Test contract not deployed'
+                        : addMoneyTxStatus === 'awaiting-wallet'
+                          ? 'Waiting for wallet…'
+                          : addMoneyTxStatus === 'pending'
+                            ? 'Deposit pending…'
+                            : addMoneyTxStatus === 'confirmed'
+                              ? 'Deposit confirmed'
+                              : 'Deposit on testnet'}
                     </button>
                   </div>
                 </>
@@ -1694,9 +1816,9 @@ export default function App() {
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">
               <div className="dashboard-total-card dashboard-soft-card">
-                <span className="dashboard-card-label">RIXOR SAVINGS</span>
-                <strong>0.0000 <em>ETH</em></strong>
-                <p>No savings position yet.</p>
+                <span className="dashboard-card-label">AVAILABLE IN RIXOR</span>
+                <strong>{contractAvailableBalance} <em>ETH</em></strong>
+                <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
                 <div className="dashboard-actions dashboard-actions--compact">
                   <button type="button" className="dashboard-action dashboard-action--primary" onClick={openAddMoney}>
@@ -1734,7 +1856,7 @@ export default function App() {
                     <em>Ready</em>
                   </div>
                   <div className="dashboard-metric-data">
-                    <p>0.0000 <small>ETH</small></p>
+                    <p>{contractAvailableBalance} <small>ETH</small></p>
                     <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
                   </div>
                 </article>
@@ -1812,9 +1934,9 @@ export default function App() {
                   <div className="rixor-pocket-content">
                     <div className="rixor-pocket-balance">
                       <span className="rixor-balance-stars">••••••</span>
-                      <span className="rixor-balance-real">0.0000 ETH</span>
+                      <span className="rixor-balance-real">{contractAvailableBalance} ETH</span>
                     </div>
-                    <small>Total savings</small>
+                    <small>Available savings</small>
                     <span className="rixor-eye" aria-hidden="true">◉</span>
                   </div>
                 </div>
@@ -1920,8 +2042,9 @@ export default function App() {
           <div className="dashboard-footnote">
             <span className="dashboard-footnote-dot" />
             <p>
-              Connected as {shortAddress(walletSession.address)}. Balances remain at zero until
-              Rixor's onchain contracts are wired into this dashboard.
+              Connected as {shortAddress(walletSession.address)}. {currentRixorContractAddress
+                ? 'Rixor available balance is now read directly from the testnet contract.'
+                : 'Deploy the Rixor testnet contract to activate deposits and contract balances on this network.'}
             </p>
           </div>
         </section>

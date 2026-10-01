@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.dump-profile/
+.edge-shot-profile/
+.screenshot-profile*/
+artifacts/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

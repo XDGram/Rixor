@@ -54,3 +54,16 @@
 
 - UX may be complete before contracts are deployed, but final onchain actions stay disabled until they have a real testnet contract/token adapter.
 - Never send test funds to placeholder addresses or fake successful contract interactions.
+
+## RixorSavings v0.1 contract
+
+- Solidity contract: `contracts/RixorSavings.sol`.
+- v0.1 accepts native testnet ETH deposits and records a per-wallet available balance.
+- Users can move available balance into Flexible / 30 / 90 / 180 / 365 day plan records.
+- Plan metadata includes reward preference and savings-goal hash, but v0.1 deliberately does not fabricate yield.
+- Available-balance withdrawals and plan-principal withdrawals are supported by the contract interface.
+- Contract events cover deposits, available withdrawals, plan creation, and plan withdrawal so account history can be reconstructed by wallet address.
+- Frontend Add Money is wired to send a real `eth_sendTransaction` deposit once a deployed contract address is configured for the active testnet.
+- Frontend reads `availableBalance(address)` directly from the deployed contract and uses it for the dashboard's available Rixor balance.
+- Deployment scripts support Sepolia and Robinhood Chain Testnet.
+- Current local blocker: no `RIXOR_DEPLOYER_PRIVATE_KEY` or `.env` is configured, so no deployment can be signed yet.
