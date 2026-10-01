@@ -50,6 +50,9 @@ export default function App() {
   const [evmChainId, setEvmChainId] = useState<number | null>(null)
   const [networkSwitching, setNetworkSwitching] = useState<number | null>(null)
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false)
+  const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
+  const [addMoneyAmount, setAddMoneyAmount] = useState('')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -153,6 +156,8 @@ export default function App() {
   ] as const
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
+  const addMoneyParsed = Number(addMoneyAmount || 0)
+  const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
 
   const formatNativeBalance = (hexBalance: string) => {
     try {
@@ -181,6 +186,12 @@ export default function App() {
     } catch {
       setNativeBalance('0.0000')
     }
+  }
+
+  const openAddMoney = () => {
+    setAddMoneyAmount('')
+    setAddMoneyStep('amount')
+    setAddMoneyOpen(true)
   }
 
   const switchEvmNetwork = async (networkId: number) => {
@@ -600,6 +611,153 @@ export default function App() {
           </div>
         )}
 
+        {addMoneyOpen && (
+          <div className="wallet-modal-backdrop add-money-backdrop" role="presentation" onMouseDown={() => setAddMoneyOpen(false)}>
+            <section
+              className="add-money-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-money-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="add-money-head">
+                <div>
+                  <span>TESTNET FUNDING</span>
+                  <h2 id="add-money-title">{addMoneyStep === 'amount' ? 'Add money' : 'Review deposit'}</h2>
+                </div>
+                <button type="button" className="wallet-modal-close" onClick={() => setAddMoneyOpen(false)} aria-label="Close add money dialog">
+                  ×
+                </button>
+              </div>
+
+              {walletSession.kind !== 'evm' ? (
+                <div className="add-money-disabled">
+                  <strong>EVM wallet required.</strong>
+                  <p>Testnet deposits are being built on Sepolia and Robinhood Chain Testnet first.</p>
+                </div>
+              ) : addMoneyStep === 'amount' ? (
+                <>
+                  <div className="add-money-network-row">
+                    <div>
+                      <small>NETWORK</small>
+                      <strong>{currentEvmNetwork?.shortName ?? 'Unsupported network'}</strong>
+                    </div>
+                    <div>
+                      <small>WALLET BALANCE</small>
+                      <strong>{nativeBalance} ETH</strong>
+                    </div>
+                  </div>
+
+                  <div className="add-money-asset-card dashboard-soft-card">
+                    <div className="add-money-asset-top">
+                      <div className="dashboard-metric-icon">Ξ</div>
+                      <div>
+                        <span>FUNDING ASSET</span>
+                        <strong>ETH</strong>
+                      </div>
+                      <em>Testnet</em>
+                    </div>
+                    <p>Use native testnet ETH for the funding flow while the Rixor USDG adapter is still being built.</p>
+                  </div>
+
+                  <div className="add-money-amount-card dashboard-soft-card">
+                    <div className="add-money-amount-head">
+                      <label htmlFor="add-money-amount">Amount</label>
+                      <button
+                        type="button"
+                        onClick={() => setAddMoneyAmount(nativeBalance)}
+                        disabled={Number(nativeBalance) <= 0}
+                      >
+                        Max
+                      </button>
+                    </div>
+                    <div className="add-money-input-wrap">
+                      <input
+                        id="add-money-amount"
+                        inputMode="decimal"
+                        value={addMoneyAmount}
+                        onChange={(event) => setAddMoneyAmount(event.target.value.replace(/[^0-9.]/g, ''))}
+                        placeholder="0.00"
+                      />
+                      <span>ETH</span>
+                    </div>
+                    <div className="dashboard-range add-money-range">
+                      <span
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Number(nativeBalance) > 0 ? (Number(addMoneyAmount || 0) / Number(nativeBalance)) * 100 : 0,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <small>Available: {nativeBalance} ETH</small>
+                  </div>
+
+                  {!currentEvmNetwork && (
+                    <p className="add-money-warning">Switch to Sepolia or Robinhood Testnet before continuing.</p>
+                  )}
+                  {addMoneyAmount && !addMoneyValid && (
+                    <p className="add-money-warning">Enter an amount above 0 and within your wallet balance.</p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="add-money-continue"
+                    disabled={!currentEvmNetwork || !addMoneyValid}
+                    onClick={() => setAddMoneyStep('review')}
+                  >
+                    <span>Review deposit</span>
+                    {actionArrow}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="add-money-review-grid">
+                    <div className="add-money-review-main dashboard-soft-card">
+                      <span>YOU ARE ADDING</span>
+                      <strong>{addMoneyAmount} <em>ETH</em></strong>
+                      <p>This is a testnet funding rehearsal. No Rixor contract is being called yet.</p>
+                    </div>
+
+                    <div className="add-money-review-side dashboard-soft-card">
+                      <div>
+                        <small>NETWORK</small>
+                        <strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong>
+                      </div>
+                      <div>
+                        <small>FROM</small>
+                        <strong>{shortAddress(walletSession.address)}</strong>
+                      </div>
+                      <div>
+                        <small>ASSET</small>
+                        <strong>ETH</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="add-money-review-note">
+                    <span className="dashboard-footnote-dot" />
+                    <p>
+                      The final transaction stays disabled until we connect the Rixor testnet deposit adapter.
+                      This keeps us from sending test ETH somewhere meaningless.
+                    </p>
+                  </div>
+
+                  <div className="add-money-review-actions">
+                    <button type="button" className="add-money-back" onClick={() => setAddMoneyStep('amount')}>
+                      Back
+                    </button>
+                    <button type="button" className="add-money-submit" disabled>
+                      Test deposit — contract not connected
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+        )}
+
         <section className="dashboard-shell" aria-labelledby="dashboard-title">
           <div className="dashboard-intro">
             <div>
@@ -644,7 +802,7 @@ export default function App() {
                 <p>No savings position yet.</p>
 
                 <div className="dashboard-actions dashboard-actions--compact">
-                  <button type="button" className="dashboard-action dashboard-action--primary">
+                  <button type="button" className="dashboard-action dashboard-action--primary" onClick={openAddMoney}>
                     <span>Add money</span>
                     {actionArrow}
                   </button>

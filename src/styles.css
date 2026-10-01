@@ -170,6 +170,391 @@ body {
   opacity: .58;
 }
 
+.add-money-backdrop {
+  z-index: 120;
+}
+
+.add-money-modal {
+  width: min(620px, calc(100% - 28px));
+  max-height: min(760px, calc(100dvh - 40px));
+  overflow-y: auto;
+  padding: 26px;
+  border-radius: 28px;
+  position: relative;
+  animation: wallet-modal-enter .38s cubic-bezier(.16,1,.3,1) both;
+}
+
+.add-money-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.add-money-head > div > span {
+  display: inline-block;
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  color: var(--accent);
+}
+
+.add-money-head h2 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 48px);
+  line-height: .95;
+  letter-spacing: -.045em;
+}
+
+.add-money-network-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.add-money-network-row > div {
+  padding: 16px;
+  border-radius: 18px;
+  display: grid;
+  gap: 5px;
+}
+
+.add-money-network-row small,
+.add-money-review-side small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  opacity: .45;
+}
+
+.add-money-network-row strong,
+.add-money-review-side strong {
+  font-size: 15px;
+}
+
+.add-money-asset-card,
+.add-money-amount-card,
+.add-money-review-main,
+.add-money-review-side {
+  border-radius: 22px;
+}
+
+.add-money-asset-card {
+  padding: 18px;
+}
+
+.add-money-asset-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.add-money-asset-top > div:nth-child(2) {
+  display: grid;
+  gap: 2px;
+}
+
+.add-money-asset-top span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  opacity: .45;
+}
+
+.add-money-asset-top strong {
+  font-size: 18px;
+}
+
+.add-money-asset-top em {
+  margin-left: auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  color: #111;
+  background: var(--accent);
+}
+
+.add-money-asset-card > p {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  opacity: .55;
+}
+
+.add-money-amount-card {
+  margin-top: 14px;
+  padding: 20px;
+}
+
+.add-money-amount-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.add-money-amount-head label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.add-money-amount-head button {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.add-money-amount-head button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.add-money-input-wrap {
+  margin-top: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.add-money-input-wrap input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: clamp(44px, 8vw, 66px);
+  line-height: .95;
+  letter-spacing: -.05em;
+  color: inherit;
+}
+
+.add-money-input-wrap input::placeholder {
+  color: currentColor;
+  opacity: .18;
+}
+
+.add-money-input-wrap > span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.add-money-range {
+  margin-top: 18px;
+}
+
+.add-money-amount-card > small {
+  display: block;
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: .5;
+}
+
+.add-money-warning {
+  margin: 12px 0 0;
+  padding: 11px 13px;
+  border-radius: 14px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.add-money-continue {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  min-height: 60px;
+  margin-top: 18px;
+  padding: 10px 12px 10px 18px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  background: var(--accent);
+  color: #111;
+  font-size: 15px;
+  font-weight: 700;
+  border: 0;
+}
+
+.add-money-continue:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
+.add-money-continue svg {
+  width: 38px;
+  height: 38px;
+}
+
+.add-money-review-grid {
+  display: grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 14px;
+}
+
+.add-money-review-main {
+  padding: 24px;
+}
+
+.add-money-review-main > span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  opacity: .45;
+}
+
+.add-money-review-main > strong {
+  display: block;
+  margin-top: 12px;
+  font-size: clamp(48px, 7vw, 72px);
+  line-height: .92;
+  letter-spacing: -.055em;
+}
+
+.add-money-review-main > strong em {
+  font-size: .3em;
+  font-style: normal;
+  color: var(--accent);
+}
+
+.add-money-review-main > p {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  opacity: .54;
+}
+
+.add-money-review-side {
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.add-money-review-side > div {
+  display: grid;
+  gap: 4px;
+}
+
+.add-money-review-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.add-money-review-note p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.add-money-review-actions {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: .35fr .65fr;
+  gap: 10px;
+}
+
+.add-money-back,
+.add-money-submit {
+  min-height: 54px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.add-money-back {
+  cursor: pointer;
+}
+
+.add-money-submit:disabled {
+  cursor: not-allowed;
+  opacity: .38;
+}
+
+.add-money-disabled {
+  padding: 24px;
+  border-radius: 20px;
+}
+
+.add-money-disabled strong {
+  font-size: 18px;
+}
+
+.add-money-disabled p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  opacity: .55;
+}
+
+.dark-mode .add-money-modal {
+  color: #f4f4f1;
+  background: rgba(18,18,18,.97);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.dark-mode .add-money-network-row > div,
+.dark-mode .add-money-amount-head button,
+.dark-mode .add-money-warning,
+.dark-mode .add-money-review-note,
+.dark-mode .add-money-back,
+.dark-mode .add-money-submit,
+.dark-mode .add-money-disabled {
+  color: #f4f4f1;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.light-mode .add-money-modal {
+  color: #111;
+  background: rgba(245,245,242,.98);
+  border: 1px solid rgba(17,17,17,.06);
+}
+
+.light-mode .add-money-network-row > div,
+.light-mode .add-money-amount-head button,
+.light-mode .add-money-warning,
+.light-mode .add-money-review-note,
+.light-mode .add-money-back,
+.light-mode .add-money-submit,
+.light-mode .add-money-disabled {
+  color: #111;
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(17,17,17,.07);
+}
+
+@media (max-width: 640px) {
+  .add-money-modal {
+    width: calc(100% - 18px);
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .add-money-network-row,
+  .add-money-review-grid,
+  .add-money-review-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .add-money-review-main > strong {
+    font-size: 48px;
+  }
+}
+
 .dashboard-shell {
   position: relative;
   z-index: 2;
