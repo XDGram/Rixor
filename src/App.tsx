@@ -53,6 +53,10 @@ export default function App() {
   const [addMoneyOpen, setAddMoneyOpen] = useState(false)
   const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
   const [addMoneyAmount, setAddMoneyAmount] = useState('')
+  const [startPlanOpen, setStartPlanOpen] = useState(false)
+  const [startPlanStep, setStartPlanStep] = useState<'setup' | 'review'>('setup')
+  const [startPlanTerm, setStartPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
+  const [startPlanAmount, setStartPlanAmount] = useState('')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -501,6 +505,32 @@ export default function App() {
     })
   }, [planTerm, selectedPlan.days])
 
+  const dashboardUsdGBalance = 0
+  const startPlanSelected = planOptions.find((option) => option.id === startPlanTerm) ?? planOptions[2]
+  const startPlanParsed = Number(startPlanAmount || 0)
+  const startPlanInsufficient = startPlanParsed > dashboardUsdGBalance && startPlanParsed > 0
+  const startPlanValid = startPlanParsed > 0 && startPlanParsed <= dashboardUsdGBalance
+  const startPlanProjected = startPlanTerm === 'flexible'
+    ? (startPlanParsed * startPlanSelected.apy) / 100
+    : (startPlanParsed * startPlanSelected.apy * startPlanSelected.days) / 36500
+  const startPlanMaturity = useMemo(() => {
+    if (startPlanTerm === 'flexible') return 'Anytime'
+    const date = new Date()
+    date.setDate(date.getDate() + startPlanSelected.days)
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }, [startPlanTerm, startPlanSelected.days])
+
+  const openStartPlan = () => {
+    setStartPlanStep('setup')
+    setStartPlanTerm('90')
+    setStartPlanAmount('')
+    setStartPlanOpen(true)
+  }
+
   const actionArrow = (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -800,6 +830,171 @@ export default function App() {
           </div>
         )}
 
+        {startPlanOpen && (
+          <div className="wallet-modal-backdrop start-plan-backdrop" role="presentation" onMouseDown={() => setStartPlanOpen(false)}>
+            <section
+              className="start-plan-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="start-plan-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="start-plan-head">
+                <div>
+                  <span>RIXOR PLAN</span>
+                  <h2 id="start-plan-title">{startPlanStep === 'setup' ? 'Start a plan' : 'Review plan'}</h2>
+                </div>
+                <button type="button" className="wallet-modal-close" onClick={() => setStartPlanOpen(false)} aria-label="Close start plan dialog">
+                  ×
+                </button>
+              </div>
+
+              {startPlanStep === 'setup' ? (
+                <>
+                  <div className="start-plan-balance-row">
+                    <div>
+                      <small>AVAILABLE USDG</small>
+                      <strong>{dashboardUsdGBalance.toFixed(2)} USDG</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartPlanOpen(false)
+                        openAddMoney()
+                      }}
+                    >
+                      Add money first
+                    </button>
+                  </div>
+
+                  <div className="start-plan-options">
+                    {planOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`start-plan-option ${startPlanTerm === option.id ? 'is-active' : ''}`}
+                        onClick={() => setStartPlanTerm(option.id)}
+                      >
+                        <span>{option.label}</span>
+                        <strong>{option.apy}%</strong>
+                        <small>{option.access}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="start-plan-amount-card dashboard-soft-card">
+                    <div className="start-plan-amount-head">
+                      <div>
+                        <label htmlFor="start-plan-amount">Amount to save</label>
+                        <small>From your Rixor USDG balance</small>
+                      </div>
+                      <span className={`start-plan-available ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
+                        {dashboardUsdGBalance.toFixed(2)} USDG available
+                      </span>
+                    </div>
+
+                    <div className={`start-plan-input ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
+                      <input
+                        id="start-plan-amount"
+                        inputMode="decimal"
+                        value={startPlanAmount}
+                        onChange={(event) => setStartPlanAmount(event.target.value.replace(/[^0-9.]/g, ''))}
+                        placeholder="0.00"
+                      />
+                      <span>USDG</span>
+                    </div>
+
+                    {startPlanInsufficient && (
+                      <div className="start-plan-inline-error">
+                        <span>Not available</span>
+                        <strong>Add money to your Rixor balance first</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="start-plan-preview">
+                    <div>
+                      <small>RATE</small>
+                      <strong>{startPlanSelected.apy}% APY</strong>
+                    </div>
+                    <div>
+                      <small>ACCESS</small>
+                      <strong>{startPlanSelected.access}</strong>
+                    </div>
+                    <div>
+                      <small>{startPlanTerm === 'flexible' ? 'ACCESS' : 'MATURITY'}</small>
+                      <strong>{startPlanMaturity}</strong>
+                    </div>
+                    <div>
+                      <small>EST. EARNINGS</small>
+                      <strong>{startPlanProjected.toFixed(2)} USDG</strong>
+                    </div>
+                  </div>
+
+                  {startPlanTerm !== 'flexible' && (
+                    <p className="start-plan-note">
+                      Early withdrawal keeps your principal intact but forfeits 50% of interest earned so far.
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="start-plan-continue"
+                    disabled={!startPlanValid}
+                    onClick={() => setStartPlanStep('review')}
+                  >
+                    <span>Review plan</span>
+                    {actionArrow}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="start-plan-review-main dashboard-soft-card">
+                    <span>{startPlanSelected.label.toUpperCase()} PLAN</span>
+                    <strong>{startPlanAmount} <em>USDG</em></strong>
+                    <p>{startPlanSelected.apy}% APY · {startPlanSelected.access}</p>
+                  </div>
+
+                  <div className="start-plan-review-details">
+                    <div>
+                      <small>NETWORK</small>
+                      <strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong>
+                    </div>
+                    <div>
+                      <small>RATE</small>
+                      <strong>{startPlanSelected.apy}% APY</strong>
+                    </div>
+                    <div>
+                      <small>MATURITY</small>
+                      <strong>{startPlanMaturity}</strong>
+                    </div>
+                    <div>
+                      <small>EST. EARNINGS</small>
+                      <strong>{startPlanProjected.toFixed(2)} USDG</strong>
+                    </div>
+                  </div>
+
+                  <div className="start-plan-review-note">
+                    <span className="dashboard-footnote-dot" />
+                    <p>
+                      This plan is prepared for the testnet flow. Final creation stays disabled until the Rixor savings contract is connected.
+                    </p>
+                  </div>
+
+                  <div className="start-plan-review-actions">
+                    <button type="button" className="start-plan-back" onClick={() => setStartPlanStep('setup')}>
+                      Back
+                    </button>
+                    <button type="button" className="start-plan-submit" disabled>
+                      Start test plan — contract not connected
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+        )}
+
         <section className="dashboard-shell" aria-labelledby="dashboard-title">
           <div className="dashboard-intro">
             <div>
@@ -848,7 +1043,7 @@ export default function App() {
                     <span>Add money</span>
                     {actionArrow}
                   </button>
-                  <button type="button" className="dashboard-action">
+                  <button type="button" className="dashboard-action" onClick={openStartPlan}>
                     <span>Start a plan</span>
                     {actionArrow}
                   </button>
