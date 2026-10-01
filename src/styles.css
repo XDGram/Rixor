@@ -3023,6 +3023,24 @@ body {
   line-height: 1.5;
 }
 
+.wallet-empty-state {
+  padding: 18px;
+  border-radius: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.wallet-empty-state span {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.wallet-empty-state small {
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: .52;
+}
+
 .wallet-modal-foot {
   margin: 18px 0 0;
   font-size: 11px;
@@ -3082,7 +3100,8 @@ body {
 .dark-mode .wallet-modal-close,
 .dark-mode .wallet-option,
 .dark-mode .wallet-connected-view,
-.dark-mode .wallet-connected-view button {
+.dark-mode .wallet-connected-view button,
+.dark-mode .wallet-empty-state {
   color: #f4f4f1;
   background: rgba(255,255,255,.035);
   border: 1px solid rgba(255,255,255,.08);
@@ -3108,7 +3127,8 @@ body {
 .light-mode .wallet-modal-close,
 .light-mode .wallet-option,
 .light-mode .wallet-connected-view,
-.light-mode .wallet-connected-view button {
+.light-mode .wallet-connected-view button,
+.light-mode .wallet-empty-state {
   color: #111;
   background: rgba(255,255,255,.72);
   border: 1px solid rgba(17,17,17,.08);

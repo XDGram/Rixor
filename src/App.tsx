@@ -5,6 +5,26 @@ type WalletKind = 'evm' | 'solana'
 type WalletSession = {
   kind: WalletKind
   address: string
+  name: string
+}
+
+type EvmProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+}
+
+type SolanaProvider = {
+  isPhantom?: boolean
+  isBackpack?: boolean
+  publicKey?: { toString: () => string }
+  connect: () => Promise<{ publicKey: { toString: () => string } }>
+  signMessage: (message: Uint8Array, encoding?: string) => Promise<unknown>
+}
+
+type DetectedWallet = {
+  id: string
+  name: string
+  kind: WalletKind
+  provider: EvmProvider | SolanaProvider
 }
 
 export default function App() {
@@ -20,9 +40,10 @@ export default function App() {
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [planAmount, setPlanAmount] = useState(2500)
   const [walletModalOpen, setWalletModalOpen] = useState(false)
-  const [walletConnecting, setWalletConnecting] = useState<WalletKind | null>(null)
+  const [walletConnecting, setWalletConnecting] = useState<string | null>(null)
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
+  const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -48,20 +69,12 @@ export default function App() {
     'Network: ' + (kind === 'evm' ? 'EVM' : 'Solana'),
   ].join('\n')
 
-  const connectEvmWallet = async () => {
-    setWalletConnecting('evm')
+  const connectEvmWallet = async (wallet: DetectedWallet) => {
+    setWalletConnecting(wallet.id)
     setWalletError('')
 
     try {
-      const ethereum = (window as unknown as {
-        ethereum?: {
-          request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
-        }
-      }).ethereum
-
-      if (!ethereum) {
-        throw new Error('No EVM wallet detected. Install MetaMask or another browser wallet.')
-      }
+      const ethereum = wallet.provider as EvmProvider
 
       const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[]
       const address = accounts?.[0]
@@ -72,7 +85,7 @@ export default function App() {
         params: [ownershipMessage(address, 'evm'), address],
       })
 
-      setWalletSession({ kind: 'evm', address })
+      setWalletSession({ kind: 'evm', address, name: wallet.name })
       setWalletModalOpen(false)
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'EVM wallet connection failed.')
@@ -81,30 +94,19 @@ export default function App() {
     }
   }
 
-  const connectSolanaWallet = async () => {
-    setWalletConnecting('solana')
+  const connectSolanaWallet = async (wallet: DetectedWallet) => {
+    setWalletConnecting(wallet.id)
     setWalletError('')
 
     try {
-      const solana = (window as unknown as {
-        solana?: {
-          isPhantom?: boolean
-          publicKey?: { toString: () => string }
-          connect: () => Promise<{ publicKey: { toString: () => string } }>
-          signMessage: (message: Uint8Array, encoding?: string) => Promise<unknown>
-        }
-      }).solana
-
-      if (!solana?.isPhantom) {
-        throw new Error('Phantom was not detected in this browser.')
-      }
+      const solana = wallet.provider as SolanaProvider
 
       const response = await solana.connect()
       const address = response.publicKey.toString()
       const message = new TextEncoder().encode(ownershipMessage(address, 'solana'))
       await solana.signMessage(message, 'utf8')
 
-      setWalletSession({ kind: 'solana', address })
+      setWalletSession({ kind: 'solana', address, name: wallet.name })
       setWalletModalOpen(false)
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'Solana wallet connection failed.')
@@ -118,6 +120,92 @@ export default function App() {
     setWalletError('')
     setWalletModalOpen(false)
   }
+
+  useEffect(() => {
+    const wallets = new Map<string, DetectedWallet>()
+
+    const addWallet = (wallet: DetectedWallet) => {
+      if (!wallet.provider) return
+      wallets.set(wallet.id, wallet)
+      setDetectedWallets(Array.from(wallets.values()))
+    }
+
+    const onEip6963 = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        info?: { uuid?: string; name?: string; rdns?: string }
+        provider?: EvmProvider
+      }>).detail
+
+      if (!detail?.provider) return
+      const id = detail.info?.uuid || detail.info?.rdns || detail.info?.name || 'evm-injected'
+      addWallet({
+        id: 'evm:' + id,
+        name: detail.info?.name || 'EVM Wallet',
+        kind: 'evm',
+        provider: detail.provider,
+      })
+    }
+
+    window.addEventListener('eip6963:announceProvider', onEip6963)
+    window.dispatchEvent(new Event('eip6963:requestProvider'))
+
+    const browser = window as unknown as {
+      ethereum?: EvmProvider & {
+        isMetaMask?: boolean
+        isCoinbaseWallet?: boolean
+        providers?: Array<EvmProvider & { isMetaMask?: boolean; isCoinbaseWallet?: boolean }>
+      }
+      solana?: SolanaProvider
+      phantom?: { solana?: SolanaProvider }
+      backpack?: SolanaProvider
+    }
+
+    const injectedProviders = browser.ethereum?.providers?.length
+      ? browser.ethereum.providers
+      : browser.ethereum
+        ? [browser.ethereum]
+        : []
+
+    injectedProviders.forEach((provider, index) => {
+      const name = provider.isMetaMask
+        ? 'MetaMask'
+        : provider.isCoinbaseWallet
+          ? 'Coinbase Wallet'
+          : injectedProviders.length > 1
+            ? 'EVM Wallet ' + (index + 1)
+            : 'Browser EVM Wallet'
+
+      addWallet({
+        id: 'evm:legacy:' + name + ':' + index,
+        name,
+        kind: 'evm',
+        provider,
+      })
+    })
+
+    const phantom = browser.phantom?.solana || (browser.solana?.isPhantom ? browser.solana : undefined)
+    if (phantom) {
+      addWallet({
+        id: 'solana:phantom',
+        name: 'Phantom',
+        kind: 'solana',
+        provider: phantom,
+      })
+    }
+
+    if (browser.backpack || browser.solana?.isBackpack) {
+      addWallet({
+        id: 'solana:backpack',
+        name: 'Backpack',
+        kind: 'solana',
+        provider: browser.backpack || browser.solana!,
+      })
+    }
+
+    return () => {
+      window.removeEventListener('eip6963:announceProvider', onEip6963)
+    }
+  }, [])
 
   const focusSavingsPanel = () => {
     savingsPanelRef.current?.scrollIntoView({
@@ -319,7 +407,7 @@ export default function App() {
               <div className="wallet-connected-view">
                 <span className="wallet-connected-dot" />
                 <div>
-                  <small>{walletSession.kind === 'evm' ? 'EVM WALLET' : 'SOLANA WALLET'}</small>
+                  <small>{walletSession.name.toUpperCase()}</small>
                   <strong>{shortAddress(walletSession.address)}</strong>
                 </div>
                 <button type="button" onClick={disconnectWallet}>Disconnect</button>
@@ -327,49 +415,64 @@ export default function App() {
             ) : (
               <>
                 <p className="wallet-modal-copy">
-                  Your wallet is your Rixor account. Choose a network, connect, then sign a
-                  free ownership message. No funds move during this step.
+                  Your wallet is your Rixor account. Rixor checks this browser for compatible
+                  wallets, then asks you to sign a free ownership message. No funds move here.
                 </p>
 
                 <div className="wallet-options">
-                  <button type="button" className="wallet-option" onClick={connectEvmWallet} disabled={walletConnecting !== null}>
-                    <span className="wallet-option-mark wallet-option-mark--eth" aria-hidden="true">
-                      <svg viewBox="0 0 256 417" role="presentation">
-                        <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
-                        <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
-                        <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
-                        <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
-                        <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
-                        <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
-                      </svg>
-                    </span>
-                    <span>
-                      <strong>EVM wallet</strong>
-                      <small>MetaMask and injected wallets</small>
-                    </span>
-                    <em>{walletConnecting === 'evm' ? 'Connecting…' : 'Connect'}</em>
-                  </button>
+                  {detectedWallets.map((wallet) => {
+                    const gradientId = 'solana-gradient-' + wallet.id.replace(/[^a-z0-9]/gi, '-')
 
-                  <button type="button" className="wallet-option" onClick={connectSolanaWallet} disabled={walletConnecting !== null}>
-                    <span className="wallet-option-mark wallet-option-mark--sol" aria-hidden="true">
-                      <svg viewBox="0 0 397 311" role="presentation">
-                        <defs>
-                          <linearGradient id="solana-gradient-a" x1="360" y1="17" x2="141" y2="335" gradientUnits="userSpaceOnUse">
-                            <stop stopColor="#00FFA3" />
-                            <stop offset="1" stopColor="#DC1FFF" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M64.8 237.9c2.6-2.6 6.2-4.1 9.9-4.1h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7c-6.2 0-9.3-7.5-4.9-11.9l62.7-62.7Z" fill="url(#solana-gradient-a)" />
-                        <path d="M64.8 4.1C67.4 1.5 71 0 74.7 0h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7C.8 78.7-2.3 71.2 2.1 66.8L64.8 4.1Z" fill="url(#solana-gradient-a)" />
-                        <path d="M332.4 120.4c-2.6-2.6-6.2-4.1-9.9-4.1H5c-6.2 0-9.3 7.5-4.9 11.9l62.7 62.7c2.6 2.6 6.2 4.1 9.9 4.1h317.5c6.2 0 9.3-7.5 4.9-11.9l-62.7-62.7Z" fill="url(#solana-gradient-a)" />
-                      </svg>
-                    </span>
-                    <span>
-                      <strong>Solana wallet</strong>
-                      <small>Phantom</small>
-                    </span>
-                    <em>{walletConnecting === 'solana' ? 'Connecting…' : 'Connect'}</em>
-                  </button>
+                    return (
+                      <button
+                        key={wallet.id}
+                        type="button"
+                        className="wallet-option"
+                        onClick={() => wallet.kind === 'evm' ? connectEvmWallet(wallet) : connectSolanaWallet(wallet)}
+                        disabled={walletConnecting !== null}
+                      >
+                        <span className={`wallet-option-mark ${wallet.kind === 'evm' ? 'wallet-option-mark--eth' : 'wallet-option-mark--sol'}`} aria-hidden="true">
+                          {wallet.kind === 'evm' ? (
+                            <svg viewBox="0 0 256 417" role="presentation">
+                              <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
+                              <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
+                              <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
+                              <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
+                              <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
+                              <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 397 311" role="presentation">
+                              <defs>
+                                <linearGradient id={gradientId} x1="360" y1="17" x2="141" y2="335" gradientUnits="userSpaceOnUse">
+                                  <stop stopColor="#00FFA3" />
+                                  <stop offset="1" stopColor="#DC1FFF" />
+                                </linearGradient>
+                              </defs>
+                              <path d="M64.8 237.9c2.6-2.6 6.2-4.1 9.9-4.1h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7c-6.2 0-9.3-7.5-4.9-11.9l62.7-62.7Z" fill={`url(#${gradientId})`} />
+                              <path d="M64.8 4.1C67.4 1.5 71 0 74.7 0h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7C.8 78.7-2.3 71.2 2.1 66.8L64.8 4.1Z" fill={`url(#${gradientId})`} />
+                              <path d="M332.4 120.4c-2.6-2.6-6.2-4.1-9.9-4.1H5c-6.2 0-9.3 7.5-4.9 11.9l62.7 62.7c2.6 2.6 6.2 4.1 9.9 4.1h317.5c6.2 0 9.3-7.5 4.9-11.9l-62.7-62.7Z" fill={`url(#${gradientId})`} />
+                            </svg>
+                          )}
+                        </span>
+                        <span>
+                          <strong>{wallet.name}</strong>
+                          <small>{wallet.kind === 'evm' ? 'EVM wallet detected' : 'Solana wallet detected'}</small>
+                        </span>
+                        <em>{walletConnecting === wallet.id ? 'Connecting…' : 'Detected'}</em>
+                      </button>
+                    )
+                  })}
+
+                  {detectedWallets.length === 0 && (
+                    <div className="wallet-empty-state">
+                      <span>No compatible wallet detected.</span>
+                      <small>
+                        Install an EVM wallet such as MetaMask or a Solana wallet such as Phantom,
+                        then reopen this panel.
+                      </small>
+                    </div>
+                  )}
                 </div>
 
                 {walletError && <p className="wallet-error">{walletError}</p>}
