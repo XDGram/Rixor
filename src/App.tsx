@@ -158,6 +158,7 @@ export default function App() {
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
+  const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
 
   const formatNativeBalance = (hexBalance: string) => {
     try {
@@ -667,9 +668,11 @@ export default function App() {
                         <label htmlFor="add-money-amount">Amount to add</label>
                         <small>From {currentEvmNetwork?.shortName ?? 'current chain'}</small>
                       </div>
-                      <span className="add-money-available-pill">{nativeBalance} ETH available</span>
+                      <span className={`add-money-available-pill ${addMoneyInsufficient ? 'is-insufficient' : ''}`}>
+                        {nativeBalance} ETH available
+                      </span>
                     </div>
-                    <div className="add-money-input-wrap">
+                    <div className={`add-money-input-wrap ${addMoneyInsufficient ? 'is-insufficient' : ''}`}>
                       <input
                         id="add-money-amount"
                         inputMode="decimal"
@@ -689,6 +692,13 @@ export default function App() {
                         }}
                       />
                     </div>
+
+                    {addMoneyInsufficient && (
+                      <div className="add-money-inline-error">
+                        <span>Not available</span>
+                        <strong>Top up this wallet first</strong>
+                      </div>
+                    )}
 
                     <div className="add-money-quick-amounts" aria-label="Quick amount selection">
                       {[25, 50, 75].map((percent) => (
@@ -725,7 +735,7 @@ export default function App() {
                   {!currentEvmNetwork && (
                     <p className="add-money-warning">Switch to Sepolia or Robinhood Testnet before continuing.</p>
                   )}
-                  {addMoneyAmount && !addMoneyValid && (
+                  {addMoneyAmount && !addMoneyValid && !addMoneyInsufficient && (
                     <p className="add-money-warning">Enter an amount above 0 and within your wallet balance.</p>
                   )}
 

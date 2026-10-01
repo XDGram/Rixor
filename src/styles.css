@@ -379,6 +379,12 @@ body {
   white-space: nowrap;
 }
 
+.add-money-available-pill.is-insufficient {
+  color: #d83a3a !important;
+  background: rgba(216,58,58,.08) !important;
+  border-color: rgba(216,58,58,.18) !important;
+}
+
 .add-money-amount-head label {
   font-size: 14px;
   font-weight: 700;
@@ -427,6 +433,11 @@ body {
   font-size: 14px;
   font-weight: 700;
   color: var(--accent);
+}
+
+.add-money-input-wrap.is-insufficient input,
+.add-money-input-wrap.is-insufficient > span {
+  color: #d83a3a;
 }
 
 .add-money-range {
@@ -487,6 +498,25 @@ body {
 
 .add-money-balance-line strong {
   font-size: 13px;
+}
+
+.add-money-inline-error {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1;
+  color: #d83a3a;
+}
+
+.add-money-inline-error span {
+  font-weight: 800;
+}
+
+.add-money-inline-error strong {
+  font-weight: 600;
+  opacity: .82;
 }
 
 .add-money-amount-card > small {
