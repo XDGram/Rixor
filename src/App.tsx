@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
 
 type WalletKind = 'evm' | 'solana'
 
@@ -83,6 +84,16 @@ export default function App() {
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
   const [nativeBalanceStatus, setNativeBalanceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [nativeBalanceError, setNativeBalanceError] = useState('')
+  const [deployStatus, setDeployStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [deployTxHash, setDeployTxHash] = useState('')
+  const [deployError, setDeployError] = useState('')
+  const [localContractAddresses, setLocalContractAddresses] = useState<Record<number, string>>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('rixor:testnet-contracts') || '{}') as Record<number, string>
+    } catch {
+      return {}
+    }
+  })
   const [addMoneyOpen, setAddMoneyOpen] = useState(false)
   const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
   const [addMoneyAmount, setAddMoneyAmount] = useState('')
@@ -203,6 +214,7 @@ export default function App() {
       name: 'Sepolia',
       shortName: 'Sepolia',
       rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+      balanceRpcUrls: ['https://ethereum-sepolia-rpc.publicnode.com'],
       explorerUrl: 'https://sepolia.etherscan.io',
     },
     {
@@ -211,15 +223,20 @@ export default function App() {
       name: 'Robinhood Chain Testnet',
       shortName: 'Robinhood Testnet',
       rpcUrl: 'https://rpc.testnet.chain.robinhood.com',
+      balanceRpcUrls: [
+        'https://rpc.testnet.chain.robinhood.com',
+        'https://rpc.testnet.chain.robinhood.com/rpc',
+        'https://robinhood-sepolia-rpc.publicnode.com',
+      ],
       explorerUrl: 'https://explorer.testnet.chain.robinhood.com',
     },
   ] as const
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
   const currentRixorContractAddress = evmChainId === 11155111
-    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS
+    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || localContractAddresses[11155111]
     : evmChainId === 46630
-      ? import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS
+      ? import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS || localContractAddresses[46630]
       : undefined
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
@@ -243,6 +260,31 @@ export default function App() {
     const [whole, fraction = ''] = normalized.split('.')
     if (fraction.length > 18) throw new Error('ETH supports up to 18 decimal places.')
     return (BigInt(whole) * 1_000_000_000_000_000_000n) + BigInt((fraction.padEnd(18, '0') || '0'))
+  }
+
+  const readBalanceFromRpc = async (address: string) => {
+    if (!currentEvmNetwork) return null
+
+    for (const rpcUrl of currentEvmNetwork.balanceRpcUrls) {
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'eth_getBalance',
+            params: [address, 'latest'],
+          }),
+        })
+        const rpcResult = await response.json() as { result?: string }
+        if (rpcResult.result) return rpcResult.result
+      } catch {
+        // Try the next testnet RPC.
+      }
+    }
+
+    return null
   }
 
   const refreshNativeBalance = async () => {
@@ -276,49 +318,17 @@ export default function App() {
 
       let balance = walletBalance
 
-      if (currentEvmNetwork) {
-        try {
-          const response = await fetch(currentEvmNetwork.rpcUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'eth_getBalance',
-              params: [activeAddress, 'latest'],
-            }),
-          })
-          const rpcResult = await response.json() as { result?: string }
-          if (rpcResult.result) balance = rpcResult.result
-        } catch {
-          // Keep the injected-provider result if the public RPC fallback is unavailable.
-        }
-      }
+      const rpcBalance = await readBalanceFromRpc(activeAddress)
+      if (rpcBalance) balance = rpcBalance
 
       setNativeBalance(formatNativeBalance(balance))
       setNativeBalanceStatus('ready')
     } catch (error) {
-      if (currentEvmNetwork) {
-        try {
-          const response = await fetch(currentEvmNetwork.rpcUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'eth_getBalance',
-              params: [walletSession.address, 'latest'],
-            }),
-          })
-          const rpcResult = await response.json() as { result?: string }
-          if (rpcResult.result) {
-            setNativeBalance(formatNativeBalance(rpcResult.result))
-            setNativeBalanceStatus('ready')
-            return
-          }
-        } catch {
-          // Fall through to the visible error state below.
-        }
+      const rpcBalance = await readBalanceFromRpc(walletSession.address)
+      if (rpcBalance) {
+        setNativeBalance(formatNativeBalance(rpcBalance))
+        setNativeBalanceStatus('ready')
+        return
       }
 
       setNativeBalanceStatus('error')
@@ -400,6 +410,50 @@ export default function App() {
     } catch (error) {
       setAddMoneyTxStatus('failed')
       setAddMoneyTxError(error instanceof Error ? error.message : 'Deposit transaction failed.')
+    }
+  }
+
+  const deployRixorContract = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentEvmNetwork || !evmChainId) return
+    if (currentRixorContractAddress) return
+
+    try {
+      setDeployError('')
+      setDeployTxHash('')
+      setDeployStatus('awaiting-wallet')
+
+      const hash = await connectedEvmProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: walletSession.address,
+          data: rixorSavingsArtifact.bytecode,
+        }],
+      }) as string
+
+      setDeployTxHash(hash)
+      setDeployStatus('pending')
+
+      let receipt: { status?: string; contractAddress?: string } | null = null
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        receipt = await connectedEvmProvider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [hash],
+        }) as { status?: string; contractAddress?: string } | null
+        if (receipt) break
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
+
+      if (!receipt) throw new Error('Deployment is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1' || !receipt.contractAddress) throw new Error('Contract deployment failed.')
+
+      const nextAddresses = { ...localContractAddresses, [evmChainId]: receipt.contractAddress }
+      setLocalContractAddresses(nextAddresses)
+      window.localStorage.setItem('rixor:testnet-contracts', JSON.stringify(nextAddresses))
+      setDeployStatus('confirmed')
+      await refreshContractAvailableBalance()
+    } catch (error) {
+      setDeployStatus('failed')
+      setDeployError(error instanceof Error ? error.message : 'Contract deployment failed.')
     }
   }
 
@@ -488,7 +542,7 @@ export default function App() {
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
     void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
-  }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId])
+  }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId, currentRixorContractAddress])
 
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
@@ -868,7 +922,7 @@ export default function App() {
 
         <header className="plan-detail-topbar">
           <button type="button" className="plan-detail-back" onClick={() => setSelectedPlanId(null)}>
-            <span>←</span>
+            <span>â†</span>
             Back to dashboard
           </button>
           <span className="plan-detail-brand">RIXOR</span>
@@ -882,7 +936,7 @@ export default function App() {
           <div className="plan-detail-hero">
             <span>{selectedActivePlan.status === 'matured' ? 'MATURED PLAN' : 'ACTIVE PLAN'}</span>
             <h1>{selectedActivePlan.goal}</h1>
-            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.apy}% APY · rewards in {selectedActivePlan.rewardAsset}</p>
+            <p>{selectedActivePlan.termLabel} Â· {selectedActivePlan.apy}% APY Â· rewards in {selectedActivePlan.rewardAsset}</p>
           </div>
 
           <div className="plan-detail-grid">
@@ -950,7 +1004,7 @@ export default function App() {
 
         <header className="withdraw-page-topbar">
           <button type="button" className="withdraw-page-back" onClick={() => setWithdrawOpen(false)}>
-            <span>←</span>
+            <span>â†</span>
             Back to dashboard
           </button>
           <span className="withdraw-page-brand">RIXOR</span>
@@ -1137,12 +1191,12 @@ export default function App() {
 
               <div className="withdraw-review-note">
                 <strong>Testnet safety</strong>
-                <p>The final withdrawal action stays disabled until Rixor’s testnet savings contract is connected. No placeholder transaction will be sent.</p>
+                <p>The final withdrawal action stays disabled until Rixorâ€™s testnet savings contract is connected. No placeholder transaction will be sent.</p>
               </div>
 
               <div className="withdraw-review-actions">
                 <button type="button" onClick={() => setWithdrawStep('setup')}>Back and edit</button>
-                <button type="button" disabled>Withdraw on testnet — contract not connected</button>
+                <button type="button" disabled>Withdraw on testnet â€” contract not connected</button>
               </div>
             </div>
           )}
@@ -1161,7 +1215,7 @@ export default function App() {
 
         <header className="plan-page-topbar">
           <button type="button" className="plan-page-back" onClick={() => setStartPlanOpen(false)}>
-            <span>←</span>
+            <span>â†</span>
             Back to dashboard
           </button>
           <span className="plan-page-brand">RIXOR</span>
@@ -1191,7 +1245,7 @@ export default function App() {
                       setStartPlanTerm(goal.suggested)
                     }}
                   >
-                    <span className="plan-goal-mark">{startPlanGoal === goal.id ? '✓' : '○'}</span>
+                    <span className="plan-goal-mark">{startPlanGoal === goal.id ? 'âœ“' : 'â—‹'}</span>
                     <div>
                       <span className="plan-goal-tag">
                         {goal.id === 'emergency' ? 'Quick access' :
@@ -1202,7 +1256,7 @@ export default function App() {
                       <strong>{goal.title}</strong>
                       <p>{goal.copy}</p>
                       <small>
-                        Suggested · {planOptions.find((item) => item.id === goal.suggested)?.label}
+                        Suggested Â· {planOptions.find((item) => item.id === goal.suggested)?.label}
                       </small>
                     </div>
                   </button>
@@ -1213,7 +1267,7 @@ export default function App() {
                 <section className="plan-builder-panel">
                   <div className="plan-section-head">
                     <div>
-                      <span>1 · CHOOSE ACCESS</span>
+                      <span>1 Â· CHOOSE ACCESS</span>
                       <h2>Pick a timeline</h2>
                     </div>
                     <p>Suggested for {selectedGoal.title}: <strong>{planOptions.find((item) => item.id === selectedGoal.suggested)?.label}</strong></p>
@@ -1239,7 +1293,7 @@ export default function App() {
 
                   <div className="plan-section-head plan-section-head--amount">
                     <div>
-                      <span>2 · SET AMOUNT</span>
+                      <span>2 Â· SET AMOUNT</span>
                       <h2>How much do you want to save?</h2>
                     </div>
                     <p><strong>{nativeBalance} ETH</strong> available on {currentEvmNetwork?.shortName ?? 'this chain'}</p>
@@ -1285,7 +1339,7 @@ export default function App() {
 
                   <div className="plan-section-head plan-section-head--reward">
                     <div>
-                      <span>3 · REWARD PREFERENCE</span>
+                      <span>3 Â· REWARD PREFERENCE</span>
                       <h2>How should rewards be paid?</h2>
                     </div>
                   </div>
@@ -1375,7 +1429,7 @@ export default function App() {
                 <div className="plan-review-card">
                   <span>{selectedGoal.title.toUpperCase()}</span>
                   <strong>{startPlanAmount} <em>ETH</em></strong>
-                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% APY</p>
+                  <p>{startPlanSelected.label} Â· {startPlanSelected.apy}% APY</p>
                 </div>
                 <div className="plan-review-facts">
                   <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
@@ -1392,7 +1446,7 @@ export default function App() {
 
               <div className="plan-review-actions plan-review-actions--page">
                 <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
-                <button type="button" disabled>Start test plan — contract not connected</button>
+                <button type="button" disabled>Start test plan â€” contract not connected</button>
               </div>
             </div>
           )}
@@ -1430,7 +1484,7 @@ export default function App() {
               <span className="dashboard-wallet-identity">
                 <small>
                   {walletSession.name}
-                  {walletSession.kind === 'evm' && currentEvmNetwork ? ` · ${currentEvmNetwork.shortName}` : ''}
+                  {walletSession.kind === 'evm' && currentEvmNetwork ? ` Â· ${currentEvmNetwork.shortName}` : ''}
                 </small>
                 <strong>{shortAddress(walletSession.address)}</strong>
               </span>
@@ -1452,11 +1506,11 @@ export default function App() {
             </span>
             <span>
               <small>NETWORK</small>
-              <strong>{currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}</strong>
+              <strong>{currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detectingâ€¦')}</strong>
             </span>
             <span>
               <small>{currentEvmNetwork ? `${currentEvmNetwork.shortName.toUpperCase()} WALLET BALANCE` : 'TESTNET WALLET BALANCE'}</small>
-              <strong>{nativeBalanceStatus === 'loading' ? 'Refreshing…' : `${nativeBalance} ETH`}</strong>
+              <strong>{nativeBalanceStatus === 'loading' ? 'Refreshingâ€¦' : `${nativeBalance} ETH`}</strong>
             </span>
             <button
               type="button"
@@ -1490,7 +1544,7 @@ export default function App() {
                   <h2 id="wallet-modal-title">Wallet connected</h2>
                 </div>
                 <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -1524,7 +1578,7 @@ export default function App() {
                   <h2 id="add-money-title">{addMoneyStep === 'amount' ? 'Add money' : 'Review deposit'}</h2>
                 </div>
                 <button type="button" className="wallet-modal-close" onClick={() => setAddMoneyOpen(false)} aria-label="Close add money dialog">
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -1549,7 +1603,7 @@ export default function App() {
 
                   <div className="add-money-asset-card dashboard-soft-card">
                     <div className="add-money-asset-top">
-                      <div className="dashboard-metric-icon">Ξ</div>
+                      <div className="dashboard-metric-icon">Îž</div>
                       <div>
                         <span>FUNDING ASSET</span>
                         <strong>ETH</strong>
@@ -1697,7 +1751,7 @@ export default function App() {
                       </strong>
                       {addMoneyTxHash && currentEvmNetwork && (
                         <a href={`${currentEvmNetwork.explorerUrl}/tx/${addMoneyTxHash}`} target="_blank" rel="noreferrer">
-                          View transaction ↗
+                          View transaction â†—
                         </a>
                       )}
                       {addMoneyTxError && <span>{addMoneyTxError}</span>}
@@ -1717,9 +1771,9 @@ export default function App() {
                       {!currentRixorContractAddress
                         ? 'Test contract not deployed'
                         : addMoneyTxStatus === 'awaiting-wallet'
-                          ? 'Waiting for wallet…'
+                          ? 'Waiting for walletâ€¦'
                           : addMoneyTxStatus === 'pending'
-                            ? 'Deposit pending…'
+                            ? 'Deposit pendingâ€¦'
                             : addMoneyTxStatus === 'confirmed'
                               ? 'Deposit confirmed'
                               : 'Deposit on testnet'}
@@ -1746,7 +1800,7 @@ export default function App() {
                   <h2 id="start-plan-title">{startPlanStep === 'setup' ? 'Start a plan' : 'Review plan'}</h2>
                 </div>
                 <button type="button" className="wallet-modal-close" onClick={() => setStartPlanOpen(false)} aria-label="Close start plan dialog">
-                  ×
+                  Ã—
                 </button>
               </div>
 
@@ -1853,7 +1907,7 @@ export default function App() {
                   <div className="start-plan-review-main dashboard-soft-card">
                     <span>{startPlanSelected.label.toUpperCase()} PLAN</span>
                     <strong>{startPlanAmount} <em>ETH</em></strong>
-                    <p>{startPlanSelected.apy}% APY · {startPlanSelected.access}</p>
+                    <p>{startPlanSelected.apy}% APY Â· {startPlanSelected.access}</p>
                   </div>
 
                   <div className="start-plan-review-details">
@@ -1887,7 +1941,7 @@ export default function App() {
                       Back
                     </button>
                     <button type="button" className="start-plan-submit" disabled>
-                      Start test plan — contract not connected
+                      Start test plan â€” contract not connected
                     </button>
                   </div>
                 </>
@@ -1916,7 +1970,7 @@ export default function App() {
                   >
                     <span className="dashboard-network-status" />
                     <span>{network.shortName}</span>
-                    {networkSwitching === network.id && <em>Switching…</em>}
+                    {networkSwitching === network.id && <em>Switchingâ€¦</em>}
                   </button>
                 ))}
                 {!currentEvmNetwork && evmChainId !== null && (
@@ -1939,6 +1993,44 @@ export default function App() {
                 <strong>{contractAvailableBalance} <em>ETH</em></strong>
                 <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
+                {!currentRixorContractAddress && currentEvmNetwork && (
+                  <div className="dashboard-contract-setup">
+                    <div>
+                      <small>TESTNET CONTRACT</small>
+                      <strong>{currentEvmNetwork.shortName}</strong>
+                      <span>Deploy the compiled RixorSavings contract using this connected wallet.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={deployRixorContract}
+                      disabled={deployStatus === 'awaiting-wallet' || deployStatus === 'pending' || deployStatus === 'confirmed'}
+                    >
+                      {deployStatus === 'awaiting-wallet'
+                        ? 'Approve in wallet…'
+                        : deployStatus === 'pending'
+                          ? 'Deploying…'
+                          : deployStatus === 'confirmed'
+                            ? 'Deployed'
+                            : 'Deploy test contract'}
+                    </button>
+                    {deployTxHash && (
+                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
+                        View deployment ↗
+                      </a>
+                    )}
+                    {deployError && <p>{deployError}</p>}
+                  </div>
+                )}
+
+                {currentRixorContractAddress && (
+                  <div className="dashboard-contract-live">
+                    <span>Contract live</span>
+                    <a href={`${currentEvmNetwork?.explorerUrl}/address/${currentRixorContractAddress}`} target="_blank" rel="noreferrer">
+                      {shortAddress(currentRixorContractAddress)} ↗
+                    </a>
+                  </div>
+                )}
+
                 <div className="dashboard-actions dashboard-actions--compact">
                   <button type="button" className="dashboard-action dashboard-action--primary" onClick={openAddMoney}>
                     <span>Add money</span>
@@ -1958,7 +2050,7 @@ export default function App() {
               <div className="dashboard-metric-grid">
                 <article className="dashboard-metric-card dashboard-soft-card">
                   <div className="dashboard-metric-title">
-                    <span className="dashboard-metric-icon">↗</span>
+                    <span className="dashboard-metric-icon">â†—</span>
                     <strong>Earned</strong>
                     <em>0%</em>
                   </div>
@@ -1970,7 +2062,7 @@ export default function App() {
 
                 <article className="dashboard-metric-card dashboard-soft-card">
                   <div className="dashboard-metric-title">
-                    <span className="dashboard-metric-icon">◎</span>
+                    <span className="dashboard-metric-icon">â—Ž</span>
                     <strong>Available</strong>
                     <em>Ready</em>
                   </div>
@@ -2052,11 +2144,11 @@ export default function App() {
                   </svg>
                   <div className="rixor-pocket-content">
                     <div className="rixor-pocket-balance">
-                      <span className="rixor-balance-stars">••••••</span>
+                      <span className="rixor-balance-stars">â€¢â€¢â€¢â€¢â€¢â€¢</span>
                       <span className="rixor-balance-real">{contractAvailableBalance} ETH</span>
                     </div>
                     <small>Available savings</small>
-                    <span className="rixor-eye" aria-hidden="true">◉</span>
+                    <span className="rixor-eye" aria-hidden="true">â—‰</span>
                   </div>
                 </div>
               </div>
@@ -2094,7 +2186,7 @@ export default function App() {
                         <div>
                           <small>{planItem.goal.toUpperCase()}</small>
                           <strong>{planItem.principalAmount.toFixed(4)} {planItem.principalAsset}</strong>
-                          <span>{planItem.termLabel} · {planItem.apy}% APY</span>
+                          <span>{planItem.termLabel} Â· {planItem.apy}% APY</span>
                         </div>
                       </div>
                       <div className="dashboard-plan-row-progress">
@@ -2105,7 +2197,7 @@ export default function App() {
                         <small>{planItem.maturesAt ? 'MATURITY' : 'ACCESS'}</small>
                         <strong>{planItem.maturesAt ? formatPlanDate(planItem.maturesAt) : planItem.accessLabel}</strong>
                       </div>
-                      <span className="dashboard-plan-row-arrow">→</span>
+                      <span className="dashboard-plan-row-arrow">â†’</span>
                     </button>
                   ))}
                 </div>
@@ -2129,11 +2221,11 @@ export default function App() {
                   {activityItems.map((item) => (
                     <div className="dashboard-activity-row" key={item.id}>
                       <span className={`dashboard-activity-icon dashboard-activity-icon--${item.type}`}>
-                        {item.type === 'deposit' ? '↓' : item.type === 'withdrawal' ? '↑' : item.type === 'reward' ? '↗' : '◎'}
+                        {item.type === 'deposit' ? 'â†“' : item.type === 'withdrawal' ? 'â†‘' : item.type === 'reward' ? 'â†—' : 'â—Ž'}
                       </span>
                       <div className="dashboard-activity-copy">
                         <strong>{item.title}</strong>
-                        <span>{item.network} · {formatActivityDate(item.timestamp)}</span>
+                        <span>{item.network} Â· {formatActivityDate(item.timestamp)}</span>
                       </div>
                       <div className="dashboard-activity-amount">
                         <strong>{item.amount.toFixed(4)} {item.asset}</strong>
@@ -2146,10 +2238,10 @@ export default function App() {
                           rel="noreferrer"
                           className="dashboard-activity-link"
                         >
-                          ↗
+                          â†—
                         </a>
                       ) : (
-                        <span className="dashboard-activity-link is-disabled">↗</span>
+                        <span className="dashboard-activity-link is-disabled">â†—</span>
                       )}
                     </div>
                   ))}
@@ -2196,7 +2288,7 @@ export default function App() {
                 <h2 id="wallet-modal-title">Connect your wallet</h2>
               </div>
               <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
-                ×
+                Ã—
               </button>
             </div>
 
@@ -2246,7 +2338,7 @@ export default function App() {
                           <strong>{wallet.name}</strong>
                           <small>{wallet.kind === 'evm' ? 'EVM wallet detected' : 'Solana wallet detected'}</small>
                         </span>
-                        <em>{walletConnecting === wallet.id ? 'Connecting…' : 'Detected'}</em>
+                        <em>{walletConnecting === wallet.id ? 'Connectingâ€¦' : 'Detected'}</em>
                       </button>
                     )
                   })}
@@ -2441,7 +2533,7 @@ export default function App() {
               <p className="how-card-lead">Start with the wallet you already have.</p>
               <p className="how-card-more">
                 Connect an EVM or Solana wallet and sign a simple ownership message. Rixor
-                reads your public address only — never your seed phrase or private key.
+                reads your public address only â€” never your seed phrase or private key.
               </p>
               <button className="how-card-action" type="button" onClick={() => toggleHowCard('connect')}>
                 <span>{openHowCard === 'connect' ? 'Close' : 'Explore'}</span>
@@ -2493,10 +2585,10 @@ export default function App() {
             </div>
             <div className="how-card-copy">
               <h3>Choose</h3>
-              <p className="how-card-lead">Flexible when you need it. Locked when you don’t.</p>
+              <p className="how-card-lead">Flexible when you need it. Locked when you donâ€™t.</p>
               <p className="how-card-more">
                 Keep funds accessible with Flexible savings, or choose a fixed term when
-                you’re comfortable committing for longer. You review the amount, term and
+                youâ€™re comfortable committing for longer. You review the amount, term and
                 illustrative rate before anything moves.
               </p>
               <button className="how-card-action" type="button" onClick={() => toggleHowCard('choose')}>
@@ -2556,7 +2648,7 @@ export default function App() {
               <p className="how-card-lead">Review first. Confirm second.</p>
               <p className="how-card-more">
                 Before a money-moving action is confirmed, Rixor shows the important details
-                in plain language so you know exactly what you’re agreeing to.
+                in plain language so you know exactly what youâ€™re agreeing to.
               </p>
               <button className="how-card-action" type="button" onClick={() => toggleHowCard('review')}>
                 <span>{openHowCard === 'review' ? 'Close' : 'Preview'}</span>
@@ -2746,7 +2838,7 @@ export default function App() {
             <span className="security-boundary-line" />
             <span className="security-lock">
               <span className="security-lock-shackle" />
-              <span className="security-lock-body">✓</span>
+              <span className="security-lock-body">âœ“</span>
             </span>
             <span className="security-signal security-signal--one">PUBLIC ADDRESS</span>
             <span className="security-signal security-signal--two">APPROVAL</span>
@@ -2808,3 +2900,4 @@ export default function App() {
     </main>
   )
 }
+

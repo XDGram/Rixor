@@ -67,3 +67,6 @@
 - Frontend reads `availableBalance(address)` directly from the deployed contract and uses it for the dashboard's available Rixor balance.
 - Deployment scripts support Sepolia and Robinhood Chain Testnet.
 - Current local blocker: no `RIXOR_DEPLOYER_PRIVATE_KEY` or `.env` is configured, so no deployment can be signed yet.
+
+- The dashboard also supports wallet-signed testnet deployment. If no configured contract address exists on Sepolia or Robinhood Chain Testnet, the connected EVM wallet can deploy the compiled RixorSavings bytecode directly and Rixor stores the resulting contract address locally for that chain.
+- Robinhood Testnet balance reads use the official RPC first, then /rpc, then https://robinhood-sepolia-rpc.publicnode.com as a fallback.
