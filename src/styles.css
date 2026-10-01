@@ -135,7 +135,7 @@ body {
 .dashboard-kicker {
   display: inline-block;
   margin-bottom: 10px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: .14em;
   color: var(--accent);
@@ -150,7 +150,7 @@ body {
 
 .dashboard-intro p {
   margin: 14px 0 0;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
   opacity: .52;
 }
@@ -345,7 +345,7 @@ body {
 .dashboard-empty-plan p {
   max-width: 420px;
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
   opacity: .5;
 }
@@ -379,7 +379,7 @@ body {
 .dashboard-empty-activity p {
   max-width: 260px;
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
   opacity: .48;
 }
@@ -543,7 +543,7 @@ body {
 }
 
 .dashboard-card-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: .14em;
   opacity: .5;
@@ -602,12 +602,12 @@ body {
 }
 
 .dashboard-metric-title > strong {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .dashboard-metric-title > em {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 13px;
   font-style: normal;
   font-weight: 700;
   color: #6f8200;
@@ -639,7 +639,7 @@ body {
 }
 
 .dashboard-metric-data p small {
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: .02em;
   opacity: .45;
 }
@@ -676,12 +676,13 @@ body {
   position: relative;
   z-index: 3;
   max-width: 360px;
+  text-align: left;
 }
 
 .rixor-wallet-copy > span {
   display: inline-block;
   margin-bottom: 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: .14em;
   color: var(--accent);
@@ -698,7 +699,7 @@ body {
 .rixor-wallet-copy p {
   max-width: 320px;
   margin: 12px 0 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
   opacity: .5;
 }
@@ -766,7 +767,7 @@ body {
 }
 
 .rixor-plan-card-top > span {
-  font-size: 13px;
+  font-size: 15px;
   text-transform: uppercase;
   letter-spacing: .08em;
   font-weight: 700;
@@ -780,7 +781,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -790,17 +791,17 @@ body {
 }
 
 .rixor-plan-label {
-  font-size: 8px;
+  font-size: 10px;
   opacity: .55;
   letter-spacing: .12em;
 }
 
 .rixor-plan-value {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .rixor-plan-card-bottom > strong {
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: .05em;
 }
 
@@ -906,7 +907,7 @@ body {
 
 .rixor-pocket-content small {
   color: #81917a;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .rixor-eye {
@@ -991,6 +992,40 @@ body {
   box-shadow:
     18px 18px 42px rgba(180,180,174,.55),
     -18px -18px 42px rgba(255,255,255,.92);
+}
+
+.light-mode .dashboard-stage,
+.light-mode .dashboard-shell,
+.light-mode .dashboard-intro,
+.light-mode .dashboard-total-card,
+.light-mode .dashboard-metric-card,
+.light-mode .dashboard-panel,
+.light-mode .rixor-wallet-stage,
+.light-mode .rixor-wallet-copy {
+  color: #111;
+}
+
+.light-mode .dashboard-intro p,
+.light-mode .dashboard-total-card > p,
+.light-mode .dashboard-empty-plan p,
+.light-mode .dashboard-empty-activity p,
+.light-mode .rixor-wallet-copy p,
+.light-mode .dashboard-footnote {
+  color: rgba(17,17,17,.72);
+  opacity: 1;
+}
+
+.light-mode .dashboard-card-label,
+.light-mode .dashboard-metric-data p small,
+.light-mode .dashboard-wallet small,
+.light-mode .dashboard-empty-plan strong,
+.light-mode .dashboard-panel-head h2,
+.light-mode .dashboard-metric-title > strong {
+  color: #111;
+}
+
+.light-mode .dashboard-metric-title > em {
+  color: #667700;
 }
 
 .light-mode .dashboard-range {
