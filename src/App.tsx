@@ -29,6 +29,35 @@ type DetectedWallet = {
   provider: EvmProvider | SolanaProvider
 }
 
+type ActivePlan = {
+  id: string
+  goal: string
+  principalAsset: string
+  principalAmount: number
+  apy: number
+  rewardAsset: string
+  termLabel: string
+  accessLabel: string
+  startedAt: number
+  maturesAt: number | null
+  progress: number
+  accruedReward: number
+  status: 'active' | 'matured'
+  txHash?: string
+}
+
+type ActivityItem = {
+  id: string
+  type: 'deposit' | 'plan_started' | 'withdrawal' | 'reward'
+  title: string
+  amount: number
+  asset: string
+  timestamp: number
+  network: string
+  status: 'confirmed' | 'pending' | 'failed'
+  txHash?: string
+}
+
 export default function App() {
   const [lightMode, setLightMode] = useState(false)
   const [amount, setAmount] = useState('1000')
@@ -63,6 +92,7 @@ export default function App() {
   const [withdrawStep, setWithdrawStep] = useState<'setup' | 'review'>('setup')
   const [withdrawSource, setWithdrawSource] = useState<'available' | 'flexible' | 'locked'>('available')
   const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -561,6 +591,28 @@ export default function App() {
   const estimatedRewardForfeited = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : 0
   const estimatedRewardKept = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : estimatedLockedReward
 
+  // These collections are intentionally empty until the Rixor testnet contract is connected.
+  // Once deployed, they will be derived from contract state + wallet-address event logs.
+  const activePlans: ActivePlan[] = []
+  const activityItems: ActivityItem[] = []
+  const selectedActivePlan = activePlans.find((planItem) => planItem.id === selectedPlanId) ?? null
+
+  const formatPlanDate = (timestamp: number | null) => {
+    if (!timestamp) return 'Flexible'
+    return new Date(timestamp).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }
+
+  const formatActivityDate = (timestamp: number) => new Date(timestamp).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+
   const savingsGoals = [
     { id: 'emergency', title: 'Emergency fund', copy: 'Keep access close while still earning.', suggested: 'flexible' },
     { id: 'school', title: 'School fees', copy: 'Match your lock period to when tuition is due.', suggested: '90' },
@@ -587,6 +639,88 @@ export default function App() {
       />
     </svg>
   )
+
+  if (walletSession && selectedActivePlan) {
+    return (
+      <main className={`carbon-stage plan-detail-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
+        <div className="carbon-layer carbon-base" aria-hidden="true" />
+        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
+        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
+        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+
+        <header className="plan-detail-topbar">
+          <button type="button" className="plan-detail-back" onClick={() => setSelectedPlanId(null)}>
+            <span>←</span>
+            Back to dashboard
+          </button>
+          <span className="plan-detail-brand">RIXOR</span>
+          <div className="plan-detail-network">
+            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            <strong>{shortAddress(walletSession.address)}</strong>
+          </div>
+        </header>
+
+        <section className="plan-detail-shell">
+          <div className="plan-detail-hero">
+            <span>{selectedActivePlan.status === 'matured' ? 'MATURED PLAN' : 'ACTIVE PLAN'}</span>
+            <h1>{selectedActivePlan.goal}</h1>
+            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.apy}% APY · rewards in {selectedActivePlan.rewardAsset}</p>
+          </div>
+
+          <div className="plan-detail-grid">
+            <article className="plan-detail-primary">
+              <span>PRINCIPAL</span>
+              <strong>{selectedActivePlan.principalAmount.toFixed(4)} <em>{selectedActivePlan.principalAsset}</em></strong>
+
+              <div className="plan-detail-progress-head">
+                <div>
+                  <small>PLAN PROGRESS</small>
+                  <strong>{Math.round(selectedActivePlan.progress)}%</strong>
+                </div>
+                <div>
+                  <small>{selectedActivePlan.maturesAt ? 'MATURITY' : 'ACCESS'}</small>
+                  <strong>{selectedActivePlan.maturesAt ? formatPlanDate(selectedActivePlan.maturesAt) : selectedActivePlan.accessLabel}</strong>
+                </div>
+              </div>
+
+              <div className="plan-detail-progress-track">
+                <span style={{ width: `${Math.min(100, Math.max(0, selectedActivePlan.progress))}%` }} />
+              </div>
+            </article>
+
+            <aside className="plan-detail-summary">
+              <div><small>STARTED</small><strong>{formatPlanDate(selectedActivePlan.startedAt)}</strong></div>
+              <div><small>TERM</small><strong>{selectedActivePlan.termLabel}</strong></div>
+              <div><small>ACCESS</small><strong>{selectedActivePlan.accessLabel}</strong></div>
+              <div><small>RATE</small><strong>{selectedActivePlan.apy}% APY</strong></div>
+              <div><small>REWARD ASSET</small><strong>{selectedActivePlan.rewardAsset}</strong></div>
+              <div><small>ACCRUED REWARD</small><strong>{selectedActivePlan.accruedReward.toFixed(4)} {selectedActivePlan.rewardAsset}</strong></div>
+            </aside>
+          </div>
+
+          <div className="plan-detail-actions-grid">
+            <button type="button" onClick={openWithdraw}>
+              <span>Withdraw</span>
+              <small>Review the effect before exiting this plan.</small>
+            </button>
+            <button type="button" disabled>
+              <span>Add more</span>
+              <small>Available after the testnet contract supports plan top-ups.</small>
+            </button>
+            <button type="button" disabled>
+              <span>Extend plan</span>
+              <small>Available after plan-extension rules are finalized.</small>
+            </button>
+          </div>
+
+          <div className="plan-detail-chain-note">
+            <span className="dashboard-footnote-dot" />
+            <p>This page is designed to hydrate from onchain contract state and events for {shortAddress(walletSession.address)}. No private account database is required for the source of truth.</p>
+          </div>
+        </section>
+      </main>
+    )
+  }
 
   if (walletSession && withdrawOpen) {
     return (
@@ -1671,14 +1805,45 @@ export default function App() {
                   <h2>Your savings plans</h2>
                 </div>
               </div>
-              <div className="dashboard-empty-plan">
-                <span className="dashboard-empty-orb">+</span>
-                <div>
-                  <strong>No active plans yet.</strong>
-                  <p>Choose Flexible, 90 Day or 1 Year when you are ready to put your savings to work.</p>
+              {activePlans.length === 0 ? (
+                <div className="dashboard-empty-plan">
+                  <span className="dashboard-empty-orb">+</span>
+                  <div>
+                    <strong>No active plans yet.</strong>
+                    <p>When you create a plan onchain, it will appear here automatically for this wallet.</p>
+                  </div>
+                  <button type="button" onClick={openStartPlan}>Start a plan</button>
                 </div>
-                <button type="button">Start a plan</button>
-              </div>
+              ) : (
+                <div className="dashboard-plan-list">
+                  {activePlans.map((planItem) => (
+                    <button
+                      key={planItem.id}
+                      type="button"
+                      className="dashboard-plan-row"
+                      onClick={() => setSelectedPlanId(planItem.id)}
+                    >
+                      <div className="dashboard-plan-row-main">
+                        <span className="dashboard-plan-status-dot" />
+                        <div>
+                          <small>{planItem.goal.toUpperCase()}</small>
+                          <strong>{planItem.principalAmount.toFixed(4)} {planItem.principalAsset}</strong>
+                          <span>{planItem.termLabel} · {planItem.apy}% APY</span>
+                        </div>
+                      </div>
+                      <div className="dashboard-plan-row-progress">
+                        <span>{Math.round(planItem.progress)}%</span>
+                        <div><i style={{ width: `${Math.min(100, Math.max(0, planItem.progress))}%` }} /></div>
+                      </div>
+                      <div className="dashboard-plan-row-meta">
+                        <small>{planItem.maturesAt ? 'MATURITY' : 'ACCESS'}</small>
+                        <strong>{planItem.maturesAt ? formatPlanDate(planItem.maturesAt) : planItem.accessLabel}</strong>
+                      </div>
+                      <span className="dashboard-plan-row-arrow">→</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </article>
 
             <article className="dashboard-panel dashboard-soft-card">
@@ -1688,10 +1853,42 @@ export default function App() {
                   <h2>Recent movement</h2>
                 </div>
               </div>
-              <div className="dashboard-empty-activity">
-                <span />
-                <p>Your deposits, plan starts and withdrawals will appear here.</p>
-              </div>
+              {activityItems.length === 0 ? (
+                <div className="dashboard-empty-activity">
+                  <span />
+                  <p>Your confirmed onchain deposits, plan starts, withdrawals, and rewards will appear here for this wallet.</p>
+                </div>
+              ) : (
+                <div className="dashboard-activity-list">
+                  {activityItems.map((item) => (
+                    <div className="dashboard-activity-row" key={item.id}>
+                      <span className={`dashboard-activity-icon dashboard-activity-icon--${item.type}`}>
+                        {item.type === 'deposit' ? '↓' : item.type === 'withdrawal' ? '↑' : item.type === 'reward' ? '↗' : '◎'}
+                      </span>
+                      <div className="dashboard-activity-copy">
+                        <strong>{item.title}</strong>
+                        <span>{item.network} · {formatActivityDate(item.timestamp)}</span>
+                      </div>
+                      <div className="dashboard-activity-amount">
+                        <strong>{item.amount.toFixed(4)} {item.asset}</strong>
+                        <span className={`dashboard-activity-status is-${item.status}`}>{item.status}</span>
+                      </div>
+                      {item.txHash ? (
+                        <a
+                          href={`${currentEvmNetwork?.explorerUrl ?? ''}/tx/${item.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="dashboard-activity-link"
+                        >
+                          ↗
+                        </a>
+                      ) : (
+                        <span className="dashboard-activity-link is-disabled">↗</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           </div>
 

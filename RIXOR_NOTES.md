@@ -33,6 +33,16 @@
 - Empty sources must say that no funds/positions are available instead of showing fake plan balances.
 - Final testnet withdrawal stays disabled until the real Rixor contract is connected.
 
+## Onchain account history
+
+- The connected wallet address is the user identity for account loading.
+- Active plans should come from Rixor contract state keyed by wallet address.
+- Deposits, plan starts, withdrawals, and rewards should be reconstructed from contract events/logs for that wallet.
+- The dashboard should hydrate Active Plans and Recent Activity automatically after wallet connection and network changes.
+- No traditional private user-history database is required as the source of truth.
+- For production-scale querying, use an RPC/indexer service to read chain logs efficiently; the indexed data remains a cache/query layer over onchain truth, not the authoritative account ledger.
+- Plan detail pages should be derived from the same contract state and event history.
+
 ## UI direction
 
 - Keep the high-end minimalist Rixor visual language already established.
