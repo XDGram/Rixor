@@ -57,6 +57,8 @@ export default function App() {
   const [startPlanStep, setStartPlanStep] = useState<'setup' | 'review'>('setup')
   const [startPlanTerm, setStartPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [startPlanAmount, setStartPlanAmount] = useState('')
+  const [startPlanGoal, setStartPlanGoal] = useState<'emergency' | 'school' | 'rent' | 'long-term' | 'custom'>('emergency')
+  const [rewardAsset, setRewardAsset] = useState<'same' | 'usdg'>('same')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -505,11 +507,11 @@ export default function App() {
     })
   }, [planTerm, selectedPlan.days])
 
-  const dashboardUsdGBalance = 0
   const startPlanSelected = planOptions.find((option) => option.id === startPlanTerm) ?? planOptions[2]
   const startPlanParsed = Number(startPlanAmount || 0)
-  const startPlanInsufficient = startPlanParsed > dashboardUsdGBalance && startPlanParsed > 0
-  const startPlanValid = startPlanParsed > 0 && startPlanParsed <= dashboardUsdGBalance
+  const startPlanAvailableBalance = Number(nativeBalance)
+  const startPlanInsufficient = startPlanParsed > startPlanAvailableBalance && startPlanParsed > 0
+  const startPlanValid = startPlanParsed > 0 && startPlanParsed <= startPlanAvailableBalance
   const startPlanProjected = startPlanTerm === 'flexible'
     ? (startPlanParsed * startPlanSelected.apy) / 100
     : (startPlanParsed * startPlanSelected.apy * startPlanSelected.days) / 36500
@@ -528,8 +530,20 @@ export default function App() {
     setStartPlanStep('setup')
     setStartPlanTerm('90')
     setStartPlanAmount('')
+    setStartPlanGoal('emergency')
+    setRewardAsset('same')
     setStartPlanOpen(true)
   }
+
+  const savingsGoals = [
+    { id: 'emergency', title: 'Emergency fund', copy: 'Keep access close while still earning.', suggested: 'flexible' },
+    { id: 'school', title: 'School fees', copy: 'Match your lock period to when tuition is due.', suggested: '90' },
+    { id: 'rent', title: 'Rent', copy: 'Build toward a known payment date.', suggested: '180' },
+    { id: 'long-term', title: 'Long-term', copy: 'Use a longer lock when you do not need the money soon.', suggested: '365' },
+    { id: 'custom', title: 'Something else', copy: 'Choose your own timeline and access level.', suggested: '30' },
+  ] as const
+
+  const selectedGoal = savingsGoals.find((goal) => goal.id === startPlanGoal) ?? savingsGoals[0]
 
   const actionArrow = (
     <svg
@@ -547,6 +561,238 @@ export default function App() {
       />
     </svg>
   )
+
+  if (walletSession && startPlanOpen) {
+    return (
+      <main className={`carbon-stage plan-page-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
+        <div className="carbon-layer carbon-base" aria-hidden="true" />
+        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
+        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
+        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+
+        <header className="plan-page-topbar">
+          <button type="button" className="plan-page-back" onClick={() => setStartPlanOpen(false)}>
+            <span>←</span>
+            Back to dashboard
+          </button>
+          <span className="plan-page-brand">RIXOR</span>
+          <div className="plan-page-network">
+            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            <strong>{shortAddress(walletSession.address)}</strong>
+          </div>
+        </header>
+
+        <section className="plan-page-shell">
+          {startPlanStep === 'setup' ? (
+            <>
+              <div className="plan-page-hero">
+                <span>BUILD A SAVINGS PLAN</span>
+                <h1>What are you saving for?</h1>
+                <p>Start with the goal, then choose how much access you want and how long the money can stay untouched.</p>
+              </div>
+
+              <div className="plan-goal-grid">
+                {savingsGoals.map((goal) => (
+                  <button
+                    key={goal.id}
+                    type="button"
+                    className={`plan-goal-card ${startPlanGoal === goal.id ? 'is-active' : ''}`}
+                    onClick={() => {
+                      setStartPlanGoal(goal.id)
+                      setStartPlanTerm(goal.suggested)
+                    }}
+                  >
+                    <span className="plan-goal-mark">{startPlanGoal === goal.id ? '✓' : '○'}</span>
+                    <div>
+                      <strong>{goal.title}</strong>
+                      <p>{goal.copy}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="plan-page-layout">
+                <section className="plan-builder-panel">
+                  <div className="plan-section-head">
+                    <div>
+                      <span>1 · CHOOSE ACCESS</span>
+                      <h2>Pick a timeline</h2>
+                    </div>
+                    <p>Suggested for {selectedGoal.title}: <strong>{planOptions.find((item) => item.id === selectedGoal.suggested)?.label}</strong></p>
+                  </div>
+
+                  <div className="plan-page-options">
+                    {planOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`plan-page-option ${startPlanTerm === option.id ? 'is-active' : ''}`}
+                        onClick={() => setStartPlanTerm(option.id)}
+                      >
+                        <span>{option.label}</span>
+                        <strong>{option.apy}%</strong>
+                        <small>{option.access}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="plan-section-head plan-section-head--amount">
+                    <div>
+                      <span>2 · SET AMOUNT</span>
+                      <h2>How much do you want to save?</h2>
+                    </div>
+                    <p><strong>{nativeBalance} ETH</strong> available on {currentEvmNetwork?.shortName ?? 'this chain'}</p>
+                  </div>
+
+                  <div className={`plan-page-amount ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
+                    <input
+                      inputMode="decimal"
+                      value={startPlanAmount}
+                      onChange={(event) => setStartPlanAmount(event.target.value.replace(/[^0-9.]/g, ''))}
+                      placeholder="0.00"
+                      aria-label="Amount to save"
+                    />
+                    <span>ETH</span>
+                  </div>
+
+                  <div className="plan-page-quick-amounts">
+                    {[25, 50, 75].map((percent) => (
+                      <button
+                        key={percent}
+                        type="button"
+                        disabled={startPlanAvailableBalance <= 0}
+                        onClick={() => setStartPlanAmount(((startPlanAvailableBalance * percent) / 100).toFixed(4))}
+                      >
+                        {percent}%
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={startPlanAvailableBalance <= 0}
+                      onClick={() => setStartPlanAmount(nativeBalance)}
+                    >
+                      Max
+                    </button>
+                  </div>
+
+                  {startPlanInsufficient && (
+                    <div className="plan-page-inline-error">
+                      <strong>Not available</strong>
+                      <span>Top up this wallet before creating the plan.</span>
+                    </div>
+                  )}
+
+                  <div className="plan-section-head plan-section-head--reward">
+                    <div>
+                      <span>3 · REWARD PREFERENCE</span>
+                      <h2>How should rewards be paid?</h2>
+                    </div>
+                  </div>
+
+                  <div className="plan-reward-grid">
+                    <button
+                      type="button"
+                      className={`plan-reward-card ${rewardAsset === 'same' ? 'is-active' : ''}`}
+                      onClick={() => setRewardAsset('same')}
+                    >
+                      <span>Same asset</span>
+                      <strong>Earn in ETH</strong>
+                      <p>Keep principal and rewards in the same asset.</p>
+                    </button>
+                    <button
+                      type="button"
+                      className={`plan-reward-card ${rewardAsset === 'usdg' ? 'is-active' : ''}`}
+                      onClick={() => setRewardAsset('usdg')}
+                    >
+                      <span>Stable reward</span>
+                      <strong>Earn in USDG</strong>
+                      <p>Rewards settle in USDG when the reward adapter is connected.</p>
+                    </button>
+                  </div>
+                </section>
+
+                <aside className="plan-decision-panel">
+                  <span className="plan-decision-kicker">YOUR PLAN</span>
+                  <h2>{selectedGoal.title}</h2>
+                  <div className="plan-decision-amount">
+                    <strong>{startPlanAmount || '0.00'}</strong>
+                    <span>ETH</span>
+                  </div>
+
+                  <div className="plan-decision-list">
+                    <div><span>Timeline</span><strong>{startPlanSelected.label}</strong></div>
+                    <div><span>Rate</span><strong>{startPlanSelected.apy}% APY</strong></div>
+                    <div><span>Access</span><strong>{startPlanSelected.access}</strong></div>
+                    <div><span>Maturity</span><strong>{startPlanMaturity}</strong></div>
+                    <div><span>Rewards</span><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                  </div>
+
+                  <div className="plan-decision-estimate">
+                    <small>ESTIMATED REWARD VALUE</small>
+                    {rewardAsset === 'same' ? (
+                      <strong>+{startPlanProjected.toFixed(4)} ETH</strong>
+                    ) : (
+                      <strong>Calculated in USDG at settlement</strong>
+                    )}
+                    <p>Illustrative only. Rates are not guaranteed.</p>
+                  </div>
+
+                  {startPlanTerm !== 'flexible' && (
+                    <div className="plan-decision-warning">
+                      <strong>Locked plan</strong>
+                      <p>Early withdrawal keeps principal intact but forfeits 50% of interest earned so far.</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="plan-page-review-button"
+                    disabled={!startPlanValid}
+                    onClick={() => setStartPlanStep('review')}
+                  >
+                    Review this plan
+                    {actionArrow}
+                  </button>
+                </aside>
+              </div>
+            </>
+          ) : (
+            <div className="plan-review-page">
+              <div className="plan-page-hero">
+                <span>FINAL CHECK</span>
+                <h1>Review before you start.</h1>
+                <p>Nothing moves until you approve the final testnet transaction.</p>
+              </div>
+
+              <div className="plan-review-layout">
+                <div className="plan-review-card">
+                  <span>{selectedGoal.title.toUpperCase()}</span>
+                  <strong>{startPlanAmount} <em>ETH</em></strong>
+                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% APY</p>
+                </div>
+                <div className="plan-review-facts">
+                  <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                  <div><small>ACCESS</small><strong>{startPlanSelected.access}</strong></div>
+                  <div><small>MATURITY</small><strong>{startPlanMaturity}</strong></div>
+                  <div><small>REWARDS</small><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                </div>
+              </div>
+
+              <div className="plan-review-explainer">
+                <strong>What happens next</strong>
+                <p>Your ETH remains the principal of this plan. USDG is only used if you choose it as the reward asset. The final onchain plan creation stays disabled until the Rixor testnet contract is connected.</p>
+              </div>
+
+              <div className="plan-review-actions plan-review-actions--page">
+                <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
+                <button type="button" disabled>Start test plan — contract not connected</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+    )
+  }
 
   if (walletSession) {
     return (
@@ -689,7 +935,7 @@ export default function App() {
                       </div>
                       <em>Testnet</em>
                     </div>
-                    <p>Use native testnet ETH for the funding flow while the Rixor USDG adapter is still being built.</p>
+                    <p>Use native testnet ETH for the funding flow while the Rixor savings adapter is still being built.</p>
                   </div>
 
                   <div className="add-money-amount-card dashboard-soft-card">
@@ -853,8 +1099,8 @@ export default function App() {
                 <>
                   <div className="start-plan-balance-row">
                     <div>
-                      <small>AVAILABLE USDG</small>
-                      <strong>{dashboardUsdGBalance.toFixed(2)} USDG</strong>
+                      <small>AVAILABLE ETH</small>
+                      <strong>{startPlanAvailableBalance.toFixed(4)} ETH</strong>
                     </div>
                     <button
                       type="button"
@@ -886,10 +1132,10 @@ export default function App() {
                     <div className="start-plan-amount-head">
                       <div>
                         <label htmlFor="start-plan-amount">Amount to save</label>
-                        <small>From your Rixor USDG balance</small>
+                        <small>From your available ETH balance</small>
                       </div>
                       <span className={`start-plan-available ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
-                        {dashboardUsdGBalance.toFixed(2)} USDG available
+                        {startPlanAvailableBalance.toFixed(4)} ETH available
                       </span>
                     </div>
 
@@ -901,7 +1147,7 @@ export default function App() {
                         onChange={(event) => setStartPlanAmount(event.target.value.replace(/[^0-9.]/g, ''))}
                         placeholder="0.00"
                       />
-                      <span>USDG</span>
+                      <span>ETH</span>
                     </div>
 
                     {startPlanInsufficient && (
@@ -927,7 +1173,7 @@ export default function App() {
                     </div>
                     <div>
                       <small>EST. EARNINGS</small>
-                      <strong>{startPlanProjected.toFixed(2)} USDG</strong>
+                      <strong>{startPlanProjected.toFixed(4)} ETH</strong>
                     </div>
                   </div>
 
@@ -951,7 +1197,7 @@ export default function App() {
                 <>
                   <div className="start-plan-review-main dashboard-soft-card">
                     <span>{startPlanSelected.label.toUpperCase()} PLAN</span>
-                    <strong>{startPlanAmount} <em>USDG</em></strong>
+                    <strong>{startPlanAmount} <em>ETH</em></strong>
                     <p>{startPlanSelected.apy}% APY · {startPlanSelected.access}</p>
                   </div>
 
@@ -970,7 +1216,7 @@ export default function App() {
                     </div>
                     <div>
                       <small>EST. EARNINGS</small>
-                      <strong>{startPlanProjected.toFixed(2)} USDG</strong>
+                      <strong>{startPlanProjected.toFixed(4)} ETH</strong>
                     </div>
                   </div>
 
@@ -1034,8 +1280,8 @@ export default function App() {
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">
               <div className="dashboard-total-card dashboard-soft-card">
-                <span className="dashboard-card-label">RIXOR USDG SAVINGS</span>
-                <strong>0.00 <em>USDG</em></strong>
+                <span className="dashboard-card-label">RIXOR SAVINGS</span>
+                <strong>0.0000 <em>ETH</em></strong>
                 <p>No savings position yet.</p>
 
                 <div className="dashboard-actions dashboard-actions--compact">
@@ -1062,7 +1308,7 @@ export default function App() {
                     <em>0%</em>
                   </div>
                   <div className="dashboard-metric-data">
-                    <p>0.00 <small>USDG</small></p>
+                    <p>0.00 <small>Rewards</small></p>
                     <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
                   </div>
                 </article>
@@ -1074,7 +1320,7 @@ export default function App() {
                     <em>Ready</em>
                   </div>
                   <div className="dashboard-metric-data">
-                    <p>0.00 <small>USDG</small></p>
+                    <p>0.0000 <small>ETH</small></p>
                     <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
                   </div>
                 </article>
@@ -1152,7 +1398,7 @@ export default function App() {
                   <div className="rixor-pocket-content">
                     <div className="rixor-pocket-balance">
                       <span className="rixor-balance-stars">••••••</span>
-                      <span className="rixor-balance-real">0.00 USDG</span>
+                      <span className="rixor-balance-real">0.0000 ETH</span>
                     </div>
                     <small>Total savings</small>
                     <span className="rixor-eye" aria-hidden="true">◉</span>
@@ -1174,7 +1420,7 @@ export default function App() {
                 <span className="dashboard-empty-orb">+</span>
                 <div>
                   <strong>No active plans yet.</strong>
-                  <p>Choose Flexible, 90 Day or 1 Year when you are ready to put USDG to work.</p>
+                  <p>Choose Flexible, 90 Day or 1 Year when you are ready to put your savings to work.</p>
                 </div>
                 <button type="button">Start a plan</button>
               </div>
@@ -1346,7 +1592,7 @@ export default function App() {
 
           <div className="hero-bottom-row hero-enter hero-enter--3">
             <p className="hero-description">
-              Save in USDG with flexible access or lock in longer for higher returns.
+              Save supported assets with flexible access or lock in longer for higher returns.
             </p>
 
             <div className="hero-actions">
@@ -1379,10 +1625,10 @@ export default function App() {
           >
             <div className="panel-head">
               <div>
-                <span className="panel-eyebrow">SAVE USDG</span>
+                <span className="panel-eyebrow">SAVE YOUR ASSET</span>
                 <h2>Choose your plan</h2>
               </div>
-              <span className="panel-chip">USDG</span>
+              <span className="panel-chip">REWARDS FLEXIBLE</span>
             </div>
 
             <div className="amount-block">
@@ -1396,7 +1642,7 @@ export default function App() {
                   onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))}
                 />
               </div>
-              <span className="balance-line">Balance: 0.00 USDG</span>
+              <span className="balance-line">Balance: 0.0000 ETH</span>
             </div>
 
             <div className="plan-cards">
@@ -1414,7 +1660,7 @@ export default function App() {
 
             <div className="earnings-row">
               <span>Estimated earnings</span>
-              <strong>+{projected.toFixed(2)} USDG / year</strong>
+              <strong>+{projected.toFixed(4)} ETH / year</strong>
             </div>
 
             <button className="connect-wallet" type="button" onClick={() => {
@@ -1437,8 +1683,8 @@ export default function App() {
           <span className="how-kicker">HOW RIXOR WORKS</span>
           <h2 id="how-title">One balance. Your timeline.</h2>
           <p>
-            Bring funds in from the wallet you already use, convert them into a single USDG
-            savings balance, then choose how long you want that money to work.
+            Bring funds in from the wallet you already use, keep the asset you chose to save,
+            then choose how long you want that money to work and how rewards should be paid.
           </p>
         </div>
 
@@ -1447,8 +1693,8 @@ export default function App() {
             <span className="how-intro-label">THE SIMPLE VERSION</span>
             <h3>Your money moves through one clear path.</h3>
             <p>
-              Connect your wallet, fund Rixor, move into USDG savings, then choose whether
-              to stay flexible or lock for longer. From there, Rixor keeps the position,
+              Connect your wallet, fund Rixor, choose whether to stay flexible or lock for longer,
+              then choose how you want rewards paid. From there, Rixor keeps the position,
               progress and next action visible in one place.
             </p>
           </div>
@@ -1459,7 +1705,7 @@ export default function App() {
               <path d="M4 17C32 17 43 4 68 4C90 4 94 17 114 17" />
               <path d="M105 9L114 17L105 25" />
             </svg>
-            <span className="flow-node flow-node--accent">USDG</span>
+            <span className="flow-node flow-node--accent">SAVE</span>
             <svg viewBox="0 0 120 34" role="presentation">
               <path d="M4 17C32 17 43 30 68 30C90 30 94 17 114 17" />
               <path d="M105 9L114 17L105 25" />
@@ -1505,8 +1751,8 @@ export default function App() {
               <h3>Convert</h3>
               <p className="how-card-lead">Different assets in. One savings balance out.</p>
               <p className="how-card-more">
-                Supported deposits are valued and brought into one USDG-denominated balance,
-                so your savings stay simple even when the funds came from different networks.
+                Supported deposits stay tied to the asset you chose to save. Reward payout is a
+                separate choice, so USDG can be used for rewards without changing your principal.
               </p>
               <button className="how-card-action" type="button" onClick={() => toggleHowCard('convert')}>
                 <span>{openHowCard === 'convert' ? 'Close' : 'See flow'}</span>
@@ -1520,7 +1766,7 @@ export default function App() {
                 <span>USDC</span>
               </div>
               <span className="flow-line" />
-              <div className="usdg-orb">USDG</div>
+              <div className="usdg-orb">ASSET</div>
             </div>
           </article>
 
@@ -1574,7 +1820,7 @@ export default function App() {
             <div className="how-visual how-visual--track" aria-hidden="true">
               <div className="track-meta">
                 <span>Travel fund</span>
-                <strong>1,000 USDG</strong>
+                <strong>1.0000 ETH</strong>
               </div>
               <div className="track-bar"><span /></div>
               <div className="track-foot">
@@ -1604,7 +1850,7 @@ export default function App() {
             <div className="how-visual how-visual--review" aria-hidden="true">
               <div className="review-sheet">
                 <span>90-day plan</span>
-                <strong>1,000 USDG</strong>
+                <strong>1.0000 ETH</strong>
                 <div className="review-row"><span>Rate</span><b>6.8%</b></div>
                 <div className="review-confirm">Confirm plan</div>
               </div>
@@ -1628,8 +1874,8 @@ export default function App() {
           <span className="plans-kicker">PLANS</span>
           <h2 id="plans-title">Choose the pace.</h2>
           <p>
-            Keep access flexible or lock your USDG for longer. Move the amount, switch the
-            timeline, and see what the plan could look like before you start.
+            Keep access flexible or lock your savings for longer. Move the amount, switch the
+            timeline, choose a reward preference, and see what the plan could look like before you start.
           </p>
         </div>
 
@@ -1663,9 +1909,9 @@ export default function App() {
               <div className="plans-amount-head">
                 <div>
                   <span className="plans-amount-label">Savings amount</span>
-                  <span className="plans-amount-sub">Set how much USDG you want in this plan.</span>
+                  <span className="plans-amount-sub">Set how much of your saved asset you want in this plan.</span>
                 </div>
-                <span className="plans-status">USDG</span>
+                <span className="plans-status">ETH TESTNET</span>
               </div>
 
               <div className="plans-live-value">
@@ -1720,7 +1966,7 @@ export default function App() {
             <div className="plans-preview-list">
               <div>
                 <span>Deposit</span>
-                <strong>{planAmount.toLocaleString()} USDG</strong>
+                <strong>{planAmount.toLocaleString()} ETH</strong>
               </div>
               <div>
                 <span>Access</span>
@@ -1728,7 +1974,7 @@ export default function App() {
               </div>
               <div>
                 <span>{planTerm === 'flexible' ? 'Estimated / year' : 'At maturity'}</span>
-                <strong>+{planEarnings.toFixed(2)} USDG</strong>
+                <strong>+{planEarnings.toFixed(4)} ETH</strong>
               </div>
               <div>
                 <span>Maturity</span>
