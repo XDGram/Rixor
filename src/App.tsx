@@ -49,6 +49,7 @@ export default function App() {
   const [connectedEvmProvider, setConnectedEvmProvider] = useState<EvmProvider | null>(null)
   const [evmChainId, setEvmChainId] = useState<number | null>(null)
   const [networkSwitching, setNetworkSwitching] = useState<number | null>(null)
+  const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -127,6 +128,7 @@ export default function App() {
     setWalletSession(null)
     setConnectedEvmProvider(null)
     setEvmChainId(null)
+    setNativeBalance('0.0000')
     setWalletError('')
     setWalletModalOpen(false)
   }
@@ -152,6 +154,35 @@ export default function App() {
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
 
+  const formatNativeBalance = (hexBalance: string) => {
+    try {
+      const wei = BigInt(hexBalance)
+      const whole = wei / 1_000_000_000_000_000_000n
+      const fraction = wei % 1_000_000_000_000_000_000n
+      const fractionText = fraction.toString().padStart(18, '0').slice(0, 4)
+      return `${whole.toString()}.${fractionText}`
+    } catch {
+      return '0.0000'
+    }
+  }
+
+  const refreshNativeBalance = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm') {
+      setNativeBalance('0.0000')
+      return
+    }
+
+    try {
+      const balance = await connectedEvmProvider.request({
+        method: 'eth_getBalance',
+        params: [walletSession.address, 'latest'],
+      }) as string
+      setNativeBalance(formatNativeBalance(balance))
+    } catch {
+      setNativeBalance('0.0000')
+    }
+  }
+
   const switchEvmNetwork = async (networkId: number) => {
     if (!connectedEvmProvider) return
     const network = evmNetworks.find((item) => item.id === networkId)
@@ -166,6 +197,9 @@ export default function App() {
         params: [{ chainId: network.hexId }],
       })
       setEvmChainId(network.id)
+      window.setTimeout(() => {
+        void refreshNativeBalance()
+      }, 250)
     } catch (error) {
       const code = typeof error === 'object' && error !== null && 'code' in error
         ? Number((error as { code?: number }).code)
@@ -184,6 +218,9 @@ export default function App() {
             }],
           })
           setEvmChainId(network.id)
+          window.setTimeout(() => {
+            void refreshNativeBalance()
+          }, 250)
         } catch (addError) {
           setWalletError(addError instanceof Error ? addError.message : 'Could not add this testnet.')
         }
@@ -210,6 +247,11 @@ export default function App() {
       connectedEvmProvider.removeListener?.('chainChanged', handleChainChanged)
     }
   }, [connectedEvmProvider, walletSession?.kind])
+
+  useEffect(() => {
+    if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
+    void refreshNativeBalance()
+  }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId])
 
   useEffect(() => {
     const wallets = new Map<string, DetectedWallet>()
@@ -490,13 +532,39 @@ export default function App() {
 
             <button className="dashboard-wallet" type="button" onClick={() => setWalletModalOpen(true)}>
               <span className="dashboard-wallet-dot" />
-              <span>
-                <small>{walletSession.name}</small>
+              <span className="dashboard-wallet-identity">
+                <small>
+                  {walletSession.name}
+                  {walletSession.kind === 'evm' && currentEvmNetwork ? ` · ${currentEvmNetwork.shortName}` : ''}
+                </small>
                 <strong>{shortAddress(walletSession.address)}</strong>
               </span>
+              {walletSession.kind === 'evm' && (
+                <span className="dashboard-wallet-native">
+                  <small>WALLET BALANCE</small>
+                  <strong>{nativeBalance} ETH</strong>
+                </span>
+              )}
             </button>
           </div>
         </header>
+
+        {walletSession.kind === 'evm' && (
+          <div className="dashboard-wallet-balance-strip">
+            <span>
+              <small>CONNECTED WALLET</small>
+              <strong>{shortAddress(walletSession.address)}</strong>
+            </span>
+            <span>
+              <small>NETWORK</small>
+              <strong>{currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}</strong>
+            </span>
+            <span>
+              <small>NATIVE BALANCE</small>
+              <strong>{nativeBalance} ETH</strong>
+              </span>
+          </div>
+        )}
 
         {walletModalOpen && (
           <div className="wallet-modal-backdrop" role="presentation" onMouseDown={() => setWalletModalOpen(false)}>
@@ -522,6 +590,9 @@ export default function App() {
                 <div>
                   <small>{walletSession.name.toUpperCase()}</small>
                   <strong>{shortAddress(walletSession.address)}</strong>
+                  {walletSession.kind === 'evm' && (
+                    <span className="wallet-connected-balance">{nativeBalance} ETH</span>
+                  )}
                 </div>
                 <button type="button" onClick={disconnectWallet}>Disconnect</button>
               </div>
@@ -568,7 +639,7 @@ export default function App() {
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">
               <div className="dashboard-total-card dashboard-soft-card">
-                <span className="dashboard-card-label">TOTAL SAVINGS</span>
+                <span className="dashboard-card-label">RIXOR USDG SAVINGS</span>
                 <strong>0.00 <em>USDG</em></strong>
                 <p>No savings position yet.</p>
 

@@ -81,6 +81,29 @@ body {
   transition: transform .2s ease, border-color .2s ease, background-color .2s ease;
 }
 
+.dashboard-wallet-identity,
+.dashboard-wallet-native {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-wallet-native {
+  padding-left: 12px;
+  margin-left: 2px;
+  border-left: 1px solid rgba(127,127,127,.18);
+}
+
+.dashboard-wallet-native small {
+  font-size: 8px;
+  letter-spacing: .08em;
+  opacity: .45;
+}
+
+.dashboard-wallet-native strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .dashboard-wallet:hover {
   transform: translateY(-1px);
   border-color: rgba(207,239,0,.28);
@@ -109,6 +132,42 @@ body {
 
 .dashboard-wallet strong {
   font-size: 12px;
+}
+
+.dashboard-wallet-balance-strip {
+  position: relative;
+  z-index: 3;
+  width: min(1240px, calc(100% - 36px));
+  margin: 14px auto 0;
+  padding: 13px 16px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 28px;
+}
+
+.dashboard-wallet-balance-strip > span {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-wallet-balance-strip small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  opacity: .45;
+}
+
+.dashboard-wallet-balance-strip strong {
+  font-size: 13px;
+}
+
+.wallet-connected-balance {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: .58;
 }
 
 .dashboard-shell {
@@ -572,6 +631,12 @@ body {
   border: 1px solid rgba(255,255,255,.08);
 }
 
+.dark-mode .dashboard-wallet-balance-strip {
+  color: #f4f4f1;
+  background: rgba(255,255,255,.022);
+  border: 1px solid rgba(255,255,255,.07);
+}
+
 .dark-mode .dashboard-network-pill {
   color: var(--accent);
   background: rgba(207,239,0,.06);
@@ -617,6 +682,12 @@ body {
   color: #111;
   background: rgba(255,255,255,.55);
   border: 1px solid rgba(17,17,17,.08);
+}
+
+.light-mode .dashboard-wallet-balance-strip {
+  color: #111;
+  background: rgba(255,255,255,.5);
+  border: 1px solid rgba(17,17,17,.07);
 }
 
 .light-mode .dashboard-network-pill {
@@ -694,6 +765,17 @@ body {
 
   .dashboard-topbar {
     padding-top: 16px;
+  }
+
+  .dashboard-wallet-native {
+    display: none;
+  }
+
+  .dashboard-wallet-balance-strip {
+    width: calc(100% - 24px);
+    justify-content: flex-start;
+    gap: 18px;
+    overflow-x: auto;
   }
 
   .dashboard-topbar .switch {
