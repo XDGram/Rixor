@@ -202,7 +202,7 @@ export default function App() {
       hexId: '0xaa36a7',
       name: 'Sepolia',
       shortName: 'Sepolia',
-      rpcUrl: 'https://rpc.sepolia.org',
+      rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
       explorerUrl: 'https://sepolia.etherscan.io',
     },
     {
@@ -257,9 +257,21 @@ export default function App() {
     setNativeBalanceError('')
 
     try {
+      const chainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
+      const liveChainId = Number.parseInt(chainHex, 16)
+      if (liveChainId !== evmChainId) setEvmChainId(liveChainId)
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const activeAddress = accounts?.[0] || walletSession.address
+      if (activeAddress && activeAddress.toLowerCase() !== walletSession.address.toLowerCase()) {
+        setWalletSession((current) => current?.kind === 'evm'
+          ? { ...current, address: activeAddress }
+          : current)
+      }
+
       const walletBalance = await connectedEvmProvider.request({
         method: 'eth_getBalance',
-        params: [walletSession.address, 'latest'],
+        params: [activeAddress, 'latest'],
       }) as string
 
       let balance = walletBalance
@@ -273,7 +285,7 @@ export default function App() {
               jsonrpc: '2.0',
               id: 1,
               method: 'eth_getBalance',
-              params: [walletSession.address, 'latest'],
+              params: [activeAddress, 'latest'],
             }),
           })
           const rpcResult = await response.json() as { result?: string }
