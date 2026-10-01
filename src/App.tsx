@@ -483,14 +483,6 @@ export default function App() {
       if (!sepoliaBalanceHex) throw new Error('Could not read your Sepolia test ETH balance. Deployment cancelled.')
       if (BigInt(sepoliaBalanceHex) === 0n) throw new Error('This wallet has no Sepolia test ETH for deployment gas.')
 
-      const estimatedGas = await connectedEvmProvider.request({
-        method: 'eth_estimateGas',
-        params: [{
-          from: deployFrom,
-          data: rixorSavingsArtifact.bytecode,
-        }],
-      }) as string
-
       setEvmChainId(confirmedChainId)
 
       const hash = await connectedEvmProvider.request({
@@ -498,7 +490,6 @@ export default function App() {
         params: [{
           from: deployFrom,
           data: rixorSavingsArtifact.bytecode,
-          gas: estimatedGas,
         }],
       }) as string
 
@@ -525,7 +516,19 @@ export default function App() {
       await refreshContractAvailableBalance()
     } catch (error) {
       setDeployStatus('failed')
-      setDeployError(error instanceof Error ? error.message : 'Contract deployment failed.')
+      const providerError = error as {
+        message?: string
+        code?: number | string
+        data?: { message?: string } | string
+      }
+      const dataMessage = typeof providerError?.data === 'object' && providerError.data !== null
+        ? providerError.data.message
+        : typeof providerError?.data === 'string'
+          ? providerError.data
+          : ''
+      const message = providerError?.message || dataMessage || 'Contract deployment failed.'
+      const code = providerError?.code !== undefined ? ` (code ${String(providerError.code)})` : ''
+      setDeployError(`${message}${code}`)
     }
   }
 
