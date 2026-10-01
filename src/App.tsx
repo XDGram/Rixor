@@ -396,9 +396,26 @@ export default function App() {
       }
     }
 
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const accounts = args[0]
+      if (!Array.isArray(accounts)) return
+
+      const nextAddress = typeof accounts[0] === 'string' ? accounts[0] : null
+      if (!nextAddress) {
+        disconnectWallet()
+        return
+      }
+
+      setWalletSession((current) => current?.kind === 'evm'
+        ? { ...current, address: nextAddress }
+        : current)
+    }
+
     connectedEvmProvider.on('chainChanged', handleChainChanged)
+    connectedEvmProvider.on('accountsChanged', handleAccountsChanged)
     return () => {
       connectedEvmProvider.removeListener?.('chainChanged', handleChainChanged)
+      connectedEvmProvider.removeListener?.('accountsChanged', handleAccountsChanged)
     }
   }, [connectedEvmProvider, walletSession?.kind])
 
@@ -406,6 +423,28 @@ export default function App() {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
     void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
   }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId])
+
+  useEffect(() => {
+    if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
+
+    const refreshBalances = () => {
+      void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshBalances()
+    }
+
+    window.addEventListener('focus', refreshBalances)
+    document.addEventListener('visibilitychange', handleVisibility)
+    const interval = window.setInterval(refreshBalances, 10_000)
+
+    return () => {
+      window.removeEventListener('focus', refreshBalances)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.clearInterval(interval)
+    }
+  }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId, currentRixorContractAddress])
 
   useEffect(() => {
     const wallets = new Map<string, DetectedWallet>()
@@ -1352,7 +1391,14 @@ export default function App() {
             <span>
               <small>NATIVE BALANCE</small>
               <strong>{nativeBalance} ETH</strong>
-              </span>
+            </span>
+            <button
+              type="button"
+              className="dashboard-balance-refresh"
+              onClick={() => void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])}
+            >
+              Refresh
+            </button>
           </div>
         )}
 
