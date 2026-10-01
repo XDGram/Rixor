@@ -483,15 +483,6 @@ export default function App() {
       if (!sepoliaBalanceHex) throw new Error('Could not read your Sepolia test ETH balance. Deployment cancelled.')
       if (BigInt(sepoliaBalanceHex) === 0n) throw new Error('This wallet has no Sepolia test ETH for deployment gas.')
 
-      const providerBalanceHex = await connectedEvmProvider.request({
-        method: 'eth_getBalance',
-        params: [deployFrom, 'latest'],
-      }) as string
-
-      if (BigInt(providerBalanceHex) !== BigInt(sepoliaBalanceHex)) {
-        throw new Error('Wallet provider is not reading the Sepolia balance. Deployment cancelled to avoid using real ETH.')
-      }
-
       const chainHexImmediatelyBeforeSend = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
       if (chainHexImmediatelyBeforeSend.toLowerCase() !== targetNetwork.hexId.toLowerCase()) {
         throw new Error(`Wallet left Sepolia before deployment. Current chain is ${chainHexImmediatelyBeforeSend}. Deployment cancelled.`)
