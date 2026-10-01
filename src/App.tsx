@@ -604,8 +604,17 @@ export default function App() {
                   >
                     <span className="plan-goal-mark">{startPlanGoal === goal.id ? '✓' : '○'}</span>
                     <div>
+                      <span className="plan-goal-tag">
+                        {goal.id === 'emergency' ? 'Quick access' :
+                          goal.id === 'school' ? 'Known date' :
+                            goal.id === 'rent' ? 'Planned bill' :
+                              goal.id === 'long-term' ? 'Higher yield' : 'Your rules'}
+                      </span>
                       <strong>{goal.title}</strong>
                       <p>{goal.copy}</p>
+                      <small>
+                        Suggested · {planOptions.find((item) => item.id === goal.suggested)?.label}
+                      </small>
                     </div>
                   </button>
                 ))}
@@ -629,7 +638,10 @@ export default function App() {
                         className={`plan-page-option ${startPlanTerm === option.id ? 'is-active' : ''}`}
                         onClick={() => setStartPlanTerm(option.id)}
                       >
-                        <span>{option.label}</span>
+                        <div className="plan-page-option-top">
+                          <span>{option.label}</span>
+                          {selectedGoal.suggested === option.id && <em>Suggested</em>}
+                        </div>
                         <strong>{option.apy}%</strong>
                         <small>{option.access}</small>
                       </button>
@@ -695,18 +707,24 @@ export default function App() {
                       className={`plan-reward-card ${rewardAsset === 'same' ? 'is-active' : ''}`}
                       onClick={() => setRewardAsset('same')}
                     >
-                      <span>Same asset</span>
+                      <div className="plan-reward-topline">
+                        <span>Same asset</span>
+                        {rewardAsset === 'same' && <em>Selected</em>}
+                      </div>
                       <strong>Earn in ETH</strong>
-                      <p>Keep principal and rewards in the same asset.</p>
+                      <p>Principal and rewards stay in one asset. Simpler to follow and easier to understand.</p>
                     </button>
                     <button
                       type="button"
                       className={`plan-reward-card ${rewardAsset === 'usdg' ? 'is-active' : ''}`}
                       onClick={() => setRewardAsset('usdg')}
                     >
-                      <span>Stable reward</span>
+                      <div className="plan-reward-topline">
+                        <span>Stable reward</span>
+                        {rewardAsset === 'usdg' && <em>Selected</em>}
+                      </div>
                       <strong>Earn in USDG</strong>
-                      <p>Rewards settle in USDG when the reward adapter is connected.</p>
+                      <p>Keep your ETH principal while rewards settle separately in USDG once supported.</p>
                     </button>
                   </div>
                 </section>

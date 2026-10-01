@@ -978,8 +978,8 @@ body {
 }
 
 .plan-goal-card {
-  min-height: 154px;
-  padding: 16px;
+  min-height: 174px;
+  padding: 17px;
   border-radius: 22px;
   display: flex;
   align-items: flex-start;
@@ -1007,14 +1007,37 @@ body {
 
 .plan-goal-card strong {
   display: block;
-  font-size: 15px;
+  margin-top: 5px;
+  font-size: 16px;
 }
 
 .plan-goal-card p {
   margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
   opacity: .56;
+}
+
+.plan-goal-card small {
+  display: block;
+  margin-top: 12px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  opacity: .5;
+}
+
+.plan-goal-tag {
+  display: inline-flex;
+  min-height: 23px;
+  padding: 0 8px;
+  border-radius: 999px;
+  align-items: center;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .66;
 }
 
 .plan-goal-card.is-active {
@@ -1026,6 +1049,18 @@ body {
 .plan-goal-card.is-active .plan-goal-mark {
   background: #111;
   color: var(--accent);
+}
+
+.plan-goal-card.is-active .plan-goal-tag {
+  background: rgba(17,17,17,.08);
+  color: #111;
+  opacity: 1;
+}
+
+.plan-goal-card.is-active p,
+.plan-goal-card.is-active small {
+  color: rgba(17,17,17,.72) !important;
+  opacity: 1;
 }
 
 .plan-page-layout {
@@ -1088,7 +1123,7 @@ body {
 }
 
 .plan-page-option {
-  min-height: 106px;
+  min-height: 118px;
   padding: 14px 12px;
   border-radius: 18px;
   display: grid;
@@ -1097,6 +1132,25 @@ body {
   cursor: pointer;
   text-align: left;
   transition: transform .18s ease, background-color .18s ease, border-color .18s ease;
+}
+
+.plan-page-option-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.plan-page-option-top em {
+  padding: 4px 6px;
+  border-radius: 999px;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(207,239,0,.08);
 }
 
 .plan-page-option:hover,
@@ -1124,6 +1178,17 @@ body {
   background: var(--accent) !important;
   color: #111 !important;
   border-color: transparent !important;
+}
+
+.plan-page-option.is-active .plan-page-option-top em {
+  color: #111;
+  background: rgba(17,17,17,.08);
+}
+
+.plan-page-option.is-active small,
+.plan-page-option.is-active span,
+.plan-page-option.is-active strong {
+  color: #111 !important;
 }
 
 .plan-section-head--amount,
@@ -1214,14 +1279,33 @@ body {
 }
 
 .plan-reward-card {
-  min-height: 132px;
-  padding: 16px;
+  min-height: 144px;
+  padding: 18px;
   border-radius: 20px;
   display: grid;
   align-content: start;
   gap: 5px;
   cursor: pointer;
   text-align: left;
+}
+
+.plan-reward-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-reward-topline em {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #111;
+  background: var(--accent);
 }
 
 .plan-reward-card span {
@@ -1243,7 +1327,7 @@ body {
 }
 
 .plan-reward-card.is-active {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent), 0 10px 30px rgba(0,0,0,.05);
 }
 
 .plan-decision-panel {
@@ -6557,4 +6641,104 @@ body {
   *::after {
     transition-duration: .01ms !important;
   }
+}
+
+/* Plan page contrast + card refinement */
+.light-mode .plan-page-stage,
+.light-mode .plan-page-shell,
+.light-mode .plan-page-hero,
+.light-mode .plan-builder-panel,
+.light-mode .plan-section-head,
+.light-mode .plan-decision-panel,
+.light-mode .plan-review-page,
+.light-mode .plan-review-card,
+.light-mode .plan-review-facts,
+.light-mode .plan-review-explainer {
+  color: #111;
+}
+
+.light-mode .plan-page-hero p,
+.light-mode .plan-goal-card p,
+.light-mode .plan-goal-card small,
+.light-mode .plan-page-option small,
+.light-mode .plan-reward-card p,
+.light-mode .plan-decision-list span,
+.light-mode .plan-decision-estimate p,
+.light-mode .plan-decision-warning p,
+.light-mode .plan-review-card > p,
+.light-mode .plan-review-explainer p,
+.light-mode .plan-section-head > p {
+  color: rgba(17,17,17,.66);
+  opacity: 1;
+}
+
+.light-mode .plan-goal-card strong,
+.light-mode .plan-goal-card small,
+.light-mode .plan-goal-tag,
+.light-mode .plan-page-option span,
+.light-mode .plan-page-option strong,
+.light-mode .plan-page-option small,
+.light-mode .plan-reward-card span,
+.light-mode .plan-reward-card strong,
+.light-mode .plan-reward-card p,
+.light-mode .plan-decision-panel h2,
+.light-mode .plan-decision-amount strong,
+.light-mode .plan-decision-list strong,
+.light-mode .plan-decision-estimate strong,
+.light-mode .plan-decision-warning strong,
+.light-mode .plan-review-card > strong,
+.light-mode .plan-review-facts strong,
+.light-mode .plan-review-explainer strong,
+.light-mode .plan-page-network strong,
+.light-mode .plan-section-head h2 {
+  color: #111;
+}
+
+.light-mode .plan-goal-mark {
+  color: #111;
+  background: rgba(17,17,17,.06);
+}
+
+.light-mode .plan-goal-tag {
+  background: rgba(17,17,17,.045);
+}
+
+.light-mode .plan-page-option-top em {
+  color: #677600;
+  background: rgba(207,239,0,.18);
+}
+
+.light-mode .plan-goal-card:not(.is-active):hover,
+.light-mode .plan-page-option:not(.is-active):hover,
+.light-mode .plan-reward-card:hover {
+  background: rgba(255,255,255,.88);
+  border-color: rgba(17,17,17,.12);
+}
+
+.light-mode .plan-reward-card.is-active {
+  background: rgba(255,255,255,.92);
+}
+
+.light-mode .plan-page-amount input {
+  color: #111;
+}
+
+.light-mode .plan-page-amount input::placeholder {
+  color: rgba(17,17,17,.18);
+  opacity: 1;
+}
+
+.light-mode .plan-page-review-button {
+  color: #111;
+}
+
+.dark-mode .plan-goal-tag {
+  background: rgba(255,255,255,.05);
+}
+
+.dark-mode .plan-goal-card:not(.is-active):hover,
+.dark-mode .plan-page-option:not(.is-active):hover,
+.dark-mode .plan-reward-card:hover {
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.12);
 }
