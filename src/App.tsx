@@ -59,6 +59,10 @@ export default function App() {
   const [startPlanAmount, setStartPlanAmount] = useState('')
   const [startPlanGoal, setStartPlanGoal] = useState<'emergency' | 'school' | 'rent' | 'long-term' | 'custom'>('emergency')
   const [rewardAsset, setRewardAsset] = useState<'same' | 'usdg'>('same')
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
+  const [withdrawStep, setWithdrawStep] = useState<'setup' | 'review'>('setup')
+  const [withdrawSource, setWithdrawSource] = useState<'available' | 'flexible' | 'locked'>('available')
+  const [withdrawAmount, setWithdrawAmount] = useState('')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -535,6 +539,28 @@ export default function App() {
     setStartPlanOpen(true)
   }
 
+  const openWithdraw = () => {
+    setWithdrawStep('setup')
+    setWithdrawSource('available')
+    setWithdrawAmount('')
+    setWithdrawOpen(true)
+  }
+
+  const rixorAvailableBalance = 0
+  const flexiblePlanBalance = 0
+  const lockedPlanBalance = 0
+  const withdrawSourceBalance = withdrawSource === 'available'
+    ? rixorAvailableBalance
+    : withdrawSource === 'flexible'
+      ? flexiblePlanBalance
+      : lockedPlanBalance
+  const withdrawParsed = Number(withdrawAmount || 0)
+  const withdrawInsufficient = withdrawParsed > withdrawSourceBalance && withdrawParsed > 0
+  const withdrawValid = withdrawParsed > 0 && withdrawParsed <= withdrawSourceBalance
+  const estimatedLockedReward = 0
+  const estimatedRewardForfeited = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : 0
+  const estimatedRewardKept = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : estimatedLockedReward
+
   const savingsGoals = [
     { id: 'emergency', title: 'Emergency fund', copy: 'Keep access close while still earning.', suggested: 'flexible' },
     { id: 'school', title: 'School fees', copy: 'Match your lock period to when tuition is due.', suggested: '90' },
@@ -561,6 +587,217 @@ export default function App() {
       />
     </svg>
   )
+
+  if (walletSession && withdrawOpen) {
+    return (
+      <main className={`carbon-stage withdraw-page-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
+        <div className="carbon-layer carbon-base" aria-hidden="true" />
+        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
+        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
+        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+
+        <header className="withdraw-page-topbar">
+          <button type="button" className="withdraw-page-back" onClick={() => setWithdrawOpen(false)}>
+            <span>←</span>
+            Back to dashboard
+          </button>
+          <span className="withdraw-page-brand">RIXOR</span>
+          <div className="withdraw-page-network">
+            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            <strong>{shortAddress(walletSession.address)}</strong>
+          </div>
+        </header>
+
+        <section className="withdraw-page-shell">
+          {withdrawStep === 'setup' ? (
+            <>
+              <div className="withdraw-page-hero">
+                <span>WITHDRAW</span>
+                <h1>Choose where the money comes from.</h1>
+                <p>Rixor should make the consequence obvious before anything leaves a plan. Pick a source, choose an amount, then review exactly what returns to your wallet.</p>
+              </div>
+
+              <div className="withdraw-source-grid">
+                <button
+                  type="button"
+                  className={`withdraw-source-card ${withdrawSource === 'available' ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setWithdrawSource('available')
+                    setWithdrawAmount('')
+                  }}
+                >
+                  <span className="withdraw-source-status">Ready</span>
+                  <strong>Available balance</strong>
+                  <p>Money that is already outside a savings lock.</p>
+                  <div><small>WITHDRAWABLE</small><b>{rixorAvailableBalance.toFixed(4)} ETH</b></div>
+                </button>
+
+                <button
+                  type="button"
+                  className={`withdraw-source-card ${withdrawSource === 'flexible' ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setWithdrawSource('flexible')
+                    setWithdrawAmount('')
+                  }}
+                >
+                  <span className="withdraw-source-status">No penalty</span>
+                  <strong>Flexible plan</strong>
+                  <p>Withdraw principal without an early-exit penalty.</p>
+                  <div><small>IN FLEXIBLE PLANS</small><b>{flexiblePlanBalance.toFixed(4)} ETH</b></div>
+                </button>
+
+                <button
+                  type="button"
+                  className={`withdraw-source-card withdraw-source-card--locked ${withdrawSource === 'locked' ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setWithdrawSource('locked')
+                    setWithdrawAmount('')
+                  }}
+                >
+                  <span className="withdraw-source-status">Early exit applies</span>
+                  <strong>Locked plan</strong>
+                  <p>Principal stays intact, but an early withdrawal changes the reward you keep.</p>
+                  <div><small>IN LOCKED PLANS</small><b>{lockedPlanBalance.toFixed(4)} ETH</b></div>
+                </button>
+              </div>
+
+              <div className="withdraw-page-layout">
+                <section className="withdraw-builder-card">
+                  <div className="withdraw-section-head">
+                    <div>
+                      <span>AMOUNT</span>
+                      <h2>How much do you want back?</h2>
+                    </div>
+                    <p><strong>{withdrawSourceBalance.toFixed(4)} ETH</strong> available from this source</p>
+                  </div>
+
+                  <div className={`withdraw-amount-input ${withdrawInsufficient ? 'is-insufficient' : ''}`}>
+                    <input
+                      inputMode="decimal"
+                      value={withdrawAmount}
+                      onChange={(event) => setWithdrawAmount(event.target.value.replace(/[^0-9.]/g, ''))}
+                      placeholder="0.00"
+                      aria-label="Amount to withdraw"
+                    />
+                    <span>ETH</span>
+                  </div>
+
+                  <div className="withdraw-quick-amounts">
+                    {[25, 50, 75].map((percent) => (
+                      <button
+                        key={percent}
+                        type="button"
+                        disabled={withdrawSourceBalance <= 0}
+                        onClick={() => setWithdrawAmount(((withdrawSourceBalance * percent) / 100).toFixed(4))}
+                      >
+                        {percent}%
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={withdrawSourceBalance <= 0}
+                      onClick={() => setWithdrawAmount(withdrawSourceBalance.toFixed(4))}
+                    >
+                      Max
+                    </button>
+                  </div>
+
+                  {withdrawSourceBalance <= 0 && (
+                    <div className="withdraw-empty-state">
+                      <strong>Nothing available here yet.</strong>
+                      <span>This will populate from your real Rixor positions once the testnet contract is connected.</span>
+                    </div>
+                  )}
+
+                  {withdrawInsufficient && (
+                    <div className="withdraw-inline-error">
+                      <strong>Not available</strong>
+                      <span>Choose an amount within this source balance.</span>
+                    </div>
+                  )}
+
+                  <div className="withdraw-destination-card">
+                    <div>
+                      <small>DESTINATION</small>
+                      <strong>{shortAddress(walletSession.address)}</strong>
+                    </div>
+                    <span>Connected wallet</span>
+                  </div>
+                </section>
+
+                <aside className="withdraw-summary-card">
+                  <span className="withdraw-summary-kicker">WITHDRAWAL SUMMARY</span>
+                  <h2>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</h2>
+
+                  <div className="withdraw-summary-amount">
+                    <strong>{withdrawAmount || '0.00'}</strong>
+                    <span>ETH</span>
+                  </div>
+
+                  <div className="withdraw-summary-list">
+                    <div><span>Principal returned</span><strong>{(withdrawParsed || 0).toFixed(4)} ETH</strong></div>
+                    <div><span>Reward kept</span><strong>{estimatedRewardKept.toFixed(4)} ETH</strong></div>
+                    <div><span>Reward forfeited</span><strong className={withdrawSource === 'locked' ? 'is-negative' : ''}>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                    <div><span>Destination</span><strong>{shortAddress(walletSession.address)}</strong></div>
+                  </div>
+
+                  {withdrawSource === 'locked' && (
+                    <div className="withdraw-impact-card">
+                      <span>EARLY WITHDRAWAL</span>
+                      <strong>You keep your principal.</strong>
+                      <p>Based on the current Rixor rule, 50% of interest earned so far is forfeited when a locked plan is exited early.</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="withdraw-review-button"
+                    disabled={!withdrawValid}
+                    onClick={() => setWithdrawStep('review')}
+                  >
+                    Review withdrawal
+                    {actionArrow}
+                  </button>
+                </aside>
+              </div>
+            </>
+          ) : (
+            <div className="withdraw-review-page">
+              <div className="withdraw-page-hero">
+                <span>FINAL CHECK</span>
+                <h1>Know what leaves. Know what returns.</h1>
+                <p>The destination, principal, and any reward impact are shown before the testnet transaction can be signed.</p>
+              </div>
+
+              <div className="withdraw-review-grid">
+                <div className="withdraw-review-main">
+                  <span>YOU RECEIVE</span>
+                  <strong>{withdrawAmount} <em>ETH</em></strong>
+                  <p>Returned to {shortAddress(walletSession.address)}</p>
+                </div>
+                <div className="withdraw-review-facts">
+                  <div><small>SOURCE</small><strong>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</strong></div>
+                  <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                  <div><small>PRINCIPAL</small><strong>{withdrawParsed.toFixed(4)} ETH</strong></div>
+                  <div><small>REWARD FORFEITED</small><strong className={withdrawSource === 'locked' ? 'is-negative' : ''}>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                </div>
+              </div>
+
+              <div className="withdraw-review-note">
+                <strong>Testnet safety</strong>
+                <p>The final withdrawal action stays disabled until Rixor’s testnet savings contract is connected. No placeholder transaction will be sent.</p>
+              </div>
+
+              <div className="withdraw-review-actions">
+                <button type="button" onClick={() => setWithdrawStep('setup')}>Back and edit</button>
+                <button type="button" disabled>Withdraw on testnet — contract not connected</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+    )
+  }
 
   if (walletSession && startPlanOpen) {
     return (
@@ -1311,7 +1548,7 @@ export default function App() {
                     <span>Start a plan</span>
                     {actionArrow}
                   </button>
-                  <button type="button" className="dashboard-action">
+                  <button type="button" className="dashboard-action" onClick={openWithdraw}>
                     <span>Withdraw</span>
                     {actionArrow}
                   </button>

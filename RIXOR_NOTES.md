@@ -22,6 +22,17 @@
 - Locked-plan rule currently shown in product UI: principal remains intact; early withdrawal forfeits 50% of interest earned so far.
 - Rates remain illustrative/not guaranteed until the economics and contracts are finalized.
 
+## Withdraw UX
+
+- Withdraw is a dedicated full-page in-app flow.
+- Users choose the source before entering an amount: available balance, flexible plan, or locked plan.
+- Available/flexible withdrawals should not imply a penalty when none applies.
+- Locked-plan withdrawals must clearly separate principal returned, reward kept, and reward forfeited before review.
+- Current early-withdraw rule shown in the UI: principal remains intact; 50% of interest earned so far is forfeited on early exit from a locked plan.
+- Destination defaults to the connected wallet and is shown before review.
+- Empty sources must say that no funds/positions are available instead of showing fake plan balances.
+- Final testnet withdrawal stays disabled until the real Rixor contract is connected.
+
 ## UI direction
 
 - Keep the high-end minimalist Rixor visual language already established.
