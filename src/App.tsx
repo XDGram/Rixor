@@ -374,6 +374,165 @@ export default function App() {
     </svg>
   )
 
+  if (walletSession) {
+    return (
+      <main className={`carbon-stage dashboard-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
+        <div className="carbon-layer carbon-base" aria-hidden="true" />
+        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
+        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
+        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+
+        <header className="dashboard-topbar">
+          <button className="dashboard-brand" type="button" onClick={disconnectWallet}>
+            RIXOR
+          </button>
+
+          <div className="dashboard-topbar-actions">
+            <label className="switch" aria-label={lightMode ? 'Switch to dark mode' : 'Switch to light mode'}>
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={lightMode}
+                onChange={(event) => setLightMode(event.target.checked)}
+              />
+              <div className="slider" />
+            </label>
+
+            <button className="dashboard-wallet" type="button" onClick={() => setWalletModalOpen(true)}>
+              <span className="dashboard-wallet-dot" />
+              <span>
+                <small>{walletSession.name}</small>
+                <strong>{shortAddress(walletSession.address)}</strong>
+              </span>
+            </button>
+          </div>
+        </header>
+
+        {walletModalOpen && (
+          <div className="wallet-modal-backdrop" role="presentation" onMouseDown={() => setWalletModalOpen(false)}>
+            <section
+              className="wallet-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="wallet-modal-title"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="wallet-modal-head">
+                <div>
+                  <span>RIXOR ACCESS</span>
+                  <h2 id="wallet-modal-title">Wallet connected</h2>
+                </div>
+                <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
+                  ×
+                </button>
+              </div>
+
+              <div className="wallet-connected-view">
+                <span className="wallet-connected-dot" />
+                <div>
+                  <small>{walletSession.name.toUpperCase()}</small>
+                  <strong>{shortAddress(walletSession.address)}</strong>
+                </div>
+                <button type="button" onClick={disconnectWallet}>Disconnect</button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        <section className="dashboard-shell" aria-labelledby="dashboard-title">
+          <div className="dashboard-intro">
+            <div>
+              <span className="dashboard-kicker">YOUR SAVINGS</span>
+              <h1 id="dashboard-title">Good to have you here.</h1>
+              <p>Your wallet is connected. Your onchain savings will live here.</p>
+            </div>
+
+            <span className="dashboard-network-pill">
+              {walletSession.kind === 'evm' ? 'EVM connected' : 'Solana connected'}
+            </span>
+          </div>
+
+          <div className="dashboard-balance-card">
+            <div className="dashboard-balance-main">
+              <span>Total savings</span>
+              <strong>0.00 <em>USDG</em></strong>
+              <small>No savings position yet</small>
+            </div>
+
+            <div className="dashboard-balance-meta">
+              <div>
+                <span>Earned</span>
+                <strong>0.00 USDG</strong>
+              </div>
+              <div>
+                <span>Available</span>
+                <strong>0.00 USDG</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="dashboard-actions">
+            <button type="button" className="dashboard-action dashboard-action--primary">
+              <span>Add money</span>
+              {actionArrow}
+            </button>
+            <button type="button" className="dashboard-action">
+              <span>Start a plan</span>
+              {actionArrow}
+            </button>
+            <button type="button" className="dashboard-action">
+              <span>Withdraw</span>
+              {actionArrow}
+            </button>
+          </div>
+
+          <div className="dashboard-grid">
+            <article className="dashboard-panel dashboard-plans-panel">
+              <div className="dashboard-panel-head">
+                <div>
+                  <span>ACTIVE PLANS</span>
+                  <h2>Your savings plans</h2>
+                </div>
+                <button type="button">View all</button>
+              </div>
+
+              <div className="dashboard-empty-plan">
+                <span className="dashboard-empty-orb">+</span>
+                <div>
+                  <strong>No active plans yet.</strong>
+                  <p>Start flexible savings or choose a fixed timeline when you are ready.</p>
+                </div>
+                <button type="button">Start a plan</button>
+              </div>
+            </article>
+
+            <article className="dashboard-panel dashboard-activity-panel">
+              <div className="dashboard-panel-head">
+                <div>
+                  <span>ACTIVITY</span>
+                  <h2>Recent movement</h2>
+                </div>
+              </div>
+
+              <div className="dashboard-empty-activity">
+                <span />
+                <p>Your deposits, plan starts and withdrawals will appear here.</p>
+              </div>
+            </article>
+          </div>
+
+          <div className="dashboard-footnote">
+            <span className="dashboard-footnote-dot" />
+            <p>
+              Connected as {shortAddress(walletSession.address)}. Balances remain at zero until
+              Rixor's onchain contracts are wired into this dashboard.
+            </p>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main
       className={`carbon-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}
@@ -396,24 +555,14 @@ export default function App() {
             <div className="wallet-modal-head">
               <div>
                 <span>RIXOR ACCESS</span>
-                <h2 id="wallet-modal-title">{walletSession ? 'Wallet connected' : 'Connect your wallet'}</h2>
+                <h2 id="wallet-modal-title">Connect your wallet</h2>
               </div>
               <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
                 ×
               </button>
             </div>
 
-            {walletSession ? (
-              <div className="wallet-connected-view">
-                <span className="wallet-connected-dot" />
-                <div>
-                  <small>{walletSession.name.toUpperCase()}</small>
-                  <strong>{shortAddress(walletSession.address)}</strong>
-                </div>
-                <button type="button" onClick={disconnectWallet}>Disconnect</button>
-              </div>
-            ) : (
-              <>
+            <>
                 <p className="wallet-modal-copy">
                   Your wallet is your Rixor account. Rixor checks this browser for compatible
                   wallets, then asks you to sign a free ownership message. No funds move here.
@@ -477,8 +626,7 @@ export default function App() {
 
                 {walletError && <p className="wallet-error">{walletError}</p>}
                 <p className="wallet-modal-foot">Rixor never asks for your seed phrase or private key.</p>
-              </>
-            )}
+            </>
           </section>
         </div>
       )}
@@ -596,11 +744,11 @@ export default function App() {
               <strong>+{projected.toFixed(2)} USDG / year</strong>
             </div>
 
-            <button className={`connect-wallet ${walletSession ? 'is-connected' : ''}`} type="button" onClick={() => {
+            <button className="connect-wallet" type="button" onClick={() => {
               setWalletError('')
               setWalletModalOpen(true)
             }}>
-              <span>{walletSession ? shortAddress(walletSession.address) : 'Connect Wallet'}</span>
+              <span>Connect Wallet</span>
             </button>
           </aside>
         </div>
