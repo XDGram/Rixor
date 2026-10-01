@@ -10,6 +10,8 @@ type WalletSession = {
 
 type EvmProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+  on?: (event: string, handler: (...args: unknown[]) => void) => void
+  removeListener?: (event: string, handler: (...args: unknown[]) => void) => void
 }
 
 type SolanaProvider = {
@@ -44,6 +46,9 @@ export default function App() {
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
+  const [connectedEvmProvider, setConnectedEvmProvider] = useState<EvmProvider | null>(null)
+  const [evmChainId, setEvmChainId] = useState<number | null>(null)
+  const [networkSwitching, setNetworkSwitching] = useState<number | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -86,6 +91,9 @@ export default function App() {
       })
 
       setWalletSession({ kind: 'evm', address, name: wallet.name })
+      setConnectedEvmProvider(ethereum)
+      const chainId = await ethereum.request({ method: 'eth_chainId' }) as string
+      setEvmChainId(Number.parseInt(chainId, 16))
       setWalletModalOpen(false)
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : 'EVM wallet connection failed.')
@@ -117,9 +125,91 @@ export default function App() {
 
   const disconnectWallet = () => {
     setWalletSession(null)
+    setConnectedEvmProvider(null)
+    setEvmChainId(null)
     setWalletError('')
     setWalletModalOpen(false)
   }
+
+  const evmNetworks = [
+    {
+      id: 11155111,
+      hexId: '0xaa36a7',
+      name: 'Sepolia',
+      shortName: 'Sepolia',
+      rpcUrl: 'https://rpc.sepolia.org',
+      explorerUrl: 'https://sepolia.etherscan.io',
+    },
+    {
+      id: 46630,
+      hexId: '0xb626',
+      name: 'Robinhood Chain Testnet',
+      shortName: 'Robinhood Testnet',
+      rpcUrl: 'https://rpc.testnet.chain.robinhood.com',
+      explorerUrl: 'https://explorer.testnet.chain.robinhood.com',
+    },
+  ] as const
+
+  const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
+
+  const switchEvmNetwork = async (networkId: number) => {
+    if (!connectedEvmProvider) return
+    const network = evmNetworks.find((item) => item.id === networkId)
+    if (!network) return
+
+    setNetworkSwitching(networkId)
+    setWalletError('')
+
+    try {
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: network.hexId }],
+      })
+      setEvmChainId(network.id)
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? Number((error as { code?: number }).code)
+        : null
+
+      if (code === 4902) {
+        try {
+          await connectedEvmProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: network.hexId,
+              chainName: network.name,
+              nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+              rpcUrls: [network.rpcUrl],
+              blockExplorerUrls: [network.explorerUrl],
+            }],
+          })
+          setEvmChainId(network.id)
+        } catch (addError) {
+          setWalletError(addError instanceof Error ? addError.message : 'Could not add this testnet.')
+        }
+      } else {
+        setWalletError(error instanceof Error ? error.message : 'Network switch failed.')
+      }
+    } finally {
+      setNetworkSwitching(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!connectedEvmProvider?.on || walletSession?.kind !== 'evm') return
+
+    const handleChainChanged = (...args: unknown[]) => {
+      const chainId = args[0]
+      if (typeof chainId === 'string') {
+        setEvmChainId(Number.parseInt(chainId, 16))
+      }
+    }
+
+    connectedEvmProvider.on('chainChanged', handleChainChanged)
+    return () => {
+      connectedEvmProvider.removeListener?.('chainChanged', handleChainChanged)
+    }
+  }, [connectedEvmProvider, walletSession?.kind])
 
   useEffect(() => {
     const wallets = new Map<string, DetectedWallet>()
@@ -447,10 +537,33 @@ export default function App() {
               <p>Your wallet is connected. Your onchain savings will live here.</p>
             </div>
 
-            <span className="dashboard-network-pill">
-              {walletSession.kind === 'evm' ? 'EVM connected' : 'Solana connected'}
-            </span>
+            {walletSession.kind === 'evm' ? (
+              <div className="dashboard-network-switcher" aria-label="EVM testnet">
+                {evmNetworks.map((network) => (
+                  <button
+                    key={network.id}
+                    type="button"
+                    className={`dashboard-network-option ${evmChainId === network.id ? 'is-active' : ''}`}
+                    onClick={() => switchEvmNetwork(network.id)}
+                    disabled={networkSwitching !== null}
+                  >
+                    <span className="dashboard-network-status" />
+                    <span>{network.shortName}</span>
+                    {networkSwitching === network.id && <em>Switching…</em>}
+                  </button>
+                ))}
+                {!currentEvmNetwork && evmChainId !== null && (
+                  <span className="dashboard-network-unsupported">Unsupported network</span>
+                )}
+              </div>
+            ) : (
+              <span className="dashboard-network-pill">Solana connected</span>
+            )}
           </div>
+
+          {walletSession.kind === 'evm' && walletError && (
+            <p className="dashboard-network-error">{walletError}</p>
+          )}
 
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">

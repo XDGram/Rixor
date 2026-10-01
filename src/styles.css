@@ -166,6 +166,82 @@ body {
   white-space: nowrap;
 }
 
+.dashboard-network-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dashboard-network-option {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    transform .2s ease,
+    border-color .2s ease,
+    background-color .2s ease,
+    color .2s ease;
+}
+
+.dashboard-network-option:hover:not(:disabled),
+.dashboard-network-option:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.dashboard-network-option:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.dashboard-network-option em {
+  font-size: 10px;
+  font-style: normal;
+  opacity: .62;
+}
+
+.dashboard-network-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .35;
+}
+
+.dashboard-network-option.is-active .dashboard-network-status {
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 0 0 0 4px rgba(207,239,0,.08);
+}
+
+.dashboard-network-unsupported {
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: .58;
+}
+
+.dashboard-network-error {
+  margin: 12px 0 0 auto;
+  max-width: 520px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+}
+
 .dashboard-balance-card {
   margin-top: 36px;
   min-height: 280px;
@@ -502,6 +578,30 @@ body {
   border: 1px solid rgba(207,239,0,.14);
 }
 
+.dark-mode .dashboard-network-option,
+.dark-mode .dashboard-network-unsupported {
+  color: #f4f4f1;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.dark-mode .dashboard-network-option.is-active {
+  color: #111;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.dark-mode .dashboard-network-option.is-active .dashboard-network-status {
+  background: #111;
+  box-shadow: 0 0 0 4px rgba(17,17,17,.08);
+}
+
+.dark-mode .dashboard-network-error {
+  color: #f4f4f1;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
 .light-mode .dashboard-stage,
 .light-mode .dashboard-brand {
   color: #111;
@@ -523,6 +623,30 @@ body {
   color: #607200;
   background: rgba(207,239,0,.16);
   border: 1px solid rgba(118,136,0,.12);
+}
+
+.light-mode .dashboard-network-option,
+.light-mode .dashboard-network-unsupported {
+  color: #111;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(17,17,17,.08);
+}
+
+.light-mode .dashboard-network-option.is-active {
+  color: #111;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.light-mode .dashboard-network-option.is-active .dashboard-network-status {
+  background: #111;
+  box-shadow: 0 0 0 4px rgba(17,17,17,.08);
+}
+
+.light-mode .dashboard-network-error {
+  color: #111;
+  background: rgba(255,255,255,.66);
+  border: 1px solid rgba(17,17,17,.08);
 }
 
 @keyframes dashboard-rise {
@@ -579,6 +703,15 @@ body {
   .dashboard-intro {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .dashboard-network-switcher {
+    justify-content: flex-start;
+  }
+
+  .dashboard-network-error {
+    margin-left: 0;
+    text-align: left;
   }
 
   .dashboard-balance-card {
