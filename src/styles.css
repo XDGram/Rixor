@@ -306,8 +306,9 @@ body {
 }
 
 .dashboard-action--primary {
-  background: transparent !important;
-  border-color: rgba(207,239,0,.42) !important;
+  background: var(--accent) !important;
+  color: #111 !important;
+  border-color: transparent !important;
 }
 
 .dashboard-action--primary::after {
@@ -325,10 +326,21 @@ body {
     opacity .25s ease;
 }
 
+.dashboard-action--primary::before {
+  display: none;
+}
+
 .dashboard-action--primary:hover::after,
 .dashboard-action--primary:focus-visible::after {
   width: 0;
   opacity: 0;
+}
+
+.dashboard-action--primary:hover,
+.dashboard-action--primary:focus-visible {
+  color: #111 !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,.12);
 }
 
 .dashboard-grid {
