@@ -431,8 +431,11 @@ export default function App() {
   }
 
   const deployRixorContract = async () => {
-    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentEvmNetwork || !evmChainId) return
-    if (currentRixorContractAddress) return
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm') return
+
+    const targetNetwork = evmNetworks.find((network) => network.id === 11155111)
+    if (!targetNetwork) return
+    if (localContractAddresses[targetNetwork.id] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS) return
 
     try {
       setDeployError('')
@@ -441,18 +444,52 @@ export default function App() {
 
       await connectedEvmProvider.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: currentEvmNetwork.hexId }],
+        params: [{ chainId: targetNetwork.hexId }],
       })
 
       const confirmedChainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
       const confirmedChainId = Number.parseInt(confirmedChainHex, 16)
-      if (confirmedChainId !== currentEvmNetwork.id) {
-        throw new Error(`Switch your wallet to ${currentEvmNetwork.shortName} before deploying.`)
+      if (confirmedChainId !== targetNetwork.id) {
+        throw new Error(`Wallet did not switch to ${targetNetwork.shortName}. Deployment cancelled.`)
       }
 
       const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
       const deployFrom = accounts?.[0]
       if (!deployFrom) throw new Error('No active EVM wallet account found.')
+
+      let sepoliaBalanceHex: string | null = null
+      for (const rpcUrl of targetNetwork.balanceRpcUrls) {
+        try {
+          const response = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'eth_getBalance',
+              params: [deployFrom, 'latest'],
+            }),
+          })
+          const result = await response.json() as { result?: string }
+          if (result.result) {
+            sepoliaBalanceHex = result.result
+            break
+          }
+        } catch {
+          // Try the next Sepolia RPC.
+        }
+      }
+
+      if (!sepoliaBalanceHex) throw new Error('Could not read your Sepolia test ETH balance. Deployment cancelled.')
+      if (BigInt(sepoliaBalanceHex) === 0n) throw new Error('This wallet has no Sepolia test ETH for deployment gas.')
+
+      const estimatedGas = await connectedEvmProvider.request({
+        method: 'eth_estimateGas',
+        params: [{
+          from: deployFrom,
+          data: rixorSavingsArtifact.bytecode,
+        }],
+      }) as string
 
       setEvmChainId(confirmedChainId)
 
@@ -461,6 +498,7 @@ export default function App() {
         params: [{
           from: deployFrom,
           data: rixorSavingsArtifact.bytecode,
+          gas: estimatedGas,
         }],
       }) as string
 
@@ -480,7 +518,7 @@ export default function App() {
       if (!receipt) throw new Error('Deployment is still pending. Check the explorer for status.')
       if (receipt.status !== '0x1' || !receipt.contractAddress) throw new Error('Contract deployment failed.')
 
-      const nextAddresses = { ...localContractAddresses, [evmChainId]: receipt.contractAddress }
+      const nextAddresses = { ...localContractAddresses, [targetNetwork.id]: receipt.contractAddress }
       setLocalContractAddresses(nextAddresses)
       window.localStorage.setItem('rixor:testnet-contracts', JSON.stringify(nextAddresses))
       setDeployStatus('confirmed')
@@ -2027,12 +2065,12 @@ export default function App() {
                 <strong>{contractAvailableBalance} <em>ETH</em></strong>
                 <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
-                {!currentRixorContractAddress && currentEvmNetwork && (
+                {!import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS && !localContractAddresses[11155111] && (
                   <div className="dashboard-contract-setup">
                     <div>
                       <small>TESTNET CONTRACT</small>
-                      <strong>{currentEvmNetwork.shortName}</strong>
-                      <span>Deploy the compiled RixorSavings contract using this connected wallet.</span>
+                      <strong>Sepolia</strong>
+                      <span>Deployment is pinned to Sepolia. Gas is paid with Sepolia test ETH only.</span>
                     </div>
                     <button
                       type="button"
@@ -2045,10 +2083,10 @@ export default function App() {
                           ? 'Deploying…'
                           : deployStatus === 'confirmed'
                             ? 'Deployed'
-                            : 'Deploy test contract'}
+                            : 'Deploy on Sepolia'}
                     </button>
                     {deployTxHash && (
-                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
+                      <a href={`https://sepolia.etherscan.io/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
                         View deployment ↗
                       </a>
                     )}
