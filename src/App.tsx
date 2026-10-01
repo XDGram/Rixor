@@ -7,11 +7,13 @@ export default function App() {
   const [openHowCard, setOpenHowCard] = useState<string | null>(null)
   const [howInView, setHowInView] = useState(false)
   const [plansInView, setPlansInView] = useState(false)
+  const [securityInView, setSecurityInView] = useState(false)
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
   const [planAmount, setPlanAmount] = useState(2500)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
+  const securitySectionRef = useRef<HTMLElement>(null)
   const apy = plan === 'flexible' ? 3.8 : 6.8
   const projected = useMemo(() => {
     const parsed = Number(amount.replace(/,/g, '')) || 0
@@ -38,6 +40,13 @@ export default function App() {
 
   const scrollToPlans = () => {
     document.getElementById('plans')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
+
+  const scrollToSecurity = () => {
+    document.getElementById('security')?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     })
@@ -76,6 +85,24 @@ export default function App() {
       {
         threshold: 0.18,
         rootMargin: '0px 0px -10% 0px',
+      },
+    )
+
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const section = securitySectionRef.current
+    if (!section) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setSecurityInView(entry.isIntersecting)
+      },
+      {
+        threshold: 0.2,
+        rootMargin: '0px 0px -12% 0px',
       },
     )
 
@@ -146,7 +173,7 @@ export default function App() {
           <label className="tab_label" htmlFor="tab3" onClick={scrollToPlans}>Plans</label>
 
           <input type="radio" name="tab" id="tab4" className="tab tab--4" />
-          <label className="tab_label" htmlFor="tab4">Security</label>
+          <label className="tab_label" htmlFor="tab4" onClick={scrollToSecurity}>Security</label>
 
           <div className="indicator" />
         </div>
@@ -577,6 +604,97 @@ export default function App() {
               {actionArrow}
             </button>
           </aside>
+        </div>
+      </section>
+
+      <section
+        id="security"
+        ref={securitySectionRef}
+        className={`security-section ${securityInView ? 'is-visible' : ''}`}
+        aria-labelledby="security-title"
+      >
+        <div className="security-heading">
+          <span className="security-kicker">SECURITY</span>
+          <h2 id="security-title">Your money. Your keys. Your decision.</h2>
+          <p>
+            Rixor is designed to keep the boundary clear: your wallet stays yours, and every
+            important action stays visible before you confirm it.
+          </p>
+        </div>
+
+        <div className="security-visual" aria-label="Wallet protection boundary">
+          <div className="security-side security-side--wallet">
+            <span className="security-side-label">YOUR WALLET</span>
+            <div className="security-wallet-card">
+              <span className="security-wallet-mark">R</span>
+              <div>
+                <strong>Private keys</strong>
+                <span>Stay with you</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="security-boundary" aria-hidden="true">
+            <span className="security-boundary-line" />
+            <span className="security-lock">
+              <span className="security-lock-shackle" />
+              <span className="security-lock-body">✓</span>
+            </span>
+            <span className="security-signal security-signal--one">PUBLIC ADDRESS</span>
+            <span className="security-signal security-signal--two">APPROVAL</span>
+          </div>
+
+          <div className="security-side security-side--rixor">
+            <span className="security-side-label">RIXOR</span>
+            <div className="security-rules">
+              <div>
+                <span>01</span>
+                <strong>Read public address</strong>
+              </div>
+              <div>
+                <span>02</span>
+                <strong>Show action details</strong>
+              </div>
+              <div>
+                <span>03</span>
+                <strong>Wait for confirmation</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="security-grid">
+          <article className="security-card">
+            <span className="security-card-index">01</span>
+            <h3>Wallet stays yours.</h3>
+            <p>
+              Connecting Rixor does not hand over your seed phrase or private key. The wallet
+              remains the place where ownership stays.
+            </p>
+          </article>
+
+          <article className="security-card">
+            <span className="security-card-index">02</span>
+            <h3>Review before action.</h3>
+            <p>
+              Amounts, plan terms and important effects are surfaced before a money-moving
+              action is confirmed.
+            </p>
+          </article>
+
+          <article className="security-card">
+            <span className="security-card-index">03</span>
+            <h3>Rules stay visible.</h3>
+            <p>
+              Access, maturity and early-withdrawal effects stay readable so the plan does not
+              hide its conditions from you.
+            </p>
+          </article>
+        </div>
+
+        <div className="security-close">
+          <span>Clear boundaries. Clear decisions.</span>
+          <p>That is the standard Rixor is built around.</p>
         </div>
       </section>
     </main>
