@@ -1665,48 +1665,106 @@ export default function App() {
               </div>
             </>
           ) : (
-            <div className="plan-review-page">
-              <div className="plan-page-hero">
-                <span>FINAL CHECK</span>
-                <h1>Review before you start.</h1>
-                <p>Nothing moves until you approve the final testnet transaction.</p>
+            <div className="plan-review-page is-refined">
+              <div className="plan-review-hero-row">
+                <div className="plan-page-hero plan-page-hero--review">
+                  <span>FINAL CHECK</span>
+                  <h1>Make it official.</h1>
+                  <p>Review the plan once, then approve a single Sepolia transaction.</p>
+                </div>
+                <div className="plan-review-network-pill">
+                  <span />
+                  <small>{currentEvmNetwork?.shortName ?? 'Testnet'}</small>
+                  <strong>{shortAddress(walletSession.address)}</strong>
+                </div>
               </div>
 
-              <div className="plan-review-layout">
-                <div className="plan-review-card">
+              <div className="plan-review-stage">
+                <div className="plan-review-machine" aria-hidden="true">
+                  <div className="plan-review-machine-card">
+                    <div className="plan-review-machine-line" />
+                    <div className="plan-review-machine-dots" />
+                  </div>
+                  <div className="plan-review-machine-terminal">
+                    <div className="plan-review-machine-slot" />
+                    <div className="plan-review-machine-screen">
+                      <span>{Number(startPlanAmount || 0).toFixed(4)}</span>
+                      <small>ETH</small>
+                    </div>
+                    <div className="plan-review-machine-keys" />
+                    <div className="plan-review-machine-keys second" />
+                  </div>
+                  <span className="plan-review-machine-label">{startPlanSelected.label.toUpperCase()}</span>
+                </div>
+
+                <div className="plan-review-primary">
                   <span>{selectedGoal.title.toUpperCase()}</span>
-                  <strong>{startPlanAmount} <em>ETH</em></strong>
-                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% APY</p>
-                </div>
-                <div className="plan-review-facts">
-                  <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                  <div><small>ACCESS</small><strong>{startPlanSelected.access}</strong></div>
-                  <div><small>MATURITY</small><strong>{startPlanMaturity}</strong></div>
-                  <div><small>REWARDS</small><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                  <strong>{Number(startPlanAmount || 0).toFixed(4)} <em>ETH</em></strong>
+                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% APY · rewards in {rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</p>
+
+                  <div className="plan-review-meta-grid">
+                    <div><small>ACCESS</small><strong>{startPlanSelected.access}</strong></div>
+                    <div><small>MATURITY</small><strong>{startPlanMaturity}</strong></div>
+                    <div><small>REWARD</small><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                    <div><small>EST. REWARD*</small><strong>{startPlanProjected.toFixed(4)} {rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                  </div>
                 </div>
               </div>
 
-              <div className="plan-review-explainer">
-                <strong>What happens next</strong>
-                <p>Your ETH remains the principal of this plan. USDG is only used if you choose it as the reward asset. The final onchain plan creation stays disabled until the Rixor testnet contract is connected.</p>
+              <div className="plan-review-explainer refined">
+                <div>
+                  <span className="dashboard-footnote-dot" />
+                  <div>
+                    <strong>Your principal stays ETH.</strong>
+                    <p>{rewardAsset === 'usdg' ? 'USDG is only your selected reward preference; it does not replace the ETH principal.' : 'Rewards are set to the same asset preference for this plan.'} Rates shown in the interface are still illustrative in v0.1.</p>
+                  </div>
+                </div>
+                <small>{currentRixorContractAddress ? `Contract ${shortAddress(currentRixorContractAddress)}` : 'Contract unavailable'}</small>
               </div>
 
-              <div className="plan-review-actions plan-review-actions--page">
-                <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
-                <button
-                  type="button"
-                  onClick={createSavingsPlan}
-                  disabled={!currentRixorContractAddress || !startPlanValid || startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending' || startPlanTxStatus === 'confirmed'}
-                >
-                  {startPlanTxStatus === 'awaiting-wallet'
-                    ? 'Approve in wallet…'
-                    : startPlanTxStatus === 'pending'
-                      ? 'Starting plan…'
-                      : startPlanTxStatus === 'confirmed'
-                        ? 'Plan started'
-                        : 'Start plan on testnet'}
-                </button>
-              </div>
+              {(startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending') && (
+                <div className="plan-review-loading" role="status" aria-live="polite">
+                  <div className="plan-review-loader" aria-hidden="true" />
+                  <div>
+                    <small>{startPlanTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
+                    <strong>{startPlanTxStatus === 'awaiting-wallet' ? 'Approve your savings plan' : 'Creating your plan…'}</strong>
+                    <span>{Number(startPlanAmount || 0).toFixed(4)} ETH · {startPlanSelected.label}</span>
+                  </div>
+                </div>
+              )}
+
+              {startPlanTxStatus === 'failed' && (
+                <div className="plan-review-error">
+                  <strong>Plan creation failed</strong>
+                  <span>{startPlanTxError || 'The transaction did not complete.'}</span>
+                </div>
+              )}
+
+              {startPlanTxStatus === 'confirmed' ? (
+                <div className="plan-review-success">
+                  <div className="plan-review-success-mark">✓</div>
+                  <div>
+                    <small>PLAN STARTED</small>
+                    <strong>{Number(startPlanAmount || 0).toFixed(4)} ETH is now in your {startPlanSelected.label.toLowerCase()} plan.</strong>
+                    {startPlanTxHash && currentEvmNetwork && (
+                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${startPlanTxHash}`} target="_blank" rel="noreferrer">View transaction ↗</a>
+                    )}
+                  </div>
+                </div>
+              ) : startPlanTxStatus !== 'awaiting-wallet' && startPlanTxStatus !== 'pending' && (
+                <div className="plan-review-actions plan-review-actions--page refined">
+                  <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
+                  <button
+                    type="button"
+                    className="plan-review-confirm"
+                    onClick={createSavingsPlan}
+                    disabled={!currentRixorContractAddress || !startPlanValid}
+                  >
+                    <span>Confirm & start plan</span>
+                    <small>{Number(startPlanAmount || 0).toFixed(4)} ETH</small>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>
