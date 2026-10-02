@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
-import { Interface, encodeBytes32String } from 'ethers'
+import { Interface, decodeBytes32String, encodeBytes32String } from 'ethers'
 
 type WalletKind = 'evm' | 'solana'
 
@@ -120,6 +120,8 @@ export default function App() {
   const [withdrawTxStatus, setWithdrawTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [withdrawTxHash, setWithdrawTxHash] = useState('')
   const [withdrawTxError, setWithdrawTxError] = useState('')
+  const [activePlans, setActivePlans] = useState<ActivePlan[]>([])
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
@@ -367,6 +369,112 @@ export default function App() {
     }
   }
 
+  const refreshOnchainPlans = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress || !currentEvmNetwork) {
+      setActivePlans([])
+      setActivityItems([])
+      return
+    }
+
+    try {
+      const idsCall = rixorInterface.encodeFunctionData('getUserPlanIds', [walletSession.address])
+      const idsResult = await connectedEvmProvider.request({
+        method: 'eth_call',
+        params: [{ to: currentRixorContractAddress, data: idsCall }, 'latest'],
+      }) as string
+      const decodedIds = rixorInterface.decodeFunctionResult('getUserPlanIds', idsResult)[0] as bigint[]
+
+      const termLabels = ['Flexible', '30 days', '90 days', '180 days', '1 year']
+      const accessLabels = ['Anytime', 'Locked 30 days', 'Locked 90 days', 'Locked 180 days', 'Locked 1 year']
+      const apys = [3.8, 5.2, 6.8, 8.1, 9.4]
+
+      const loadedPlans = await Promise.all(decodedIds.map(async (planId) => {
+        const planCall = rixorInterface.encodeFunctionData('plans', [planId])
+        const planResult = await connectedEvmProvider.request({
+          method: 'eth_call',
+          params: [{ to: currentRixorContractAddress, data: planCall }, 'latest'],
+        }) as string
+        const decoded = rixorInterface.decodeFunctionResult('plans', planResult)
+
+        const principalWei = decoded[2] as bigint
+        const planType = Number(decoded[3])
+        const rewardPreference = Number(decoded[4])
+        const goalBytes = decoded[5] as string
+        const startedAtSeconds = Number(decoded[6])
+        const maturesAtSeconds = Number(decoded[7])
+        const status = Number(decoded[8])
+        const startedAt = startedAtSeconds * 1000
+        const maturesAt = maturesAtSeconds > 0 ? maturesAtSeconds * 1000 : null
+        const now = Date.now()
+        const progress = maturesAt
+          ? Math.min(100, Math.max(0, ((now - startedAt) / Math.max(1, maturesAt - startedAt)) * 100))
+          : 0
+
+        let goal = 'Savings goal'
+        try {
+          goal = decodeBytes32String(goalBytes).replace(/-/g, ' ')
+        } catch {
+          // Keep the generic label when an older plan contains a non-text bytes32 goal.
+        }
+
+        return {
+          id: planId.toString(),
+          goal,
+          principalAsset: 'ETH',
+          principalAmount: Number(principalWei) / 1e18,
+          apy: apys[planType] ?? 0,
+          rewardAsset: rewardPreference === 1 ? 'USDG' : 'ETH',
+          termLabel: termLabels[planType] ?? 'Plan',
+          accessLabel: accessLabels[planType] ?? 'Onchain',
+          startedAt,
+          maturesAt,
+          progress,
+          accruedReward: 0,
+          status: (status === 0 ? (maturesAt && now >= maturesAt ? 'matured' : 'active') : 'matured') as 'active' | 'matured',
+        } satisfies ActivePlan
+      }))
+
+      setActivePlans(loadedPlans.filter((planItem) => planItem.status === 'active' || planItem.status === 'matured'))
+
+      if (evmChainId === 11155111) {
+        const planCreatedTopic = rixorInterface.getEvent('PlanCreated')!.topicHash
+        const paddedUser = `0x${walletSession.address.toLowerCase().replace(/^0x/, '').padStart(64, '0')}`
+        const logs = await connectedEvmProvider.request({
+          method: 'eth_getLogs',
+          params: [{
+            address: currentRixorContractAddress,
+            fromBlock: '0xb47c03',
+            toBlock: 'latest',
+            topics: [planCreatedTopic, paddedUser],
+          }],
+        }) as Array<{ data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }>
+
+        const planActivity = logs.map((log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          const principal = parsed ? Number(parsed.args.principal as bigint) / 1e18 : 0
+          const planType = parsed ? Number(parsed.args.planType) : 0
+          const startedAt = parsed ? Number(parsed.args.startedAt) * 1000 : Date.now()
+          return {
+            id: `plan-${log.transactionHash}-${log.logIndex}`,
+            type: 'plan_started' as const,
+            title: `${termLabels[planType] ?? 'Savings'} plan started`,
+            amount: principal,
+            asset: 'ETH',
+            timestamp: startedAt,
+            network: currentEvmNetwork.shortName,
+            status: 'confirmed' as const,
+            txHash: log.transactionHash,
+          }
+        })
+        setActivityItems(planActivity.sort((a, b) => b.timestamp - a.timestamp))
+      } else {
+        setActivityItems([])
+      }
+    } catch (error) {
+      console.error('Could not hydrate Rixor plans', error)
+    }
+  }
+
   const openAddMoney = () => {
     setAddMoneyAmount('')
     setAddMoneyStep('amount')
@@ -506,7 +614,7 @@ export default function App() {
       if (receipt.status !== '0x1') throw new Error('Plan creation reverted.')
 
       setStartPlanTxStatus('confirmed')
-      await refreshContractAvailableBalance()
+      await Promise.all([refreshContractAvailableBalance(), refreshOnchainPlans()])
     } catch (error) {
       setStartPlanTxStatus('failed')
       setStartPlanTxError(error instanceof Error ? error.message : 'Plan creation failed.')
@@ -763,14 +871,14 @@ export default function App() {
 
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
-    void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+    void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])
   }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId, currentRixorContractAddress])
 
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
 
     const refreshBalances = () => {
-      void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+      void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])
     }
 
     const handleVisibility = () => {
@@ -1085,10 +1193,6 @@ export default function App() {
   const estimatedRewardForfeited = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : 0
   const estimatedRewardKept = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : estimatedLockedReward
 
-  // These collections are intentionally empty until the Rixor testnet contract is connected.
-  // Once deployed, they will be derived from contract state + wallet-address event logs.
-  const activePlans: ActivePlan[] = []
-  const activityItems: ActivityItem[] = []
   const selectedActivePlan = activePlans.find((planItem) => planItem.id === selectedPlanId) ?? null
 
   const formatPlanDate = (timestamp: number | null) => {
