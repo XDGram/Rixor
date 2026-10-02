@@ -70,3 +70,7 @@
 
 - The dashboard also supports wallet-signed testnet deployment. If no configured contract address exists on Sepolia or Robinhood Chain Testnet, the connected EVM wallet can deploy the compiled RixorSavings bytecode directly and Rixor stores the resulting contract address locally for that chain.
 - Robinhood Testnet balance reads use the official RPC first, then /rpc, then https://robinhood-sepolia-rpc.publicnode.com as a fallback.
+- Canonical Sepolia RixorSavings deployment: `0xec4db2f637697191904cf3c46c0a18a9025a2077`.
+- Sepolia deployment transaction: `0xce3899a426c167486d50c0cb36a18bd3eb96c97c10b535234bb161f6863f51b8`.
+- Start Plan now uses Rixor's onchain available balance and calls `createPlan(...)` on the deployed contract.
+- Available-balance withdrawal now calls `withdrawAvailable(...)`; plan withdrawals remain disabled until exact onchain plan IDs are loaded.

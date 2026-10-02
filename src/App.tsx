@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
+import { Interface, encodeBytes32String } from 'ethers'
 
 type WalletKind = 'evm' | 'solana'
 
@@ -60,6 +61,8 @@ type ActivityItem = {
 }
 
 export default function App() {
+  const rixorInterface = useMemo(() => new Interface(rixorSavingsArtifact.abi), [])
+  const deployedSepoliaAddress = '0xec4db2f637697191904cf3c46c0a18a9025a2077'
   const [lightMode, setLightMode] = useState(false)
   const [amount, setAmount] = useState('1000')
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
@@ -111,6 +114,12 @@ export default function App() {
   const [withdrawStep, setWithdrawStep] = useState<'setup' | 'review'>('setup')
   const [withdrawSource, setWithdrawSource] = useState<'available' | 'flexible' | 'locked'>('available')
   const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [startPlanTxStatus, setStartPlanTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [startPlanTxHash, setStartPlanTxHash] = useState('')
+  const [startPlanTxError, setStartPlanTxError] = useState('')
+  const [withdrawTxStatus, setWithdrawTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [withdrawTxHash, setWithdrawTxHash] = useState('')
+  const [withdrawTxError, setWithdrawTxError] = useState('')
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
@@ -234,7 +243,7 @@ export default function App() {
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
   const currentRixorContractAddress = evmChainId === 11155111
-    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || localContractAddresses[11155111]
+    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || localContractAddresses[11155111] || deployedSepoliaAddress
     : evmChainId === 46630
       ? import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS || localContractAddresses[46630]
       : undefined
@@ -430,12 +439,129 @@ export default function App() {
     }
   }
 
+  const waitForReceipt = async (hash: string) => {
+    if (!connectedEvmProvider) return null
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const receipt = await connectedEvmProvider.request({
+        method: 'eth_getTransactionReceipt',
+        params: [hash],
+      }) as { status?: string } | null
+      if (receipt) return receipt
+      await new Promise((resolve) => window.setTimeout(resolve, 1500))
+    }
+    return null
+  }
+
+  const createSavingsPlan = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress) return
+    if (!startPlanValid) return
+
+    try {
+      setStartPlanTxError('')
+      setStartPlanTxHash('')
+      setStartPlanTxStatus('awaiting-wallet')
+
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: currentEvmNetwork.hexId }],
+      })
+
+      const confirmedChainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
+      if (Number.parseInt(confirmedChainHex, 16) !== currentEvmNetwork.id) {
+        throw new Error(`Switch your wallet to ${currentEvmNetwork.shortName} before starting a plan.`)
+      }
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const from = accounts?.[0]
+      if (!from) throw new Error('No active EVM wallet account found.')
+
+      const termMap: Record<typeof startPlanTerm, number> = {
+        flexible: 0,
+        '30': 1,
+        '90': 2,
+        '180': 3,
+        '365': 4,
+      }
+      const rewardPreference = rewardAsset === 'same' ? 0 : 1
+      const amountWei = parseEthToWei(startPlanAmount)
+      const goalBytes = encodeBytes32String(startPlanGoal)
+      const data = rixorInterface.encodeFunctionData('createPlan', [
+        amountWei,
+        termMap[startPlanTerm],
+        rewardPreference,
+        goalBytes,
+      ])
+
+      const hash = await connectedEvmProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{ from, to: currentRixorContractAddress, data }],
+      }) as string
+
+      setStartPlanTxHash(hash)
+      setStartPlanTxStatus('pending')
+
+      const receipt = await waitForReceipt(hash)
+      if (!receipt) throw new Error('Plan transaction is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('Plan creation reverted.')
+
+      setStartPlanTxStatus('confirmed')
+      await refreshContractAvailableBalance()
+    } catch (error) {
+      setStartPlanTxStatus('failed')
+      setStartPlanTxError(error instanceof Error ? error.message : 'Plan creation failed.')
+    }
+  }
+
+  const withdrawAvailableFromRixor = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress) return
+    if (withdrawSource !== 'available') return
+
+    try {
+      const amountWei = parseEthToWei(withdrawAmount)
+      if (amountWei <= 0n) throw new Error('Enter an amount above 0.')
+
+      setWithdrawTxError('')
+      setWithdrawTxHash('')
+      setWithdrawTxStatus('awaiting-wallet')
+
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: currentEvmNetwork.hexId }],
+      })
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const from = accounts?.[0]
+      if (!from) throw new Error('No active EVM wallet account found.')
+
+      const data = rixorInterface.encodeFunctionData('withdrawAvailable', [amountWei])
+      const hash = await connectedEvmProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{ from, to: currentRixorContractAddress, data }],
+      }) as string
+
+      setWithdrawTxHash(hash)
+      setWithdrawTxStatus('pending')
+
+      const receipt = await waitForReceipt(hash)
+      if (!receipt) throw new Error('Withdrawal is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('Withdrawal reverted.')
+
+      setWithdrawTxStatus('confirmed')
+      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+    } catch (error) {
+      setWithdrawTxStatus('failed')
+      setWithdrawTxError(error instanceof Error ? error.message : 'Withdrawal failed.')
+    }
+  }
+
   const deployRixorContract = async () => {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm') return
 
     const targetNetwork = evmNetworks.find((network) => network.id === 11155111)
     if (!targetNetwork) return
-    if (localContractAddresses[targetNetwork.id] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS) return
+    if (localContractAddresses[targetNetwork.id] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress) return
 
     try {
       setDeployError('')
@@ -910,7 +1036,7 @@ export default function App() {
 
   const startPlanSelected = planOptions.find((option) => option.id === startPlanTerm) ?? planOptions[2]
   const startPlanParsed = Number(startPlanAmount || 0)
-  const startPlanAvailableBalance = Number(nativeBalance)
+  const startPlanAvailableBalance = Number(contractAvailableBalance)
   const startPlanInsufficient = startPlanParsed > startPlanAvailableBalance && startPlanParsed > 0
   const startPlanValid = startPlanParsed > 0 && startPlanParsed <= startPlanAvailableBalance
   const startPlanProjected = startPlanTerm === 'flexible'
@@ -944,7 +1070,7 @@ export default function App() {
     setWithdrawOpen(true)
   }
 
-  const rixorAvailableBalance = 0
+  const rixorAvailableBalance = Number(contractAvailableBalance)
   const flexiblePlanBalance = 0
   const lockedPlanBalance = 0
   const withdrawSourceBalance = withdrawSource === 'available'
@@ -1287,13 +1413,38 @@ export default function App() {
 
               <div className="withdraw-review-note">
                 <strong>Testnet safety</strong>
-                <p>The final withdrawal action stays disabled until Rixor’s testnet savings contract is connected. No placeholder transaction will be sent.</p>
+                <p>{withdrawSource === 'available'
+                  ? 'This sends a real Sepolia testnet withdrawal from your Rixor available balance back to the connected wallet.'
+                  : 'Plan withdrawals require loading the exact onchain plan ID first. This action remains disabled until that position is selected.'}</p>
               </div>
 
               <div className="withdraw-review-actions">
                 <button type="button" onClick={() => setWithdrawStep('setup')}>Back and edit</button>
-                <button type="button" disabled>Withdraw on testnet — contract not connected</button>
+                <button
+                  type="button"
+                  onClick={withdrawAvailableFromRixor}
+                  disabled={withdrawSource !== 'available' || !currentRixorContractAddress || !withdrawValid || withdrawTxStatus === 'awaiting-wallet' || withdrawTxStatus === 'pending' || withdrawTxStatus === 'confirmed'}
+                >
+                  {withdrawTxStatus === 'awaiting-wallet'
+                    ? 'Approve in wallet…'
+                    : withdrawTxStatus === 'pending'
+                      ? 'Withdrawing…'
+                      : withdrawTxStatus === 'confirmed'
+                        ? 'Withdrawal confirmed'
+                        : withdrawSource === 'available'
+                          ? 'Withdraw on testnet'
+                          : 'Select an onchain plan first'}
+                </button>
               </div>
+
+              {(withdrawTxHash || withdrawTxError) && (
+                <div className={`add-money-tx-state ${withdrawTxStatus === 'confirmed' ? 'is-confirmed' : ''} ${withdrawTxStatus === 'failed' ? 'is-failed' : ''}`}>
+                  {withdrawTxHash && currentEvmNetwork ? (
+                    <a href={`${currentEvmNetwork.explorerUrl}/tx/${withdrawTxHash}`} target="_blank" rel="noreferrer">View transaction ↗</a>
+                  ) : null}
+                  {withdrawTxError && <span>{withdrawTxError}</span>}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -1420,7 +1571,7 @@ export default function App() {
                     <button
                       type="button"
                       disabled={startPlanAvailableBalance <= 0}
-                      onClick={() => setStartPlanAmount(nativeBalance)}
+                      onClick={() => setStartPlanAmount(contractAvailableBalance)}
                     >
                       Max
                     </button>
@@ -1542,7 +1693,19 @@ export default function App() {
 
               <div className="plan-review-actions plan-review-actions--page">
                 <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
-                <button type="button" disabled>Start test plan — contract not connected</button>
+                <button
+                  type="button"
+                  onClick={createSavingsPlan}
+                  disabled={!currentRixorContractAddress || !startPlanValid || startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending' || startPlanTxStatus === 'confirmed'}
+                >
+                  {startPlanTxStatus === 'awaiting-wallet'
+                    ? 'Approve in wallet…'
+                    : startPlanTxStatus === 'pending'
+                      ? 'Starting plan…'
+                      : startPlanTxStatus === 'confirmed'
+                        ? 'Plan started'
+                        : 'Start plan on testnet'}
+                </button>
               </div>
             </div>
           )}
@@ -2036,8 +2199,19 @@ export default function App() {
                     <button type="button" className="start-plan-back" onClick={() => setStartPlanStep('setup')}>
                       Back
                     </button>
-                    <button type="button" className="start-plan-submit" disabled>
-                      Start test plan — contract not connected
+                    <button
+                      type="button"
+                      className="start-plan-submit"
+                      onClick={createSavingsPlan}
+                      disabled={!currentRixorContractAddress || !startPlanValid || startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending' || startPlanTxStatus === 'confirmed'}
+                    >
+                      {startPlanTxStatus === 'awaiting-wallet'
+                        ? 'Approve in wallet…'
+                        : startPlanTxStatus === 'pending'
+                          ? 'Starting plan…'
+                          : startPlanTxStatus === 'confirmed'
+                            ? 'Plan started'
+                            : 'Start plan on testnet'}
                     </button>
                   </div>
                 </>
@@ -2089,7 +2263,7 @@ export default function App() {
                 <strong>{contractAvailableBalance} <em>ETH</em></strong>
                 <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
-                {!import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS && !localContractAddresses[11155111] && (
+                {evmChainId === 11155111 && !currentRixorContractAddress && (
                   <div className="dashboard-contract-setup">
                     <div>
                       <small>TESTNET CONTRACT</small>
