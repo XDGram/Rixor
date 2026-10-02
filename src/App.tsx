@@ -1501,17 +1501,22 @@ export default function App() {
                 <p>The destination, principal, and any reward impact are shown before the testnet transaction can be signed.</p>
               </div>
 
-              <div className="withdraw-review-grid">
-                <div className="withdraw-review-main">
-                  <span>YOU RECEIVE</span>
-                  <strong>{withdrawAmount} <em>ETH</em></strong>
-                  <p>Returned to {shortAddress(walletSession.address)}</p>
+              <div className="withdraw-review-stage">
+                <div className="withdraw-review-machine" aria-hidden="true">
+                  <div className="review-machine-card"><div className="review-machine-card-line"/><div className="review-machine-card-dots"/></div>
+                  <div className="review-machine-terminal"><div className="review-machine-slot"/><div className="review-machine-screen"><span>{withdrawParsed.toFixed(4)}</span><small>ETH</small></div><div className="review-machine-keys"/><div className="review-machine-keys second"/></div>
+                  <span className="withdraw-review-machine-label">WITHDRAWAL</span>
                 </div>
-                <div className="withdraw-review-facts">
-                  <div><small>SOURCE</small><strong>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</strong></div>
-                  <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                  <div><small>PRINCIPAL</small><strong>{withdrawParsed.toFixed(4)} ETH</strong></div>
-                  <div><small>REWARD FORFEITED</small><strong className={withdrawSource === 'locked' ? 'is-negative' : ''}>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                <div className="withdraw-review-main refined">
+                  <span>YOU RECEIVE</span>
+                  <strong>{withdrawParsed.toFixed(4)} <em>ETH</em></strong>
+                  <p>Returned directly to {shortAddress(walletSession.address)}</p>
+                  <div className="withdraw-review-meta-grid">
+                    <div><small>SOURCE</small><strong>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</strong></div>
+                    <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                    <div><small>PRINCIPAL</small><strong>{withdrawParsed.toFixed(4)} ETH</strong></div>
+                    <div><small>FORFEITED</small><strong>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                  </div>
                 </div>
               </div>
 
@@ -1522,24 +1527,35 @@ export default function App() {
                   : 'Plan withdrawals require loading the exact onchain plan ID first. This action remains disabled until that position is selected.'}</p>
               </div>
 
-              <div className="withdraw-review-actions">
+              {(withdrawTxStatus === 'awaiting-wallet' || withdrawTxStatus === 'pending') && (
+                <div className="rixor-deposit-loading" role="status" aria-live="polite">
+                  <div className="rixor-deposit-loader" aria-hidden="true" />
+                  <div>
+                    <small>{withdrawTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
+                    <strong>{withdrawTxStatus === 'awaiting-wallet' ? 'Approve the withdrawal in your wallet' : 'Sending ETH back to your wallet…'}</strong>
+                    <span>{withdrawParsed.toFixed(4)} ETH · {currentEvmNetwork?.shortName ?? 'Testnet'}</span>
+                  </div>
+                </div>
+              )}
+
+              {withdrawTxStatus === 'confirmed' && (
+                <a className="rixor-deposit-receipt" href={withdrawTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${withdrawTxHash}` : undefined} target="_blank" rel="noreferrer">
+                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{withdrawParsed.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                  <div className="rixor-receipt-copy"><small>WITHDRAWAL CONFIRMED</small><strong>{withdrawParsed.toFixed(4)} ETH returned</strong><span>Sent back to your connected wallet</span></div>
+                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
+                </a>
+              )}
+
+              {withdrawTxStatus !== 'confirmed' && withdrawTxStatus !== 'awaiting-wallet' && withdrawTxStatus !== 'pending' && <div className="withdraw-review-actions">
                 <button type="button" onClick={() => setWithdrawStep('setup')}>Back and edit</button>
                 <button
                   type="button"
                   onClick={withdrawAvailableFromRixor}
-                  disabled={withdrawSource !== 'available' || !currentRixorContractAddress || !withdrawValid || withdrawTxStatus === 'awaiting-wallet' || withdrawTxStatus === 'pending' || withdrawTxStatus === 'confirmed'}
+                  disabled={withdrawSource !== 'available' || !currentRixorContractAddress || !withdrawValid}
                 >
-                  {withdrawTxStatus === 'awaiting-wallet'
-                    ? 'Approve in wallet…'
-                    : withdrawTxStatus === 'pending'
-                      ? 'Withdrawing…'
-                      : withdrawTxStatus === 'confirmed'
-                        ? 'Withdrawal confirmed'
-                        : withdrawSource === 'available'
-                          ? 'Withdraw on testnet'
-                          : 'Select an onchain plan first'}
+                  {withdrawSource === 'available' ? 'Withdraw on testnet' : 'Select an onchain plan first'}
                 </button>
-              </div>
+              </div>}
 
               {(withdrawTxHash || withdrawTxError) && (
                 <div className={`add-money-tx-state ${withdrawTxStatus === 'confirmed' ? 'is-confirmed' : ''} ${withdrawTxStatus === 'failed' ? 'is-failed' : ''}`}>
@@ -1845,16 +1861,11 @@ export default function App() {
               )}
 
               {startPlanTxStatus === 'confirmed' ? (
-                <div className="plan-review-success">
-                  <div className="plan-review-success-mark">✓</div>
-                  <div>
-                    <small>PLAN STARTED</small>
-                    <strong>{Number(startPlanAmount || 0).toFixed(4)} ETH is now in your {startPlanSelected.label.toLowerCase()} plan.</strong>
-                    {startPlanTxHash && currentEvmNetwork && (
-                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${startPlanTxHash}`} target="_blank" rel="noreferrer">View transaction ↗</a>
-                    )}
-                  </div>
-                </div>
+                <a className="rixor-deposit-receipt" href={startPlanTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${startPlanTxHash}` : undefined} target="_blank" rel="noreferrer">
+                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{Number(startPlanAmount || 0).toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                  <div className="rixor-receipt-copy"><small>PLAN CONFIRMED</small><strong>{Number(startPlanAmount || 0).toFixed(4)} ETH committed</strong><span>{startPlanSelected.label} plan is now active</span></div>
+                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
+                </a>
               ) : startPlanTxStatus !== 'awaiting-wallet' && startPlanTxStatus !== 'pending' && (
                 <div className="plan-review-actions plan-review-actions--page refined">
                   <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>

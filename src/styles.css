@@ -7776,6 +7776,128 @@ body {
   margin: 0 auto;
 }
 
+.withdraw-review-stage {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: 250px minmax(0,1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.withdraw-review-machine {
+  min-height: 300px;
+  position: relative;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--accent);
+}
+
+.withdraw-review-machine::after {
+  content: "";
+  position: absolute;
+  right: -60px;
+  bottom: -70px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.28);
+}
+
+.withdraw-review-machine .review-machine-card {
+  top: 62px;
+}
+
+.withdraw-review-machine .review-machine-terminal {
+  top: 134px;
+}
+
+.withdraw-review-machine-label {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  z-index: 4;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  color: #111;
+  opacity: .72;
+}
+
+.withdraw-review-main.refined {
+  min-height: 300px;
+  padding: 32px;
+  border-radius: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.withdraw-review-main.refined > strong {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: clamp(64px,8vw,96px);
+}
+
+.withdraw-review-meta-grid {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+}
+
+.withdraw-review-meta-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.withdraw-review-meta-grid small {
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  opacity: .42;
+}
+
+.withdraw-review-meta-grid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.dark-mode .withdraw-review-main.refined,
+.dark-mode .withdraw-review-meta-grid>div {
+  color:#f4f4f1;
+  background:rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.light-mode .withdraw-review-main.refined,
+.light-mode .withdraw-review-meta-grid>div {
+  color:#111;
+  background:rgba(255,255,255,.68);
+  border:1px solid rgba(17,17,17,.07);
+}
+
+@media (max-width: 900px) {
+  .withdraw-review-stage { grid-template-columns: 1fr; }
+  .withdraw-review-machine { min-height: 210px; }
+  .withdraw-review-machine .review-machine-card { top: 30px; }
+  .withdraw-review-machine .review-machine-terminal { top: 100px; }
+  .withdraw-review-main.refined { min-height: auto; }
+  .withdraw-review-meta-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 640px) {
+  .withdraw-review-main.refined { padding: 24px; }
+  .withdraw-review-main.refined > strong { font-size: clamp(54px,16vw,76px); }
+  .withdraw-review-meta-grid { grid-template-columns: 1fr 1fr; }
+}
+
 .withdraw-review-grid {
   margin-top: 28px;
   display: grid;
