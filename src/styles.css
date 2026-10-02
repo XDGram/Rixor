@@ -8172,3 +8172,295 @@ input {
 
 
 .amount-with-asset{display:inline-flex!important;align-items:baseline;gap:.18em;white-space:nowrap}.amount-with-asset>span{display:inline-block}.amount-with-asset>em{display:inline-block!important;margin-left:.02em!important;font-size:.24em!important;letter-spacing:.08em!important;font-style:normal!important;line-height:1!important}.asset-suffix{display:inline-flex;align-items:center;margin-left:10px!important;padding-left:2px;letter-spacing:.08em;font-size:.78em!important;font-weight:800;opacity:.72;white-space:nowrap}.review-machine-screen small,.plan-review-machine-screen small,.rixor-receipt-screen small{margin-left:4px;letter-spacing:.08em;line-height:1}
+
+/* ===== Mobile compatibility hardening ===== */
+@media (max-width: 700px) {
+  html, body, #root { width:100%; max-width:100%; overflow-x:clip; }
+  body { min-width:0; }
+  main, section, header, article, aside, nav, div { min-width:0; }
+  img, video, canvas { max-width:100%; height:auto; }
+  p, h1, h2, h3, strong, span, small { overflow-wrap:anywhere; }
+
+  /* Public header: real mobile layout, not a scaled desktop row */
+  .top-shell {
+    top:max(10px,env(safe-area-inset-top,0px));
+    left:max(10px,env(safe-area-inset-left,0px));
+    right:max(10px,env(safe-area-inset-right,0px));
+    display:grid;
+    grid-template-columns:1fr auto;
+    align-items:center;
+    gap:8px;
+    padding:0;
+  }
+  .top-brand { position:static; grid-column:1; justify-self:start; }
+  .top-brand .rixor-brand-word { display:none; }
+  .top-brand .rixor-brand-mark { width:28px; height:28px; flex-basis:28px; }
+  .theme-toggle-wrap { position:static; grid-column:2; justify-self:end; transform:scale(.78); transform-origin:right center; }
+  .top-shell.is-compact .theme-toggle-wrap { transform:scale(.74); }
+  .tab-container {
+    grid-column:1 / -1;
+    width:100%;
+    max-width:none;
+    flex:1 1 auto;
+    transform:none!important;
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    align-items:center;
+    overflow:hidden;
+  }
+  .tab { width:25%; height:32px; }
+  .tab_label { width:auto; min-width:0; height:32px; padding:0 4px; font-size:.66rem; line-height:1; text-align:center; }
+  .indicator { width:25%; height:32px; top:2px; }
+  .tab--1:checked ~ .indicator { left:2px; }
+  .tab--2:checked ~ .indicator { left:25%; }
+  .tab--3:checked ~ .indicator { left:50%; }
+  .tab--4:checked ~ .indicator { left:75%; }
+
+  /* Hero and public sections */
+  .hero-copy-shell { width:calc(100% - 20px); margin:0 10px; padding-top:126px; padding-bottom:48px; }
+  .hero-layout { width:100%; gap:28px; }
+  .hero-copy, .hero-bottom-row { width:100%; margin-left:0!important; text-align:left; }
+  .hero-kicker { font-size:14px; line-height:1.15; }
+  .hero-title { font-size:clamp(46px,15vw,66px); line-height:.88; letter-spacing:-.065em; max-width:100%; }
+  .hero-line--two { margin-left:0!important; }
+  .hero-description { max-width:100%; font-size:14px; line-height:1.55; text-align:left; }
+  .hero-actions { width:100%; flex-wrap:wrap; justify-content:flex-start; }
+  .hero-actions button { min-height:48px; }
+  .savings-panel { width:100%!important; max-width:100%!important; padding:18px; border-radius:24px; }
+  .amount-input-row input { min-width:0; font-size:clamp(36px,13vw,52px); }
+  .plan-cards { grid-template-columns:1fr!important; }
+
+  .how-section, .plans-section, .security-section { width:calc(100% - 20px)!important; margin-left:auto; margin-right:auto; padding-left:0!important; padding-right:0!important; overflow:clip; }
+  .how-heading, .plans-heading, .security-heading { max-width:100%; text-align:left; }
+  .how-heading h2, .plans-heading h2, .security-heading h2 { font-size:clamp(38px,12vw,54px); line-height:.94; letter-spacing:-.05em; text-align:left; }
+  .how-heading p, .plans-heading p, .security-heading p { max-width:100%; font-size:14px; line-height:1.55; text-align:left; }
+  .how-intro-flow, .how-card, .plans-config, .plans-preview, .security-visual, .security-card { width:100%; max-width:100%; }
+  .how-flow-illustration { grid-template-columns:1fr!important; gap:12px!important; }
+  .how-flow-illustration > * { justify-self:start; }
+  .how-card, .how-card--wide { min-height:auto!important; padding:20px; }
+  .how-card:hover, .how-card:focus-visible, .how-card.is-open, .how-card--wide:hover, .how-card--wide:focus-visible, .how-card--wide.is-open { min-height:auto!important; }
+  .plans-preview { min-height:auto!important; }
+  .plans-radio-group { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible!important; gap:8px; }
+  .plans-radio-group > * { min-width:0!important; }
+  .plans-live-value strong { font-size:clamp(42px,14vw,64px); }
+  .security-boundary { height:120px; }
+
+  /* Wallet + transaction modals */
+  .wallet-modal-backdrop, .add-money-backdrop { align-items:flex-start; overflow-y:auto; padding:max(10px,env(safe-area-inset-top,0px)) 8px max(10px,env(safe-area-inset-bottom,0px)); }
+  .wallet-modal, .add-money-modal, .add-money-modal.is-review {
+    width:100%!important;
+    max-width:100%!important;
+    max-height:calc(100dvh - 20px);
+    overflow-y:auto;
+    overflow-x:hidden;
+    margin:auto 0;
+    padding:18px!important;
+    border-radius:22px!important;
+  }
+  .wallet-modal-head, .add-money-head { align-items:flex-start; gap:12px; }
+  .wallet-modal-head h2, .add-money-head h2 { font-size:clamp(30px,10vw,42px); line-height:.96; }
+  .wallet-connected-view { grid-template-columns:1fr!important; align-items:flex-start!important; }
+  .wallet-connected-view > .chain-mark, .wallet-connected-dot { margin-bottom:4px; }
+  .wallet-connected-view button { width:100%; }
+  .add-money-chain-summary, .add-money-review-shell, .add-money-review-meta, .add-money-review-actions { grid-template-columns:1fr!important; }
+  .add-money-asset-top { align-items:flex-start; flex-wrap:wrap; }
+  .add-money-asset-top em { margin-left:0; }
+  .add-money-amount-head { align-items:flex-start!important; flex-direction:column; gap:10px; }
+  .add-money-available-pill { align-self:flex-start; max-width:100%; white-space:normal; }
+  .add-money-input-wrap input { min-width:0; font-size:clamp(40px,15vw,62px); }
+  .add-money-quick-amounts { grid-template-columns:repeat(2,minmax(0,1fr))!important; }
+  .add-money-review-copy { padding:20px!important; }
+  .add-money-review-copy > strong { font-size:clamp(42px,14vw,62px)!important; }
+
+  /* Connected dashboard */
+  .dashboard-topbar, .dashboard-shell, .dashboard-wallet-balance-strip, .dashboard-balance-read-error { width:calc(100% - 16px)!important; max-width:100%; }
+  .dashboard-topbar { padding-top:max(12px,env(safe-area-inset-top,0px)); align-items:flex-start; gap:10px; }
+  .dashboard-brand .rixor-brand-word { font-size:12px; letter-spacing:.16em; }
+  .dashboard-brand .rixor-brand-mark { width:26px; height:26px; flex-basis:26px; }
+  .dashboard-topbar-actions { gap:8px; min-width:0; }
+  .dashboard-wallet { min-width:0; max-width:calc(100vw - 120px); padding:6px 10px; }
+  .dashboard-wallet-identity { min-width:0; }
+  .dashboard-wallet-identity small, .dashboard-wallet-identity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px; }
+  .dashboard-wallet-balance-strip { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px!important; overflow:visible!important; padding:10px!important; border-radius:18px!important; }
+  .dashboard-wallet-balance-strip > span { min-width:0!important; padding:9px!important; }
+  .dashboard-balance-refresh { width:100%; grid-column:1 / -1; margin-left:0!important; }
+  .dashboard-shell { padding-top:28px!important; }
+  .dashboard-intro, .dashboard-panel-head { align-items:flex-start!important; text-align:left; }
+  .dashboard-intro h1 { font-size:clamp(42px,13vw,60px); line-height:.92; }
+  .dashboard-network-switcher { width:100%; display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .dashboard-network-switcher button { width:100%; min-width:0; }
+  .dashboard-hero-grid, .dashboard-grid, .dashboard-metric-grid, .dashboard-actions { grid-template-columns:1fr!important; }
+  .dashboard-total-card, .dashboard-balance-card, .dashboard-panel { padding:18px!important; border-radius:22px!important; }
+  .dashboard-total-card > strong, .dashboard-balance-main > strong { font-size:clamp(44px,14vw,66px)!important; max-width:100%; }
+  .dashboard-plan-row { grid-template-columns:1fr!important; gap:10px!important; }
+  .dashboard-plan-row-progress, .dashboard-plan-row-meta { max-width:100%!important; width:100%; }
+  .dashboard-activity-row { grid-template-columns:36px minmax(0,1fr)!important; align-items:start!important; }
+  .dashboard-activity-amount { grid-column:2; text-align:left!important; }
+  .dashboard-activity-link { display:none!important; }
+  .dashboard-history-row { grid-template-columns:1fr!important; }
+  .dashboard-history-meta { padding-left:43px!important; }
+  .dashboard-history-head-actions { align-items:flex-start; flex-wrap:wrap; justify-content:flex-end; }
+
+  /* Start plan / plan detail */
+  .plan-page-topbar, .plan-detail-topbar, .withdraw-page-topbar { width:calc(100% - 16px)!important; grid-template-columns:minmax(0,1fr) auto!important; gap:8px!important; padding-top:max(14px,env(safe-area-inset-top,0px))!important; }
+  .plan-page-back, .plan-detail-back, .withdraw-page-back { min-width:0; padding:0 10px!important; font-size:10px!important; white-space:nowrap; }
+  .plan-page-network, .plan-detail-network, .withdraw-page-network { min-width:0; max-width:145px; overflow:hidden; }
+  .plan-page-network strong, .plan-detail-network strong, .withdraw-page-network strong { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px!important; }
+  .plan-page-shell, .plan-detail-shell, .withdraw-page-shell { width:calc(100% - 16px)!important; max-width:100%; margin-top:12px!important; margin-bottom:48px!important; }
+  .plan-page-hero, .plan-detail-hero, .withdraw-page-hero { text-align:left!important; }
+  .plan-page-hero h1, .plan-detail-hero h1, .withdraw-page-hero h1 { font-size:clamp(38px,12vw,52px)!important; line-height:.94!important; letter-spacing:-.05em!important; max-width:100%; }
+  .plan-page-hero p, .plan-detail-hero p, .withdraw-page-hero p { font-size:13px!important; line-height:1.5; max-width:100%; text-align:left; }
+  .plan-page-layout, .plan-review-layout, .plan-detail-grid, .plan-detail-actions-grid, .withdraw-page-layout, .withdraw-review-grid, .withdraw-review-stage { grid-template-columns:1fr!important; }
+  .plan-goal-grid, .plan-page-options, .plan-reward-grid { grid-template-columns:1fr!important; }
+  .plan-builder-panel, .plan-decision-panel, .plan-review-primary, .plan-review-explainer, .plan-detail-primary, .plan-detail-summary, .plan-exit-review, .withdraw-builder-card, .withdraw-summary-card, .withdraw-review-main, .withdraw-review-note { padding:18px!important; border-radius:22px!important; max-width:100%; }
+  .plan-page-amount input, .withdraw-amount-input input { min-width:0; font-size:clamp(42px,15vw,62px)!important; }
+  .plan-decision-amount strong, .plan-review-primary > strong, .plan-detail-primary > strong, .withdraw-summary-amount strong, .withdraw-review-main.refined > strong { font-size:clamp(44px,14vw,66px)!important; }
+  .plan-review-meta-grid, .plan-exit-review-meta, .withdraw-review-meta-grid { grid-template-columns:1fr!important; }
+  .plan-review-meta-grid strong, .plan-exit-review-meta strong, .withdraw-review-meta-grid strong { white-space:normal!important; overflow:visible!important; text-overflow:clip!important; }
+  .plan-exit-review-head { align-items:flex-start!important; flex-direction:column!important; }
+  .plan-exit-review-head > strong { white-space:normal!important; font-size:clamp(36px,12vw,52px)!important; }
+  .plan-extension-options { grid-template-columns:1fr!important; }
+  .plan-action-panel { padding:16px!important; border-radius:22px!important; }
+  .plan-action-panel-head h2 { font-size:clamp(32px,10vw,44px)!important; }
+  .plan-action-input-row { grid-template-columns:1fr!important; }
+  .plan-action-input-row input { font-size:clamp(34px,12vw,48px)!important; }
+
+  /* Withdraw */
+  .withdraw-available-banner, .withdraw-section-head { align-items:flex-start!important; flex-direction:column!important; text-align:left!important; }
+  .withdraw-quick-amounts, .withdraw-review-actions { grid-template-columns:1fr 1fr!important; }
+  .withdraw-destination-card { align-items:flex-start!important; flex-direction:column!important; gap:8px; }
+
+  /* Loading / receipts */
+  .rixor-deposit-loading { min-height:auto!important; padding:14px!important; gap:12px!important; align-items:flex-start!important; }
+  .rixor-deposit-loader { width:50px!important; height:50px!important; flex-basis:50px!important; }
+  .rixor-deposit-loading > div:last-child { min-width:0; }
+  .rixor-deposit-loading strong, .rixor-deposit-loading span { overflow-wrap:anywhere; }
+  .rixor-deposit-receipt { grid-template-columns:78px minmax(0,1fr)!important; min-height:104px!important; border-radius:20px!important; }
+  .rixor-receipt-machine { height:104px!important; }
+  .rixor-receipt-copy { min-width:0; padding:12px!important; }
+  .rixor-receipt-copy strong { font-size:16px!important; line-height:1.15; overflow-wrap:anywhere; }
+  .rixor-receipt-copy span { font-size:10px!important; line-height:1.4; overflow-wrap:anywhere; }
+  .rixor-deposit-receipt > svg { display:none!important; }
+}
+
+@media (max-width: 380px) {
+  .hero-copy-shell { padding-top:132px; }
+  .tab_label { font-size:.59rem; padding:0 2px; }
+  .dashboard-wallet { max-width:calc(100vw - 98px); }
+  .dashboard-wallet-identity small { display:none; }
+  .dashboard-wallet-balance-strip { grid-template-columns:1fr!important; }
+  .dashboard-network-switcher { grid-template-columns:1fr!important; }
+  .dashboard-balance-refresh { grid-column:auto; }
+  .dashboard-history-meta { padding-left:0!important; }
+  .add-money-review-meta, .plan-review-meta-grid, .plan-exit-review-meta, .withdraw-review-meta-grid { grid-template-columns:1fr!important; }
+  .add-money-quick-amounts, .withdraw-quick-amounts, .withdraw-review-actions { grid-template-columns:1fr!important; }
+  .plan-page-network, .plan-detail-network, .withdraw-page-network { max-width:118px; }
+  .plan-page-back, .plan-detail-back, .withdraw-page-back { max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .how-heading h2, .plans-heading h2, .security-heading h2 { font-size:clamp(34px,11.5vw,44px); }
+}
+
+@media (max-width: 700px) {
+  /* Mobile motion stays inside the viewport. Desktop cinematic entrances are intentionally disabled here. */
+  .how-heading,
+  .how-intro-flow,
+  .how-card,
+  .how-card:nth-child(even),
+  .plans-heading,
+  .plans-config,
+  .plans-preview,
+  .security-heading,
+  .security-visual,
+  .security-card {
+    transform:none!important;
+    filter:none!important;
+    opacity:1!important;
+  }
+
+  .plans-radio-group,
+  .plans-amount-card,
+  .plans-preview-rate,
+  .plans-preview-list,
+  .plans-warning,
+  .plans-disclaimer,
+  .plans-action,
+  .plans-glider,
+  .security-signal,
+  .security-lock,
+  .how-flow-illustration,
+  .flow-node,
+  .flow-line {
+    animation:none!important;
+    transform:none!important;
+    filter:none!important;
+    opacity:1!important;
+  }
+
+  .plans-config-head,
+  .plans-preview-top {
+    align-items:flex-start!important;
+    flex-direction:column!important;
+    text-align:left!important;
+  }
+
+  .plans-config-head > div,
+  .plans-preview-top > div,
+  .plans-preview-list > div,
+  .plans-amount-head,
+  .security-side,
+  .security-rules,
+  .how-card-copy {
+    min-width:0;
+    max-width:100%;
+    text-align:left!important;
+  }
+
+  .plans-preview-rate,
+  .plans-live-value,
+  .plans-preview-list,
+  .security-rules,
+  .how-card-copy {
+    width:100%;
+    max-width:100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-chain-ambient {
+    width:min(118vw,520px)!important;
+    max-width:none!important;
+    left:50%!important;
+  }
+
+  .how-visual,
+  .how-visual--plans,
+  .how-card-visual,
+  .how-card-copy,
+  .security-side,
+  .security-wallet-card,
+  .plans-config,
+  .plans-preview {
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+  }
+
+  .how-visual--plans {
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+  }
+
+  .plans-config-head,
+  .plans-amount-head,
+  .plans-preview-top,
+  .security-card,
+  .security-rules > div {
+    min-width:0!important;
+    max-width:100%!important;
+  }
+
+  .amount-with-asset {
+    max-width:100%;
+    flex-wrap:wrap;
+    row-gap:2px!important;
+  }
+}
