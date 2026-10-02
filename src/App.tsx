@@ -137,6 +137,10 @@ export default function App() {
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
   const [planHistory, setPlanHistory] = useState<PlanHistoryItem[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
+  const [planWithdrawReviewOpen, setPlanWithdrawReviewOpen] = useState(false)
+  const [planWithdrawTxStatus, setPlanWithdrawTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [planWithdrawTxHash, setPlanWithdrawTxHash] = useState('')
+  const [planWithdrawTxError, setPlanWithdrawTxError] = useState('')
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
@@ -731,6 +735,50 @@ export default function App() {
     } catch (error) {
       setWithdrawTxStatus('failed')
       setWithdrawTxError(error instanceof Error ? error.message : 'Withdrawal failed.')
+    }
+  }
+
+  const withdrawSelectedPlanFromRixor = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress || !selectedActivePlan) return
+
+    try {
+      setPlanWithdrawTxError('')
+      setPlanWithdrawTxHash('')
+      setPlanWithdrawTxStatus('awaiting-wallet')
+
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: currentEvmNetwork.hexId }],
+      })
+
+      const confirmedChainHex = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
+      if (Number.parseInt(confirmedChainHex, 16) !== currentEvmNetwork.id) {
+        throw new Error(`Switch your wallet to ${currentEvmNetwork.shortName} before withdrawing this plan.`)
+      }
+
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const from = accounts?.[0]
+      if (!from) throw new Error('No active EVM wallet account found.')
+
+      const data = rixorInterface.encodeFunctionData('withdrawPlan', [BigInt(selectedActivePlan.id)])
+      const hash = await connectedEvmProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{ from, to: currentRixorContractAddress, data }],
+      }) as string
+
+      setPlanWithdrawTxHash(hash)
+      setPlanWithdrawTxStatus('pending')
+
+      const receipt = await waitForReceipt(hash)
+      if (!receipt) throw new Error('Plan withdrawal is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('Plan withdrawal reverted.')
+
+      setPlanWithdrawTxStatus('confirmed')
+      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+    } catch (error) {
+      setPlanWithdrawTxStatus('failed')
+      setPlanWithdrawTxError(error instanceof Error ? error.message : 'Plan withdrawal failed.')
     }
   }
 
@@ -1367,7 +1415,15 @@ export default function App() {
           </div>
 
           <div className="plan-detail-actions-grid">
-            <button type="button" onClick={openWithdraw}>
+            <button
+              type="button"
+              onClick={() => {
+                setPlanWithdrawTxStatus('idle')
+                setPlanWithdrawTxHash('')
+                setPlanWithdrawTxError('')
+                setPlanWithdrawReviewOpen(true)
+              }}
+            >
               <span>Withdraw</span>
               <small>Review the effect before exiting this plan.</small>
             </button>
@@ -1380,6 +1436,72 @@ export default function App() {
               <small>Available after plan-extension rules are finalized.</small>
             </button>
           </div>
+
+          {planWithdrawReviewOpen && (
+            <div className="plan-exit-review">
+              <div className="plan-exit-review-head">
+                <div>
+                  <span>EXIT PLAN</span>
+                  <h2>Withdraw this plan?</h2>
+                  <p>Your v0.1 principal will return to {shortAddress(walletSession.address)}.</p>
+                </div>
+                <strong>{selectedActivePlan.principalAmount.toFixed(4)} <em>ETH</em></strong>
+              </div>
+
+              <div className="plan-exit-review-meta">
+                <div><small>PLAN</small><strong>{selectedActivePlan.termLabel}</strong></div>
+                <div><small>GOAL</small><strong>{selectedActivePlan.goal}</strong></div>
+                <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                <div><small>EXIT</small><strong>{selectedActivePlan.maturesAt && Date.now() < selectedActivePlan.maturesAt ? 'Early withdrawal' : 'Standard withdrawal'}</strong></div>
+              </div>
+
+              {(planWithdrawTxStatus === 'awaiting-wallet' || planWithdrawTxStatus === 'pending') && (
+                <div className="rixor-deposit-loading" role="status" aria-live="polite">
+                  <div className="rixor-deposit-loader" aria-hidden="true" />
+                  <div>
+                    <small>{planWithdrawTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
+                    <strong>{planWithdrawTxStatus === 'awaiting-wallet' ? 'Approve the plan withdrawal' : 'Closing plan onchain…'}</strong>
+                    <span>{selectedActivePlan.principalAmount.toFixed(4)} ETH · Plan #{selectedActivePlan.id}</span>
+                  </div>
+                </div>
+              )}
+
+              {planWithdrawTxStatus === 'failed' && (
+                <div className="plan-review-error">
+                  <strong>Withdrawal failed</strong>
+                  <span>{planWithdrawTxError}</span>
+                </div>
+              )}
+
+              {planWithdrawTxStatus === 'confirmed' && (
+                <>
+                  <a className="rixor-deposit-receipt" href={planWithdrawTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planWithdrawTxHash}` : undefined} target="_blank" rel="noreferrer">
+                    <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{selectedActivePlan.principalAmount.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                    <div className="rixor-receipt-copy"><small>PLAN WITHDRAWN</small><strong>{selectedActivePlan.principalAmount.toFixed(4)} ETH returned</strong><span>This plan will now move to Plan History</span></div>
+                    <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
+                  </a>
+                  <button
+                    type="button"
+                    className="plan-exit-return"
+                    onClick={async () => {
+                      await refreshOnchainPlans()
+                      setPlanWithdrawReviewOpen(false)
+                      setSelectedPlanId(null)
+                    }}
+                  >
+                    Return to dashboard
+                  </button>
+                </>
+              )}
+
+              {planWithdrawTxStatus !== 'awaiting-wallet' && planWithdrawTxStatus !== 'pending' && planWithdrawTxStatus !== 'confirmed' && (
+                <div className="plan-exit-review-actions">
+                  <button type="button" onClick={() => setPlanWithdrawReviewOpen(false)}>Keep plan</button>
+                  <button type="button" onClick={withdrawSelectedPlanFromRixor}>Confirm withdrawal</button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="plan-detail-chain-note">
             <span className="dashboard-footnote-dot" />
