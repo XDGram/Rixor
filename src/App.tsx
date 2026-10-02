@@ -2001,43 +2001,73 @@ export default function App() {
                     </p>
                   </div>
 
-                  {addMoneyTxStatus !== 'idle' && (
-                    <div className={`add-money-tx-state is-${addMoneyTxStatus}`}>
-                      <strong>
-                        {addMoneyTxStatus === 'awaiting-wallet' ? 'Approve in wallet' :
-                          addMoneyTxStatus === 'pending' ? 'Deposit pending' :
-                            addMoneyTxStatus === 'confirmed' ? 'Deposit confirmed' : 'Deposit failed'}
-                      </strong>
-                      {addMoneyTxHash && currentEvmNetwork && (
-                        <a href={`${currentEvmNetwork.explorerUrl}/tx/${addMoneyTxHash}`} target="_blank" rel="noreferrer">
-                          View transaction ↗
-                        </a>
-                      )}
+                  {(addMoneyTxStatus === 'awaiting-wallet' || addMoneyTxStatus === 'pending') && (
+                    <div className="rixor-deposit-loading" role="status" aria-live="polite">
+                      <div className="rixor-deposit-loader" aria-hidden="true" />
+                      <div>
+                        <small>{addMoneyTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
+                        <strong>{addMoneyTxStatus === 'awaiting-wallet' ? 'Approve the deposit in your wallet' : 'Adding money to Rixor…'}</strong>
+                        <span>{Number(addMoneyAmount || 0).toFixed(4)} ETH · {currentEvmNetwork?.shortName ?? 'Testnet'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {addMoneyTxStatus === 'failed' && (
+                    <div className="add-money-tx-state is-failed">
+                      <strong>Deposit failed</strong>
                       {addMoneyTxError && <span>{addMoneyTxError}</span>}
                     </div>
                   )}
 
-                  <div className="add-money-review-actions">
-                    <button type="button" className="add-money-back" onClick={() => setAddMoneyStep('amount')}>
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      className="add-money-submit"
-                      disabled={!currentRixorContractAddress || addMoneyTxStatus === 'awaiting-wallet' || addMoneyTxStatus === 'pending' || addMoneyTxStatus === 'confirmed'}
-                      onClick={depositToRixor}
+                  {addMoneyTxStatus === 'confirmed' && (
+                    <a
+                      className="rixor-deposit-receipt"
+                      href={addMoneyTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${addMoneyTxHash}` : undefined}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      {!currentRixorContractAddress
-                        ? 'Test contract not deployed'
-                        : addMoneyTxStatus === 'awaiting-wallet'
-                          ? 'Waiting for wallet…'
-                          : addMoneyTxStatus === 'pending'
-                            ? 'Deposit pending…'
-                            : addMoneyTxStatus === 'confirmed'
-                              ? 'Deposit confirmed'
-                              : 'Deposit on testnet'}
-                    </button>
-                  </div>
+                      <div className="rixor-receipt-machine">
+                        <div className="rixor-receipt-card">
+                          <div className="rixor-receipt-card-line" />
+                          <div className="rixor-receipt-card-dots" />
+                        </div>
+                        <div className="rixor-receipt-terminal">
+                          <div className="rixor-receipt-slot" />
+                          <div className="rixor-receipt-screen">
+                            <span>{Number(addMoneyAmount || 0).toFixed(4)}</span>
+                            <small>ETH</small>
+                          </div>
+                          <div className="rixor-receipt-keys" />
+                          <div className="rixor-receipt-keys second" />
+                        </div>
+                      </div>
+                      <div className="rixor-receipt-copy">
+                        <small>DEPOSIT CONFIRMED</small>
+                        <strong>{Number(addMoneyAmount || 0).toFixed(4)} ETH added</strong>
+                        <span>Now available in your Rixor balance</span>
+                      </div>
+                      <svg viewBox="0 0 451.846 451.847" aria-hidden="true">
+                        <path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z" />
+                      </svg>
+                    </a>
+                  )}
+
+                  {addMoneyTxStatus !== 'confirmed' && addMoneyTxStatus !== 'awaiting-wallet' && addMoneyTxStatus !== 'pending' && (
+                    <div className="add-money-review-actions">
+                      <button type="button" className="add-money-back" onClick={() => setAddMoneyStep('amount')}>
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        className="add-money-submit is-ready"
+                        disabled={!currentRixorContractAddress}
+                        onClick={depositToRixor}
+                      >
+                        <span>Confirm deposit</span>
+                        <small>{Number(addMoneyAmount || 0).toFixed(4)} ETH</small>
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </section>
