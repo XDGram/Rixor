@@ -442,6 +442,21 @@ export default function App() {
       setDeployTxHash('')
       setDeployStatus('awaiting-wallet')
 
+      try {
+        await connectedEvmProvider.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: targetNetwork.hexId,
+            chainName: targetNetwork.name,
+            nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: targetNetwork.balanceRpcUrls,
+            blockExplorerUrls: [targetNetwork.explorerUrl],
+          }],
+        })
+      } catch {
+        // Some wallets reject re-adding a built-in network. We still force-switch and verify below.
+      }
+
       await connectedEvmProvider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: targetNetwork.hexId }],
