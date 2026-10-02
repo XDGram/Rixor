@@ -184,6 +184,11 @@ body {
   animation: wallet-modal-enter .38s cubic-bezier(.16,1,.3,1) both;
 }
 
+.add-money-modal.is-review {
+  width: min(820px, calc(100% - 36px));
+  padding: 28px;
+}
+
 .add-money-head {
   display: flex;
   align-items: flex-start;
@@ -1767,54 +1772,152 @@ body {
   height: 38px;
 }
 
-.add-money-review-grid {
+.add-money-review-shell {
   display: grid;
-  grid-template-columns: 1.2fr .8fr;
-  gap: 14px;
+  grid-template-columns: 230px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 18px;
 }
 
-.add-money-review-main {
-  padding: 24px;
+.add-money-review-visual {
+  min-height: 260px;
+  position: relative;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--accent);
 }
 
-.add-money-review-main > span {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .13em;
-  opacity: .45;
+.add-money-review-visual::after {
+  content: "";
+  position: absolute;
+  inset: auto -44px -54px auto;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.28);
+  filter: blur(2px);
 }
 
-.add-money-review-main > strong {
-  display: block;
-  margin-top: 12px;
-  font-size: clamp(48px, 7vw, 72px);
-  line-height: .92;
-  letter-spacing: -.055em;
+.review-machine-card {
+  width: 94px;
+  height: 62px;
+  position: absolute;
+  top: 58px;
+  z-index: 3;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f8ffd0;
+  box-shadow: 10px 12px 20px rgba(91,104,0,.24);
+  transition: transform .4s cubic-bezier(.2,.8,.2,1);
 }
 
-.add-money-review-main > strong em {
-  font-size: .3em;
-  font-style: normal;
-  color: var(--accent);
+.review-machine-card-line {
+  width: 84px;
+  height: 15px;
+  margin-top: 9px;
+  border-radius: 3px;
+  background: #b7d500;
 }
 
-.add-money-review-main > p {
-  margin: 18px 0 0;
-  font-size: 13px;
-  line-height: 1.55;
-  opacity: .54;
+.review-machine-card-dots {
+  width: 10px;
+  height: 10px;
+  margin: 13px 0 0 -38px;
+  border-radius: 50%;
+  background: #697800;
+  box-shadow: 0 -13px 0 #8ea200, 0 13px 0 #566300;
+  transform: rotate(90deg);
 }
 
-.add-money-review-side {
-  padding: 20px;
-  display: grid;
-  gap: 16px;
+.review-machine-terminal {
+  width: 86px;
+  height: 104px;
+  position: absolute;
+  top: 128px;
+  z-index: 2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #141414;
+  box-shadow: 0 14px 26px rgba(0,0,0,.2);
+  transition: transform .4s cubic-bezier(.2,.8,.2,1);
 }
 
-.add-money-review-side > div {
-  display: grid;
+.review-machine-slot {
+  width: 66px;
+  height: 11px;
+  position: absolute;
+  top: 11px;
+  left: 10px;
+  border-radius: 0 0 4px 4px;
+  background: #373737;
+}
+
+.review-machine-slot::before {
+  content: "";
+  position: absolute;
+  width: 66px;
+  height: 10px;
+  top: -10px;
+  background: #4f4f4f;
+}
+
+.review-machine-screen {
+  width: 66px;
+  height: 34px;
+  position: absolute;
+  top: 31px;
+  left: 10px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
+  background: #fff;
+  color: #111;
 }
+
+.review-machine-screen span { font-size: 11px; font-weight: 900; }
+.review-machine-screen small { font-size: 6px; font-weight: 900; color: #738300; }
+.review-machine-keys { width: 13px; height: 13px; position: absolute; left: 36px; top: 77px; border-radius: 2px; background: #737373; box-shadow: 0 -20px 0 #737373, 0 20px 0 #737373; transform: rotate(90deg); }
+.review-machine-keys.second { top: 95px; background: #9a9a9a; box-shadow: 0 -20px 0 #9a9a9a, 0 20px 0 #9a9a9a; }
+.review-visual-label { position: absolute; left: 18px; bottom: 16px; z-index: 4; font-size: 8px; font-weight: 900; letter-spacing: .14em; color: #111; opacity: .7; }
+.add-money-review-visual:hover .review-machine-card { transform: translateY(-16px) rotate(7deg); }
+.add-money-review-visual:hover .review-machine-terminal { transform: translateY(-8px); }
+
+.add-money-review-copy {
+  min-height: 260px;
+  padding: 28px 30px;
+  border-radius: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.add-money-review-copy > span { font-size: 9px; font-weight: 900; letter-spacing: .14em; color: var(--accent); }
+.add-money-review-copy > strong { margin-top: 16px; font-family: 'Times New Roman', Times, serif; font-size: clamp(62px, 8vw, 92px); line-height: .86; letter-spacing: -.065em; }
+.add-money-review-copy > strong em { font-family: inherit; font-size: .25em; font-style: normal; color: var(--accent); letter-spacing: -.02em; }
+.add-money-review-copy > p { max-width: 420px; margin: 20px 0 0; font-size: 13px; line-height: 1.6; opacity: .56; }
+
+.add-money-review-meta {
+  margin-top: 14px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.add-money-review-meta > div { min-width: 0; padding: 15px 16px; display: grid; gap: 5px; }
+.add-money-review-meta small { font-size: 8px; font-weight: 900; letter-spacing: .11em; opacity: .42; }
+.add-money-review-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.dark-mode .add-money-review-copy,.dark-mode .add-money-review-meta>div { color:#f4f4f1; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); }
+.light-mode .add-money-review-copy,.light-mode .add-money-review-meta>div { color:#111; background:rgba(255,255,255,.72); border:1px solid rgba(17,17,17,.06); }
 
 .add-money-review-note {
   margin-top: 14px;
@@ -1949,6 +2052,69 @@ body {
   border: 1px solid rgba(17,17,17,.07);
 }
 
+.dark-mode .add-money-submit.is-ready,
+.light-mode .add-money-submit.is-ready {
+  color: #111;
+  background: var(--accent);
+  border: 1px solid rgba(17,17,17,.12);
+}
+
+.add-money-modal.is-review .add-money-head {
+  margin-bottom: 18px;
+}
+
+.add-money-modal.is-review .add-money-review-note {
+  margin-top: 12px;
+  padding: 11px 14px;
+  border-radius: 14px;
+}
+
+.add-money-modal.is-review .add-money-review-actions {
+  grid-template-columns: 150px minmax(0,1fr);
+  margin-top: 14px;
+}
+
+.add-money-modal.is-review .add-money-submit,
+.add-money-modal.is-review .add-money-back {
+  min-height: 58px;
+}
+
+@media (max-width: 760px) {
+  .add-money-modal.is-review {
+    width: calc(100% - 20px);
+    padding: 20px;
+  }
+
+  .add-money-review-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .add-money-review-visual {
+    min-height: 190px;
+  }
+
+  .review-machine-card {
+    top: 28px;
+  }
+
+  .review-machine-terminal {
+    top: 98px;
+  }
+
+  .add-money-review-copy {
+    min-height: auto;
+    padding: 24px;
+  }
+
+  .add-money-review-copy > strong {
+    font-size: clamp(52px, 16vw, 76px);
+  }
+
+  .add-money-review-meta {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+}
+
 @media (max-width: 640px) {
   .add-money-modal {
     width: calc(100% - 18px);
@@ -1958,9 +2124,16 @@ body {
 
   .add-money-network-row,
   .add-money-chain-summary,
-  .add-money-review-grid,
   .add-money-review-actions {
     grid-template-columns: 1fr;
+  }
+
+  .add-money-modal.is-review .add-money-review-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .add-money-review-meta {
+    grid-template-columns: 1fr 1fr;
   }
 
   .add-money-chain-balance {

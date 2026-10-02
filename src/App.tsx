@@ -1825,7 +1825,7 @@ export default function App() {
         {addMoneyOpen && (
           <div className="wallet-modal-backdrop add-money-backdrop" role="presentation" onMouseDown={() => setAddMoneyOpen(false)}>
             <section
-              className="add-money-modal"
+              className={`add-money-modal ${addMoneyStep === 'review' ? 'is-review' : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="add-money-title"
@@ -1961,35 +1961,36 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <div className="add-money-review-grid">
-                    <div className="add-money-review-main dashboard-soft-card">
-                      <span>YOU ARE ADDING</span>
-                      <strong>{addMoneyAmount} <em>ETH</em></strong>
-                      <p>
-                        {currentRixorContractAddress
-                          ? 'This deposit will move testnet ETH into the Rixor savings contract.'
-                          : 'The Rixor testnet contract has not been deployed on this network yet.'}
-                      </p>
+                  <div className="add-money-review-shell">
+                    <div className="add-money-review-visual" aria-hidden="true">
+                      <div className="review-machine-card">
+                        <div className="review-machine-card-line" />
+                        <div className="review-machine-card-dots" />
+                      </div>
+                      <div className="review-machine-terminal">
+                        <div className="review-machine-slot" />
+                        <div className="review-machine-screen">
+                          <span>{Number(addMoneyAmount || 0).toFixed(4)}</span>
+                          <small>ETH</small>
+                        </div>
+                        <div className="review-machine-keys" />
+                        <div className="review-machine-keys second" />
+                      </div>
+                      <span className="review-visual-label">READY TO DEPOSIT</span>
                     </div>
 
-                    <div className="add-money-review-side dashboard-soft-card">
-                      <div>
-                        <small>NETWORK</small>
-                        <strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong>
-                      </div>
-                      <div>
-                        <small>FROM</small>
-                        <strong>{shortAddress(walletSession.address)}</strong>
-                      </div>
-                      <div>
-                        <small>ASSET</small>
-                        <strong>ETH</strong>
-                      </div>
-                      <div>
-                        <small>REMAINING WALLET BALANCE</small>
-                        <strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong>
-                      </div>
+                    <div className="add-money-review-copy">
+                      <span>REVIEW DEPOSIT</span>
+                      <strong>{Number(addMoneyAmount || 0).toFixed(4)} <em>ETH</em></strong>
+                      <p>One wallet approval will move this testnet ETH into your Rixor available balance.</p>
                     </div>
+                  </div>
+
+                  <div className="add-money-review-meta">
+                    <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                    <div><small>FROM</small><strong>{shortAddress(walletSession.address)}</strong></div>
+                    <div><small>ASSET</small><strong>ETH</strong></div>
+                    <div><small>WALLET AFTER</small><strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong></div>
                   </div>
 
                   <div className="add-money-review-note">
