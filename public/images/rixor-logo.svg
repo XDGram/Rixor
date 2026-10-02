@@ -1,0 +1,8 @@
+<svg width="520" height="120" viewBox="0 0 520 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(8 8) scale(2.6)">
+    <path d="M4 5h14.2c7.5 0 12.8 4.7 12.8 11.2 0 4.1-2 7.6-5.5 9.6l-4.7-5.1c2.1-.9 3.4-2.4 3.4-4.5 0-2.8-2.2-4.7-5.5-4.7H9.8L4 5Z" fill="#CFEF00"/>
+    <path d="M4 31V21.1l12.7-9.2 5.1 5.4L4 31Z" fill="#CFEF00"/>
+    <path d="M15.6 22.6l5.3-4 10.2 12.4h-8.6l-6.9-8.4Z" fill="#CFEF00"/>
+  </g>
+  <text x="125" y="77" fill="#F4F4F1" font-family="Inter, Arial, Helvetica, sans-serif" font-size="54" font-weight="700" letter-spacing="14">RIXOR</text>
+</svg>

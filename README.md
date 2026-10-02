@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/images/rixor-logo.svg" alt="Rixor" width="360" />
+</p>
+
 # Rixor
 
 **Onchain savings with clear terms, wallet-native control, and testnet-first execution.**

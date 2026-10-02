@@ -321,6 +321,17 @@ export default function App() {
       </svg>
     </span>
   )
+
+  const renderRixorBrand = (compact = false) => (
+    <span className={`rixor-brand-lockup ${compact ? 'is-compact' : ''}`} aria-label="Rixor">
+      <svg className="rixor-brand-mark" viewBox="0 0 36 36" role="presentation" aria-hidden="true">
+        <path d="M4 5h14.2c7.5 0 12.8 4.7 12.8 11.2 0 4.1-2 7.6-5.5 9.6l-4.7-5.1c2.1-.9 3.4-2.4 3.4-4.5 0-2.8-2.2-4.7-5.5-4.7H9.8L4 5Z" />
+        <path d="M4 31V21.1l12.7-9.2 5.1 5.4L4 31Z" />
+        <path d="M15.6 22.6l5.3-4 10.2 12.4h-8.6l-6.9-8.4Z" />
+      </svg>
+      <span className="rixor-brand-word">RIXOR</span>
+    </span>
+  )
   const currentRixorContractAddress = evmChainId === 11155111
     ? localContractAddresses[11155111] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress
     : evmChainId === 46630
@@ -1708,7 +1719,7 @@ export default function App() {
             <span>←</span>
             Back to dashboard
           </button>
-          <span className="plan-detail-brand">RIXOR</span>
+          <span className="plan-detail-brand">{renderRixorBrand(true)}</span>
           <div className="plan-detail-network">
             <div className="chain-inline-label">
               {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
@@ -1975,7 +1986,7 @@ export default function App() {
             <span>←</span>
             Back to dashboard
           </button>
-          <span className="withdraw-page-brand">RIXOR</span>
+          <span className="withdraw-page-brand">{renderRixorBrand(true)}</span>
           <div className="withdraw-page-network">
             <div className="chain-inline-label">
               {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
@@ -2183,7 +2194,7 @@ export default function App() {
             <span>←</span>
             Back to dashboard
           </button>
-          <span className="plan-page-brand">RIXOR</span>
+          <span className="plan-page-brand">{renderRixorBrand(true)}</span>
           <div className="plan-page-network">
             <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
             <strong>{shortAddress(walletSession.address)}</strong>
@@ -2496,7 +2507,7 @@ export default function App() {
 
         <header className="dashboard-topbar">
           <button className="dashboard-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            RIXOR
+            {renderRixorBrand()}
           </button>
 
           <div className="dashboard-topbar-actions">
@@ -3354,6 +3365,9 @@ export default function App() {
       )}
 
       {!walletSession && <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
+        <button className="top-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Rixor home">
+          {renderRixorBrand()}
+        </button>
         <div className="tab-container" aria-label="Primary navigation">
           <input type="radio" name="tab" id="tab1" className="tab tab--1" checked={activeSection === 'save'} readOnly />
           <label className="tab_label" htmlFor="tab1" onClick={focusSavingsPanel}>Save</label>
