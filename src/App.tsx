@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
-import { Interface, decodeBytes32String, encodeBytes32String } from 'ethers'
+import { Interface, decodeBytes32String, encodeBytes32String, formatEther } from 'ethers'
 
 type WalletKind = 'evm' | 'solana'
 
@@ -57,6 +57,19 @@ type ActivityItem = {
   timestamp: number
   network: string
   status: 'confirmed' | 'pending' | 'failed'
+  txHash?: string
+}
+
+type PlanHistoryItem = {
+  id: string
+  goal: string
+  principalAmount: number
+  principalAsset: string
+  termLabel: string
+  rewardAsset: string
+  startedAt: number
+  closedAt: number
+  earlyExit: boolean
   txHash?: string
 }
 
@@ -122,6 +135,7 @@ export default function App() {
   const [withdrawTxError, setWithdrawTxError] = useState('')
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([])
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
+  const [planHistory, setPlanHistory] = useState<PlanHistoryItem[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
@@ -373,6 +387,7 @@ export default function App() {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress || !currentEvmNetwork) {
       setActivePlans([])
       setActivityItems([])
+      setPlanHistory([])
       return
     }
 
@@ -418,26 +433,30 @@ export default function App() {
         }
 
         return {
-          id: planId.toString(),
-          goal,
-          principalAsset: 'ETH',
-          principalAmount: Number(principalWei) / 1e18,
-          apy: apys[planType] ?? 0,
-          rewardAsset: rewardPreference === 1 ? 'USDG' : 'ETH',
-          termLabel: termLabels[planType] ?? 'Plan',
-          accessLabel: accessLabels[planType] ?? 'Onchain',
-          startedAt,
-          maturesAt,
-          progress,
-          accruedReward: 0,
-          status: (status === 0 ? (maturesAt && now >= maturesAt ? 'matured' : 'active') : 'matured') as 'active' | 'matured',
-        } satisfies ActivePlan
+          rawStatus: status,
+          plan: {
+            id: planId.toString(),
+            goal,
+            principalAsset: 'ETH',
+            principalAmount: Number(formatEther(principalWei)),
+            apy: apys[planType] ?? 0,
+            rewardAsset: rewardPreference === 1 ? 'USDG' : 'ETH',
+            termLabel: termLabels[planType] ?? 'Plan',
+            accessLabel: accessLabels[planType] ?? 'Onchain',
+            startedAt,
+            maturesAt,
+            progress,
+            accruedReward: 0,
+            status: (maturesAt && now >= maturesAt ? 'matured' : 'active') as 'active' | 'matured',
+          } satisfies ActivePlan,
+        }
       }))
 
-      setActivePlans(loadedPlans.filter((planItem) => planItem.status === 'active' || planItem.status === 'matured'))
+      setActivePlans(loadedPlans.filter((item) => item.rawStatus === 0).map((item) => item.plan))
 
       if (evmChainId === 11155111) {
         const planCreatedTopic = rixorInterface.getEvent('PlanCreated')!.topicHash
+        const planWithdrawnTopic = rixorInterface.getEvent('PlanWithdrawn')!.topicHash
         const paddedUser = `0x${walletSession.address.toLowerCase().replace(/^0x/, '').padStart(64, '0')}`
         const logs = await connectedEvmProvider.request({
           method: 'eth_getLogs',
@@ -449,9 +468,19 @@ export default function App() {
           }],
         }) as Array<{ data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }>
 
+        const withdrawnLogs = await connectedEvmProvider.request({
+          method: 'eth_getLogs',
+          params: [{
+            address: currentRixorContractAddress,
+            fromBlock: '0xb47c03',
+            toBlock: 'latest',
+            topics: [planWithdrawnTopic, paddedUser],
+          }],
+        }) as Array<{ data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }>
+
         const planActivity = logs.map((log) => {
           const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
-          const principal = parsed ? Number(parsed.args.principal as bigint) / 1e18 : 0
+          const principal = parsed ? Number(formatEther(parsed.args.principal as bigint)) : 0
           const planType = parsed ? Number(parsed.args.planType) : 0
           const startedAt = parsed ? Number(parsed.args.startedAt) * 1000 : Date.now()
           return {
@@ -466,9 +495,50 @@ export default function App() {
             txHash: log.transactionHash,
           }
         })
-        setActivityItems(planActivity.sort((a, b) => b.timestamp - a.timestamp))
+        const historyRows = await Promise.all(withdrawnLogs.map(async (log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          const planId = parsed ? (parsed.args.planId as bigint).toString() : '0'
+          const principalReturned = parsed ? Number(formatEther(parsed.args.principalReturned as bigint)) : 0
+          const earlyExit = parsed ? Boolean(parsed.args.earlyExit) : false
+          const sourcePlan = loadedPlans.find((item) => item.plan.id === planId)?.plan
+          const block = await connectedEvmProvider.request({
+            method: 'eth_getBlockByNumber',
+            params: [log.blockNumber, false],
+          }) as { timestamp?: string } | null
+          const closedAt = block?.timestamp ? Number.parseInt(block.timestamp, 16) * 1000 : Date.now()
+
+          return {
+            id: planId,
+            goal: sourcePlan?.goal ?? 'Savings goal',
+            principalAmount: principalReturned,
+            principalAsset: 'ETH',
+            termLabel: sourcePlan?.termLabel ?? 'Plan',
+            rewardAsset: sourcePlan?.rewardAsset ?? 'ETH',
+            startedAt: sourcePlan?.startedAt ?? closedAt,
+            closedAt,
+            earlyExit,
+            txHash: log.transactionHash,
+          } satisfies PlanHistoryItem
+        }))
+
+        setPlanHistory(historyRows.sort((a, b) => b.closedAt - a.closedAt))
+
+        const withdrawalActivity: ActivityItem[] = historyRows.map((item) => ({
+          id: `withdraw-${item.id}-${item.txHash ?? item.closedAt}`,
+          type: 'withdrawal',
+          title: `${item.termLabel} plan withdrawn`,
+          amount: item.principalAmount,
+          asset: item.principalAsset,
+          timestamp: item.closedAt,
+          network: currentEvmNetwork.shortName,
+          status: 'confirmed',
+          txHash: item.txHash,
+        }))
+
+        setActivityItems([...planActivity, ...withdrawalActivity].sort((a, b) => b.timestamp - a.timestamp))
       } else {
         setActivityItems([])
+        setPlanHistory([])
       }
     } catch (error) {
       console.error('Could not hydrate Rixor plans', error)
@@ -2723,6 +2793,55 @@ export default function App() {
               )}
             </article>
           </div>
+
+          <article className="dashboard-panel dashboard-soft-card dashboard-history-panel">
+            <div className="dashboard-panel-head">
+              <div>
+                <span>PLAN HISTORY</span>
+                <h2>Completed & withdrawn</h2>
+              </div>
+              <small>{planHistory.length} closed</small>
+            </div>
+
+            {planHistory.length === 0 ? (
+              <div className="dashboard-history-empty">
+                <span>✓</span>
+                <div>
+                  <strong>No closed plans yet.</strong>
+                  <p>When you withdraw or close a plan, its final amount and exit details will stay here.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="dashboard-history-list">
+                {planHistory.map((item) => (
+                  <div className="dashboard-history-row" key={`${item.id}-${item.txHash ?? item.closedAt}`}>
+                    <div className="dashboard-history-main">
+                      <span className="dashboard-history-mark">✓</span>
+                      <div>
+                        <small>{item.goal.toUpperCase()}</small>
+                        <strong>{item.principalAmount.toFixed(4)} {item.principalAsset}</strong>
+                        <span>{item.termLabel} · rewards in {item.rewardAsset}</span>
+                      </div>
+                    </div>
+                    <div className="dashboard-history-meta">
+                      <small>STARTED</small>
+                      <strong>{formatPlanDate(item.startedAt)}</strong>
+                    </div>
+                    <div className="dashboard-history-meta">
+                      <small>EXIT</small>
+                      <strong>{formatPlanDate(item.closedAt)}</strong>
+                      <span>{item.earlyExit ? 'Early withdrawal' : 'Completed'}</span>
+                    </div>
+                    {item.txHash && currentEvmNetwork ? (
+                      <a className="dashboard-history-link" href={`${currentEvmNetwork.explorerUrl}/tx/${item.txHash}`} target="_blank" rel="noreferrer">↗</a>
+                    ) : (
+                      <span className="dashboard-history-link is-disabled">↗</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
 
           <div className="dashboard-footnote">
             <span className="dashboard-footnote-dot" />
