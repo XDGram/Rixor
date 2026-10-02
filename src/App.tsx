@@ -100,8 +100,8 @@ const getEarlyExitQuote = (plan: ActivePlan, now = Date.now()) => {
 
 export default function App() {
   const rixorInterface = useMemo(() => new Interface(rixorSavingsArtifact.abi), [])
-  const deployedSepoliaAddress = '0xec4db2f637697191904cf3c46c0a18a9025a2077'
-  const deployedRobinhoodTestnetAddress = '0xF321297092Ecf6c482C5fCC6395cE1B672384631'
+  const deployedSepoliaAddress = '0x1B644D969D0b755770033AC332BaCCeFBdbc18bA'
+  const deployedRobinhoodTestnetAddress = '0xeFddb13d2d3a88E65C0e935603eA26a849f6239b'
   const [lightMode, setLightMode] = useState(() => window.localStorage.getItem('rixor:theme') === 'light')
   const [amount, setAmount] = useState('1000')
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
@@ -130,13 +130,6 @@ export default function App() {
   const [deployStatus, setDeployStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [deployTxHash, setDeployTxHash] = useState('')
   const [deployError, setDeployError] = useState('')
-  const [localContractAddresses, setLocalContractAddresses] = useState<Record<number, string>>(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem('rixor:testnet-contracts') || '{}') as Record<number, string>
-    } catch {
-      return {}
-    }
-  })
   const [addMoneyOpen, setAddMoneyOpen] = useState(false)
   const [addMoneyStep, setAddMoneyStep] = useState<'amount' | 'review'>('amount')
   const [addMoneyAmount, setAddMoneyAmount] = useState('')
@@ -332,14 +325,14 @@ export default function App() {
       <span className="rixor-brand-word">RIXOR</span>
     </span>
   )
+  const deploymentAdminAddress = '0x844c0e2b7e282156f3b5d006ad40dba3b28e5867'
+  const isDeploymentAdmin = walletSession?.kind === 'evm'
+    && walletSession.address.toLowerCase() === deploymentAdminAddress
   const currentRixorContractAddress = evmChainId === 11155111
-    ? localContractAddresses[11155111] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress
+    ? deployedSepoliaAddress
     : evmChainId === 46630
-      ? localContractAddresses[46630] || import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS || deployedRobinhoodTestnetAddress
+      ? deployedRobinhoodTestnetAddress
       : undefined
-  const hasLatestLocalDeployment = currentEvmNetwork
-    ? Boolean(localContractAddresses[currentEvmNetwork.id])
-    : false
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
   const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
@@ -1010,16 +1003,19 @@ export default function App() {
     }
   }
 
-  const deployRixorContract = async (force = false) => {
+  const deployRixorContract = async () => {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm') return
+    if (!isDeploymentAdmin) {
+      setDeployError('Only the Rixor deployment wallet can deploy protocol contracts.')
+      return
+    }
 
     const targetNetwork = currentEvmNetwork
     if (!targetNetwork) return
     const configuredAddress = targetNetwork.id === 11155111
-      ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress
-      : import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS
-    if (localContractAddresses[targetNetwork.id]) return
-    if (!force && configuredAddress) return
+      ? deployedSepoliaAddress
+      : deployedRobinhoodTestnetAddress
+    if (configuredAddress) return
 
     try {
       setDeployError('')
@@ -1114,9 +1110,6 @@ export default function App() {
       if (!receipt) throw new Error('Deployment is still pending. Check the explorer for status.')
       if (receipt.status !== '0x1' || !receipt.contractAddress) throw new Error('Contract deployment failed.')
 
-      const nextAddresses = { ...localContractAddresses, [targetNetwork.id]: receipt.contractAddress }
-      setLocalContractAddresses(nextAddresses)
-      window.localStorage.setItem('rixor:testnet-contracts', JSON.stringify(nextAddresses))
       setDeployStatus('confirmed')
       await refreshContractAvailableBalance()
     } catch (error) {
@@ -1344,6 +1337,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('rixor:theme', lightMode ? 'light' : 'dark')
   }, [lightMode])
+
+  useEffect(() => {
+    window.localStorage.removeItem('rixor:testnet-contracts')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -2908,7 +2905,7 @@ export default function App() {
                 <strong className="amount-with-asset"><span>{contractAvailableBalance}</span><em>ETH</em></strong>
                 <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
-                {currentEvmNetwork && !currentRixorContractAddress && (
+                {currentEvmNetwork && !currentRixorContractAddress && isDeploymentAdmin && (
                   <div className="dashboard-contract-setup">
                     <div>
                       <small>TESTNET CONTRACT</small>
@@ -2943,21 +2940,7 @@ export default function App() {
                     <a href={`${currentEvmNetwork?.explorerUrl}/address/${currentRixorContractAddress}`} target="_blank" rel="noreferrer">
                       {shortAddress(currentRixorContractAddress)} ↗
                     </a>
-                    {hasLatestLocalDeployment ? (
-                      <span className="dashboard-contract-latest">Latest contract active</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void deployRixorContract(true)}
-                        disabled={deployStatus === 'awaiting-wallet' || deployStatus === 'pending'}
-                      >
-                        {deployStatus === 'awaiting-wallet'
-                          ? 'Approve latest…'
-                          : deployStatus === 'pending'
-                            ? 'Deploying latest…'
-                            : 'Deploy latest contract'}
-                      </button>
-                    )}
+                    <span className="dashboard-contract-latest">Protocol contract active</span>
                   </div>
                 )}
 
@@ -3257,8 +3240,10 @@ export default function App() {
             <span className="dashboard-footnote-dot" />
             <p>
               Connected as {shortAddress(walletSession.address)}. {currentRixorContractAddress
-                ? 'Rixor available balance is now read directly from the testnet contract.'
-                : 'Deploy the Rixor testnet contract to activate deposits and contract balances on this network.'}
+                ? 'Rixor available balance is read directly from the active testnet contract.'
+                : isDeploymentAdmin
+                  ? 'This supported testnet does not have a configured Rixor contract yet.'
+                  : 'Rixor is not available on this network yet.'}
             </p>
           </div>
         </section>

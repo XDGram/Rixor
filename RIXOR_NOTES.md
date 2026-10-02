@@ -66,12 +66,14 @@
 - Frontend Add Money is wired to send a real `eth_sendTransaction` deposit once a deployed contract address is configured for the active testnet.
 - Frontend reads `availableBalance(address)` directly from the deployed contract and uses it for the dashboard's available Rixor balance.
 - Deployment scripts support Sepolia and Robinhood Chain Testnet.
-- CLI deployment requires a dedicated local testnet deployer key. Browser deployment can instead be wallet-signed on the selected supported testnet.
+- CLI deployment requires a dedicated local testnet deployer key. Any wallet-signed browser deployment path is restricted to the Rixor deployment admin wallet.
 
-- The dashboard also supports wallet-signed testnet deployment. If no configured contract address exists on Sepolia or Robinhood Chain Testnet, the connected EVM wallet can deploy the compiled RixorSavings bytecode directly and Rixor stores the resulting contract address locally for that chain.
+- Tester wallets never deploy Rixor contracts. Supported testnets use canonical contract addresses shared by every user instead of browser-local deployment state.
 - Robinhood Testnet balance reads use the official RPC first, then /rpc, then https://robinhood-sepolia-rpc.publicnode.com as a fallback.
-- Canonical Sepolia RixorSavings deployment: `0xec4db2f637697191904cf3c46c0a18a9025a2077`.
-- Sepolia deployment transaction: `0xce3899a426c167486d50c0cb36a18bd3eb96c97c10b535234bb161f6863f51b8`.
+- Canonical Sepolia RixorSavings deployment: `0x1B644D969D0b755770033AC332BaCCeFBdbc18bA`.
+- Canonical Robinhood Chain Testnet RixorSavings deployment: `0xeFddb13d2d3a88E65C0e935603eA26a849f6239b`.
+- Canonical Sepolia deployment transaction: `0x2341b308ed9549144b5aecef2c9d409f17dc02f5ea78e4f939a787c0cba1aee6`.
+- Canonical Robinhood Chain Testnet deployment transaction: `0x7a3d0c7355f3ea43d707a88ccd615f089d3ce3ab2eaad92d74029859b7ca5c3c`.
 - Start Plan uses Rixor's onchain available balance and calls `createPlan(...)` on the deployed contract.
 - Available-balance withdrawal calls `withdrawAvailable(...)`.
 - Plan Detail calls `withdrawPlan(planId)` for the selected active plan and refreshes Active Plans, Plan History, Activity, and balances after confirmation.
@@ -79,4 +81,4 @@
 - EVM wallet sessions silently reconnect after reload only when the previously authorized account is still exposed by the same injected wallet; no signing prompt is triggered for reconnect.
 - Add Money `Max` reserves test ETH for gas using a dynamic estimate with a conservative fallback reserve.
 - Contract behavior tests run against a local in-process EVM with `npm run contract:test`.
-- Robinhood Chain Testnet is deployment-ready in the UI/CLI, but no Robinhood contract address should be claimed until a real deployment confirms and is recorded.
+- Robinhood Chain Testnet uses the confirmed canonical deployment recorded above.

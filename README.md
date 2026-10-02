@@ -28,7 +28,7 @@ The current build supports **Sepolia** and **Robinhood Chain Testnet**. It is a 
 - Read plan history and recent movement from contract events.
 - Show wallet approval, pending, and transaction-confirmed UI states.
 - Use chain-specific visual identity: Ethereum for Sepolia and the Robinhood feather for Robinhood Chain Testnet.
-- Deploy the current contract bytecode from the connected wallet when a fresh testnet deployment is required.
+- Use the canonical Rixor contract deployment for the selected supported testnet.
 
 ## Screenshots
 
@@ -89,7 +89,7 @@ At maturity the early-exit fee is zero. The UI shows the current percentage, ETH
 - Native asset used by the current Rixor contract: testnet ETH
 - Explorer: Robinhood Chain Testnet Explorer
 
-Rixor can store a freshly wallet-deployed contract address per chain in browser local storage under `rixor:testnet-contracts`. A locally saved deployment takes precedence over the fallback/configured address for that testnet.
+Rixor uses canonical contract addresses for Sepolia and Robinhood Chain Testnet. Testers and ordinary connected wallets never deploy protocol contracts from the app. Contract deployment is an admin/development action owned by the Rixor deployment wallet.
 
 ## Architecture
 

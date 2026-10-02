@@ -180,17 +180,9 @@ Rixor uses chain-specific identity throughout the interface. Sepolia surfaces th
 
 ## 7. Deployment behavior
 
-The app contains current compiled bytecode and can request a contract deployment directly through the connected wallet.
+The tester-facing app uses canonical contract addresses for each supported testnet. Ordinary users do not deploy contracts and no browser-local deployment registry is used as the source of truth.
 
-After a successful deployment receipt, the returned contract address is saved per chain in browser local storage under:
-
-```text
-rixor:testnet-contracts
-```
-
-The locally saved chain-specific deployment is preferred over fallback/configured addresses. The interface prevents repeatedly presenting the deployment action once a current local deployment exists for the selected network.
-
-This mechanism is intended for testnet iteration and tester builds, not as the final production deployment registry.
+Protocol deployment is restricted to the Rixor deployment wallet and is treated as an admin/development operation. Once a deployment is selected as canonical, its address is promoted into the application configuration so every tester uses the same contract on that network.
 
 ## 8. Frontend architecture
 
@@ -270,7 +262,7 @@ This means:
 
 ### 11.2 Testnet deployment registry
 
-Fresh deployment addresses can be stored in local browser storage. A production system should use a controlled deployment registry/configuration strategy instead.
+The current tester build uses canonical chain-specific contract addresses rather than per-browser deployment state. A production system should still use a controlled deployment registry/configuration strategy.
 
 ### 11.3 USD loss value
 
