@@ -22,9 +22,23 @@ body,
   margin: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   overflow-x: hidden;
   overflow-y: auto;
+  min-height: 100svh;
+  overscroll-behavior-x: none;
+}
+
+button,
+a,
+label,
+input {
+  touch-action: manipulation;
 }
 
 .carbon-stage {
@@ -38,7 +52,7 @@ body {
 
 .dashboard-stage {
   min-height: 100dvh;
-  padding-bottom: 72px;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 .dashboard-topbar {
@@ -7052,19 +7066,67 @@ body {
 
 @media (max-width: 640px) {
   .top-shell {
-    top: 18px;
-    left: 14px;
-    right: 14px;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    left: max(14px, env(safe-area-inset-left, 0px));
+    right: max(14px, env(safe-area-inset-right, 0px));
     justify-content: flex-start;
+    gap: 8px;
+    padding-right: 68px;
+  }
+
+  .top-brand {
+    position: static;
+    flex: 0 0 30px;
+  }
+
+  .top-brand .rixor-brand-lockup {
+    gap: 0;
+  }
+
+  .top-brand .rixor-brand-mark {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .top-brand .rixor-brand-word {
+    display: none;
   }
 
   .tab-container {
-    transform: scale(.82);
+    width: 256px;
+    flex: 0 0 256px;
+    transform: none;
     transform-origin: left center;
   }
 
+  .top-shell.is-compact .tab-container {
+    transform: none;
+  }
+
+  .tab,
+  .tab_label,
+  .indicator {
+    width: 64px;
+  }
+
+  .tab_label {
+    font-size: .64rem;
+    letter-spacing: -.01em;
+  }
+
+  .tab--2:checked ~ .indicator { left: calc(64px + 2px); }
+  .tab--3:checked ~ .indicator { left: calc(128px + 2px); }
+  .tab--4:checked ~ .indicator { left: calc(192px + 2px); }
+
   .theme-toggle-wrap {
     right: 0;
+    transform: scale(.8);
+    transform-origin: right center;
+  }
+
+  .top-shell.is-compact .theme-toggle-wrap {
+    transform: scale(.76);
   }
 
   .hero-copy-shell {
