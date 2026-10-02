@@ -36,6 +36,7 @@ type ActivePlan = {
   goal: string
   principalAsset: string
   principalAmount: number
+  planType: number
   apy: number
   rewardAsset: string
   termLabel: string
@@ -70,13 +71,38 @@ type PlanHistoryItem = {
   startedAt: number
   closedAt: number
   earlyExit: boolean
+  earlyExitFee: number
+  earlyExitFeeBps: number
+  amountReturned: number
   txHash?: string
+}
+
+const MAX_EARLY_EXIT_FEE_BPS = [0, 200, 400, 600, 800] as const
+
+const getEarlyExitQuote = (plan: ActivePlan, now = Date.now()) => {
+  if (!plan.maturesAt || plan.planType === 0 || now >= plan.maturesAt) {
+    return { earlyExit: false, feeBps: 0, feeAmount: 0, amountReturned: plan.principalAmount }
+  }
+
+  const maxFeeBps = MAX_EARLY_EXIT_FEE_BPS[plan.planType] ?? 0
+  const duration = Math.max(1, plan.maturesAt - plan.startedAt)
+  const remaining = Math.max(0, plan.maturesAt - now)
+  const feeBps = Math.ceil((maxFeeBps * remaining) / duration)
+  const feeAmount = (plan.principalAmount * feeBps) / 10_000
+
+  return {
+    earlyExit: true,
+    feeBps,
+    feeAmount,
+    amountReturned: plan.principalAmount - feeAmount,
+  }
 }
 
 export default function App() {
   const rixorInterface = useMemo(() => new Interface(rixorSavingsArtifact.abi), [])
   const deployedSepoliaAddress = '0xec4db2f637697191904cf3c46c0a18a9025a2077'
-  const [lightMode, setLightMode] = useState(false)
+  const deployedRobinhoodTestnetAddress = '0xF321297092Ecf6c482C5fCC6395cE1B672384631'
+  const [lightMode, setLightMode] = useState(() => window.localStorage.getItem('rixor:theme') === 'light')
   const [amount, setAmount] = useState('1000')
   const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
   const [openHowCard, setOpenHowCard] = useState<string | null>(null)
@@ -91,6 +117,7 @@ export default function App() {
   const [walletConnecting, setWalletConnecting] = useState<string | null>(null)
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
+  const [dashboardView, setDashboardView] = useState(true)
   const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
   const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
@@ -125,7 +152,6 @@ export default function App() {
   const [rewardAsset, setRewardAsset] = useState<'same' | 'usdg'>('same')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawStep, setWithdrawStep] = useState<'setup' | 'review'>('setup')
-  const [withdrawSource, setWithdrawSource] = useState<'available' | 'flexible' | 'locked'>('available')
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [startPlanTxStatus, setStartPlanTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [startPlanTxHash, setStartPlanTxHash] = useState('')
@@ -135,16 +161,30 @@ export default function App() {
   const [withdrawTxError, setWithdrawTxError] = useState('')
   const [activePlans, setActivePlans] = useState<ActivePlan[]>([])
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
+  const [activityExpanded, setActivityExpanded] = useState(false)
   const [planHistory, setPlanHistory] = useState<PlanHistoryItem[]>([])
+  const [historyExpanded, setHistoryExpanded] = useState(false)
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [planWithdrawReviewOpen, setPlanWithdrawReviewOpen] = useState(false)
   const [planWithdrawTxStatus, setPlanWithdrawTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [planWithdrawTxHash, setPlanWithdrawTxHash] = useState('')
   const [planWithdrawTxError, setPlanWithdrawTxError] = useState('')
+  const [planTopUpOpen, setPlanTopUpOpen] = useState(false)
+  const [planTopUpAmount, setPlanTopUpAmount] = useState('')
+  const [planTopUpTxStatus, setPlanTopUpTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [planTopUpTxHash, setPlanTopUpTxHash] = useState('')
+  const [planTopUpTxError, setPlanTopUpTxError] = useState('')
+  const [planExtendOpen, setPlanExtendOpen] = useState(false)
+  const [planExtendTerm, setPlanExtendTerm] = useState<'30' | '90' | '180' | '365'>('90')
+  const [planExtendTxStatus, setPlanExtendTxStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
+  const [planExtendTxHash, setPlanExtendTxHash] = useState('')
+  const [planExtendTxError, setPlanExtendTxError] = useState('')
+  const [ethUsdPrice, setEthUsdPrice] = useState<number | null>(null)
   const savingsPanelRef = useRef<HTMLElement>(null)
   const howSectionRef = useRef<HTMLElement>(null)
   const plansSectionRef = useRef<HTMLElement>(null)
   const securitySectionRef = useRef<HTMLElement>(null)
+  const reconnectAttemptedRef = useRef(false)
   const apy = plan === 'flexible' ? 3.8 : 6.8
   const projected = useMemo(() => {
     const parsed = Number(amount.replace(/,/g, '')) || 0
@@ -183,7 +223,9 @@ export default function App() {
       })
 
       setWalletSession({ kind: 'evm', address, name: wallet.name })
+      setDashboardView(true)
       setConnectedEvmProvider(ethereum)
+      window.localStorage.setItem('rixor:wallet-session', JSON.stringify({ id: wallet.id, kind: 'evm', address, name: wallet.name }))
       const chainId = await ethereum.request({ method: 'eth_chainId' }) as string
       setEvmChainId(Number.parseInt(chainId, 16))
       setWalletModalOpen(false)
@@ -215,6 +257,7 @@ export default function App() {
       await solana.signMessage(message, 'utf8')
 
       setWalletSession({ kind: 'solana', address, name: wallet.name })
+      setDashboardView(true)
       setWalletModalOpen(false)
       setPendingWalletAction(null)
       setPendingPlanTerm(null)
@@ -226,7 +269,10 @@ export default function App() {
   }
 
   const disconnectWallet = () => {
+    reconnectAttemptedRef.current = true
+    window.localStorage.removeItem('rixor:wallet-session')
     setWalletSession(null)
+    setDashboardView(true)
     setConnectedEvmProvider(null)
     setEvmChainId(null)
     setNativeBalance('0.0000')
@@ -262,11 +308,27 @@ export default function App() {
   ] as const
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
+  const renderChainIcon = (chainId?: number | null) => chainId === 46630 ? (
+    <span className="chain-mark chain-mark--robinhood" aria-hidden="true">
+      <img src="/images/robinhood-chain-feather.jpg" alt="" />
+    </span>
+  ) : (
+    <span className="chain-mark chain-mark--sepolia" aria-hidden="true">
+      <svg viewBox="0 0 32 52" role="presentation">
+        <path d="M16 0 0 26.5 16 36 32 26.5 16 0Z" fill="currentColor" opacity=".92" />
+        <path d="M16 38.8 0 29.6 16 52 32 29.6 16 38.8Z" fill="currentColor" opacity=".58" />
+        <path d="M16 5.8v24.1l11.5-4.3L16 5.8Z" fill="rgba(255,255,255,.22)" />
+      </svg>
+    </span>
+  )
   const currentRixorContractAddress = evmChainId === 11155111
-    ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || localContractAddresses[11155111] || deployedSepoliaAddress
+    ? localContractAddresses[11155111] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress
     : evmChainId === 46630
-      ? import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS || localContractAddresses[46630]
+      ? localContractAddresses[46630] || import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS || deployedRobinhoodTestnetAddress
       : undefined
+  const hasLatestLocalDeployment = currentEvmNetwork
+    ? Boolean(localContractAddresses[currentEvmNetwork.id])
+    : false
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
   const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
@@ -314,6 +376,39 @@ export default function App() {
     }
 
     return null
+  }
+
+  const setGasSafeDepositMax = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress) return
+
+    try {
+      const rawBalance = await readBalanceFromRpc(walletSession.address)
+      if (!rawBalance) throw new Error('Could not read your testnet balance.')
+
+      const balanceWei = BigInt(rawBalance)
+      let reserveWei = 200_000_000_000_000n // 0.0002 ETH minimum reserve for testnet gas.
+
+      try {
+        const [gasHex, gasPriceHex] = await Promise.all([
+          connectedEvmProvider.request({
+            method: 'eth_estimateGas',
+            params: [{ from: walletSession.address, to: currentRixorContractAddress, value: '0x1' }],
+          }) as Promise<string>,
+          connectedEvmProvider.request({ method: 'eth_gasPrice' }) as Promise<string>,
+        ])
+        const dynamicReserve = BigInt(gasHex) * BigInt(gasPriceHex) * 2n
+        if (dynamicReserve > reserveWei) reserveWei = dynamicReserve
+      } catch {
+        // The fixed minimum reserve remains intentionally conservative for testnet.
+      }
+
+      if (balanceWei <= reserveWei) throw new Error('Keep some test ETH in your wallet for gas.')
+      const safeAmount = Number(formatEther(balanceWei - reserveWei))
+      setAddMoneyAmount(safeAmount.toFixed(6).replace(/0+$/, '').replace(/\.$/, ''))
+      setAddMoneyTxError('')
+    } catch (error) {
+      setAddMoneyTxError(error instanceof Error ? error.message : 'Could not calculate a gas-safe maximum.')
+    }
   }
 
   const refreshNativeBalance = async () => {
@@ -443,6 +538,7 @@ export default function App() {
             goal,
             principalAsset: 'ETH',
             principalAmount: Number(formatEther(principalWei)),
+            planType,
             apy: apys[planType] ?? 0,
             rewardAsset: rewardPreference === 1 ? 'USDG' : 'ETH',
             termLabel: termLabels[planType] ?? 'Plan',
@@ -458,29 +554,40 @@ export default function App() {
 
       setActivePlans(loadedPlans.filter((item) => item.rawStatus === 0).map((item) => item.plan))
 
-      if (evmChainId === 11155111) {
+      if (evmChainId === 11155111 || evmChainId === 46630) {
         const planCreatedTopic = rixorInterface.getEvent('PlanCreated')!.topicHash
         const planWithdrawnTopic = rixorInterface.getEvent('PlanWithdrawn')!.topicHash
+        const earlyExitFeeTopic = rixorInterface.getEvent('EarlyExitFeeCharged')!.topicHash
+        const depositedTopic = rixorInterface.getEvent('Deposited')!.topicHash
+        const availableWithdrawnTopic = rixorInterface.getEvent('AvailableWithdrawn')!.topicHash
         const paddedUser = `0x${walletSession.address.toLowerCase().replace(/^0x/, '').padStart(64, '0')}`
-        const logs = await connectedEvmProvider.request({
+        const fromBlock = evmChainId === 11155111 ? '0xb47c03' : '0x0'
+        type RixorLog = { data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }
+        const readLogs = (topic: string) => connectedEvmProvider.request({
           method: 'eth_getLogs',
-          params: [{
-            address: currentRixorContractAddress,
-            fromBlock: '0xb47c03',
-            toBlock: 'latest',
-            topics: [planCreatedTopic, paddedUser],
-          }],
-        }) as Array<{ data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }>
+          params: [{ address: currentRixorContractAddress, fromBlock, toBlock: 'latest', topics: [topic, paddedUser] }],
+        }) as Promise<RixorLog[]>
 
-        const withdrawnLogs = await connectedEvmProvider.request({
-          method: 'eth_getLogs',
-          params: [{
-            address: currentRixorContractAddress,
-            fromBlock: '0xb47c03',
-            toBlock: 'latest',
-            topics: [planWithdrawnTopic, paddedUser],
-          }],
-        }) as Array<{ data: string; topics: string[]; transactionHash: string; blockNumber: string; logIndex: string }>
+        const [logs, withdrawnLogs, earlyExitFeeLogs, depositLogs, availableWithdrawalLogs] = await Promise.all([
+          readLogs(planCreatedTopic),
+          readLogs(planWithdrawnTopic),
+          readLogs(earlyExitFeeTopic),
+          readLogs(depositedTopic),
+          readLogs(availableWithdrawnTopic),
+        ])
+
+        const blockTimestampCache = new Map<string, number>()
+        const getLogTimestamp = async (blockNumber: string) => {
+          const cached = blockTimestampCache.get(blockNumber)
+          if (cached) return cached
+          const block = await connectedEvmProvider.request({
+            method: 'eth_getBlockByNumber',
+            params: [blockNumber, false],
+          }) as { timestamp?: string } | null
+          const timestamp = block?.timestamp ? Number.parseInt(block.timestamp, 16) * 1000 : Date.now()
+          blockTimestampCache.set(blockNumber, timestamp)
+          return timestamp
+        }
 
         const planActivity = logs.map((log) => {
           const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
@@ -499,28 +606,47 @@ export default function App() {
             txHash: log.transactionHash,
           }
         })
+
+        const createdPlanMetadata = new Map(logs.map((log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          const planId = parsed ? (parsed.args.planId as bigint).toString() : '0'
+          return [planId, {
+            principal: parsed ? Number(formatEther(parsed.args.principal as bigint)) : 0,
+          }] as const
+        }))
+
+        const earlyExitFees = new Map(earlyExitFeeLogs.map((log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          const planId = parsed ? (parsed.args.planId as bigint).toString() : '0'
+          return [planId, {
+            amount: parsed ? Number(formatEther(parsed.args.feeAmount as bigint)) : 0,
+            bps: parsed ? Number(parsed.args.feeBps) : 0,
+          }] as const
+        }))
+
         const historyRows = await Promise.all(withdrawnLogs.map(async (log) => {
           const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
           const planId = parsed ? (parsed.args.planId as bigint).toString() : '0'
           const principalReturned = parsed ? Number(formatEther(parsed.args.principalReturned as bigint)) : 0
           const earlyExit = parsed ? Boolean(parsed.args.earlyExit) : false
           const sourcePlan = loadedPlans.find((item) => item.plan.id === planId)?.plan
-          const block = await connectedEvmProvider.request({
-            method: 'eth_getBlockByNumber',
-            params: [log.blockNumber, false],
-          }) as { timestamp?: string } | null
-          const closedAt = block?.timestamp ? Number.parseInt(block.timestamp, 16) * 1000 : Date.now()
+          const fee = earlyExitFees.get(planId) ?? { amount: 0, bps: 0 }
+          const originalPrincipal = createdPlanMetadata.get(planId)?.principal ?? (principalReturned + fee.amount)
+          const closedAt = await getLogTimestamp(log.blockNumber)
 
           return {
             id: planId,
             goal: sourcePlan?.goal ?? 'Savings goal',
-            principalAmount: principalReturned,
+            principalAmount: originalPrincipal,
             principalAsset: 'ETH',
             termLabel: sourcePlan?.termLabel ?? 'Plan',
             rewardAsset: sourcePlan?.rewardAsset ?? 'ETH',
             startedAt: sourcePlan?.startedAt ?? closedAt,
             closedAt,
             earlyExit,
+            earlyExitFee: fee.amount,
+            earlyExitFeeBps: fee.bps,
+            amountReturned: principalReturned,
             txHash: log.transactionHash,
           } satisfies PlanHistoryItem
         }))
@@ -531,7 +657,7 @@ export default function App() {
           id: `withdraw-${item.id}-${item.txHash ?? item.closedAt}`,
           type: 'withdrawal',
           title: `${item.termLabel} plan withdrawn`,
-          amount: item.principalAmount,
+          amount: item.amountReturned,
           asset: item.principalAsset,
           timestamp: item.closedAt,
           network: currentEvmNetwork.shortName,
@@ -539,7 +665,42 @@ export default function App() {
           txHash: item.txHash,
         }))
 
-        setActivityItems([...planActivity, ...withdrawalActivity].sort((a, b) => b.timestamp - a.timestamp))
+        const depositActivity: ActivityItem[] = await Promise.all(depositLogs.map(async (log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          return {
+            id: `deposit-${log.transactionHash}-${log.logIndex}`,
+            type: 'deposit',
+            title: 'Money added to Rixor',
+            amount: parsed ? Number(formatEther(parsed.args.amount as bigint)) : 0,
+            asset: 'ETH',
+            timestamp: await getLogTimestamp(log.blockNumber),
+            network: currentEvmNetwork.shortName,
+            status: 'confirmed',
+            txHash: log.transactionHash,
+          }
+        }))
+
+        const availableWithdrawalActivity: ActivityItem[] = await Promise.all(availableWithdrawalLogs.map(async (log) => {
+          const parsed = rixorInterface.parseLog({ data: log.data, topics: log.topics })
+          return {
+            id: `available-withdraw-${log.transactionHash}-${log.logIndex}`,
+            type: 'withdrawal',
+            title: 'Available balance withdrawn',
+            amount: parsed ? Number(formatEther(parsed.args.amount as bigint)) : 0,
+            asset: 'ETH',
+            timestamp: await getLogTimestamp(log.blockNumber),
+            network: currentEvmNetwork.shortName,
+            status: 'confirmed',
+            txHash: log.transactionHash,
+          }
+        }))
+
+        setActivityItems([
+          ...planActivity,
+          ...withdrawalActivity,
+          ...depositActivity,
+          ...availableWithdrawalActivity,
+        ].sort((a, b) => b.timestamp - a.timestamp))
       } else {
         setActivityItems([])
         setPlanHistory([])
@@ -614,7 +775,7 @@ export default function App() {
       if (receipt.status !== '0x1') throw new Error('The deposit transaction reverted.')
 
       setAddMoneyTxStatus('confirmed')
-      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])
     } catch (error) {
       setAddMoneyTxStatus('failed')
       setAddMoneyTxError(error instanceof Error ? error.message : 'Deposit transaction failed.')
@@ -697,7 +858,6 @@ export default function App() {
 
   const withdrawAvailableFromRixor = async () => {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress) return
-    if (withdrawSource !== 'available') return
 
     try {
       const amountWei = parseEthToWei(withdrawAmount)
@@ -731,7 +891,7 @@ export default function App() {
       if (receipt.status !== '0x1') throw new Error('Withdrawal reverted.')
 
       setWithdrawTxStatus('confirmed')
-      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])
+      await Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])
     } catch (error) {
       setWithdrawTxStatus('failed')
       setWithdrawTxError(error instanceof Error ? error.message : 'Withdrawal failed.')
@@ -782,12 +942,73 @@ export default function App() {
     }
   }
 
-  const deployRixorContract = async () => {
+  const topUpSelectedPlan = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress || !selectedActivePlan) return
+    const amountWei = parseEthToWei(planTopUpAmount)
+    if (amountWei <= 0n) return
+
+    try {
+      setPlanTopUpTxError('')
+      setPlanTopUpTxHash('')
+      setPlanTopUpTxStatus('awaiting-wallet')
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: currentEvmNetwork.hexId }] })
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const from = accounts?.[0]
+      if (!from) throw new Error('No active EVM wallet account found.')
+      const data = rixorInterface.encodeFunctionData('topUpPlan', [BigInt(selectedActivePlan.id), amountWei])
+      const hash = await connectedEvmProvider.request({ method: 'eth_sendTransaction', params: [{ from, to: currentRixorContractAddress, data }] }) as string
+      setPlanTopUpTxHash(hash)
+      setPlanTopUpTxStatus('pending')
+      const receipt = await waitForReceipt(hash)
+      if (!receipt) throw new Error('Plan top-up is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('Plan top-up reverted.')
+      setPlanTopUpTxStatus('confirmed')
+      await Promise.all([refreshContractAvailableBalance(), refreshOnchainPlans()])
+    } catch (error) {
+      setPlanTopUpTxStatus('failed')
+      setPlanTopUpTxError(error instanceof Error ? error.message : 'Plan top-up failed.')
+    }
+  }
+
+  const extendSelectedPlan = async () => {
+    if (!connectedEvmProvider || walletSession?.kind !== 'evm' || !currentRixorContractAddress || !selectedActivePlan) return
+    const planTypeMap = { '30': 1, '90': 2, '180': 3, '365': 4 } as const
+
+    try {
+      setPlanExtendTxError('')
+      setPlanExtendTxHash('')
+      setPlanExtendTxStatus('awaiting-wallet')
+      if (!currentEvmNetwork) throw new Error('Switch to a supported testnet first.')
+      await connectedEvmProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: currentEvmNetwork.hexId }] })
+      const accounts = await connectedEvmProvider.request({ method: 'eth_accounts' }) as string[]
+      const from = accounts?.[0]
+      if (!from) throw new Error('No active EVM wallet account found.')
+      const data = rixorInterface.encodeFunctionData('extendPlan', [BigInt(selectedActivePlan.id), planTypeMap[planExtendTerm]])
+      const hash = await connectedEvmProvider.request({ method: 'eth_sendTransaction', params: [{ from, to: currentRixorContractAddress, data }] }) as string
+      setPlanExtendTxHash(hash)
+      setPlanExtendTxStatus('pending')
+      const receipt = await waitForReceipt(hash)
+      if (!receipt) throw new Error('Plan extension is still pending. Check the explorer for status.')
+      if (receipt.status !== '0x1') throw new Error('Plan extension reverted.')
+      setPlanExtendTxStatus('confirmed')
+      await refreshOnchainPlans()
+    } catch (error) {
+      setPlanExtendTxStatus('failed')
+      setPlanExtendTxError(error instanceof Error ? error.message : 'Plan extension failed.')
+    }
+  }
+
+  const deployRixorContract = async (force = false) => {
     if (!connectedEvmProvider || walletSession?.kind !== 'evm') return
 
-    const targetNetwork = evmNetworks.find((network) => network.id === 11155111)
+    const targetNetwork = currentEvmNetwork
     if (!targetNetwork) return
-    if (localContractAddresses[targetNetwork.id] || import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress) return
+    const configuredAddress = targetNetwork.id === 11155111
+      ? import.meta.env.VITE_RIXOR_SEPOLIA_ADDRESS || deployedSepoliaAddress
+      : import.meta.env.VITE_RIXOR_ROBINHOOD_TESTNET_ADDRESS
+    if (localContractAddresses[targetNetwork.id]) return
+    if (!force && configuredAddress) return
 
     try {
       setDeployError('')
@@ -800,7 +1021,7 @@ export default function App() {
           params: [{
             chainId: targetNetwork.hexId,
             chainName: targetNetwork.name,
-            nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
+            nativeCurrency: { name: 'Test Ether', symbol: 'ETH', decimals: 18 },
             rpcUrls: targetNetwork.balanceRpcUrls,
             blockExplorerUrls: [targetNetwork.explorerUrl],
           }],
@@ -824,7 +1045,7 @@ export default function App() {
       const deployFrom = accounts?.[0]
       if (!deployFrom) throw new Error('No active EVM wallet account found.')
 
-      let sepoliaBalanceHex: string | null = null
+      let deploymentBalanceHex: string | null = null
       for (const rpcUrl of targetNetwork.balanceRpcUrls) {
         try {
           const response = await fetch(rpcUrl, {
@@ -839,20 +1060,20 @@ export default function App() {
           })
           const result = await response.json() as { result?: string }
           if (result.result) {
-            sepoliaBalanceHex = result.result
+            deploymentBalanceHex = result.result
             break
           }
         } catch {
-          // Try the next Sepolia RPC.
+          // Try the next RPC for the selected supported testnet.
         }
       }
 
-      if (!sepoliaBalanceHex) throw new Error('Could not read your Sepolia test ETH balance. Deployment cancelled.')
-      if (BigInt(sepoliaBalanceHex) === 0n) throw new Error('This wallet has no Sepolia test ETH for deployment gas.')
+      if (!deploymentBalanceHex) throw new Error(`Could not read your ${targetNetwork.shortName} test ETH balance. Deployment cancelled.`)
+      if (BigInt(deploymentBalanceHex) === 0n) throw new Error(`This wallet has no ${targetNetwork.shortName} test ETH for deployment gas.`)
 
       const chainHexImmediatelyBeforeSend = await connectedEvmProvider.request({ method: 'eth_chainId' }) as string
       if (chainHexImmediatelyBeforeSend.toLowerCase() !== targetNetwork.hexId.toLowerCase()) {
-        throw new Error(`Wallet left Sepolia before deployment. Current chain is ${chainHexImmediatelyBeforeSend}. Deployment cancelled.`)
+        throw new Error(`Wallet left ${targetNetwork.shortName} before deployment. Current chain is ${chainHexImmediatelyBeforeSend}. Deployment cancelled.`)
       }
 
       setEvmChainId(confirmedChainId)
@@ -912,6 +1133,9 @@ export default function App() {
 
     setNetworkSwitching(networkId)
     setWalletError('')
+    setDeployStatus('idle')
+    setDeployTxHash('')
+    setDeployError('')
 
     try {
       await connectedEvmProvider.request({
@@ -991,6 +1215,12 @@ export default function App() {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
     void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])
   }, [walletSession?.address, walletSession?.kind, connectedEvmProvider, evmChainId, currentRixorContractAddress])
+
+  useEffect(() => {
+    setDeployStatus('idle')
+    setDeployTxHash('')
+    setDeployError('')
+  }, [evmChainId])
 
   useEffect(() => {
     if (walletSession?.kind !== 'evm' || !connectedEvmProvider) return
@@ -1100,6 +1330,92 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    window.localStorage.setItem('rixor:theme', lightMode ? 'light' : 'dark')
+  }, [lightMode])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadEthUsd = async () => {
+      try {
+        const response = await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot')
+        if (!response.ok) return
+        const payload = await response.json() as { data?: { amount?: string } }
+        const price = Number(payload.data?.amount)
+        if (!cancelled && Number.isFinite(price) && price > 0) setEthUsdPrice(price)
+      } catch {
+        // USD loss estimate is optional; ETH values remain authoritative.
+      }
+    }
+
+    void loadEthUsd()
+    const interval = window.setInterval(loadEthUsd, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!walletSession || !dashboardView) return
+
+    const updateAmbientChainPosition = () => {
+      const scrollY = window.scrollY
+      const viewportHeight = Math.max(window.innerHeight, 1)
+      const sectionProgress = scrollY / viewportHeight
+      document.documentElement.style.setProperty('--chain-parallax-y', `${Math.min(sectionProgress * 24, 110)}px`)
+      document.documentElement.style.setProperty('--chain-parallax-rotate', `${Math.max(-3, Math.min(3, sectionProgress * 0.55 - 1.5))}deg`)
+    }
+
+    updateAmbientChainPosition()
+    window.addEventListener('scroll', updateAmbientChainPosition, { passive: true })
+    window.addEventListener('resize', updateAmbientChainPosition)
+
+    return () => {
+      window.removeEventListener('scroll', updateAmbientChainPosition)
+      window.removeEventListener('resize', updateAmbientChainPosition)
+      document.documentElement.style.removeProperty('--chain-parallax-y')
+      document.documentElement.style.removeProperty('--chain-parallax-rotate')
+    }
+  }, [walletSession, dashboardView])
+
+  useEffect(() => {
+    if (walletSession || reconnectAttemptedRef.current || detectedWallets.length === 0) return
+
+    let saved: { id?: string; kind?: WalletKind; address?: string; name?: string } | null = null
+    try {
+      saved = JSON.parse(window.localStorage.getItem('rixor:wallet-session') || 'null')
+    } catch {
+      window.localStorage.removeItem('rixor:wallet-session')
+      return
+    }
+
+    if (!saved || saved.kind !== 'evm' || !saved.address) return
+    const wallet = detectedWallets.find((item) => item.kind === 'evm' && (item.id === saved?.id || item.name === saved?.name))
+    if (!wallet) return
+
+    reconnectAttemptedRef.current = true
+    const ethereum = wallet.provider as EvmProvider
+
+    void (async () => {
+      try {
+        const accounts = await ethereum.request({ method: 'eth_accounts' }) as string[]
+        const address = accounts?.[0]
+        if (!address || address.toLowerCase() !== saved!.address!.toLowerCase()) {
+          window.localStorage.removeItem('rixor:wallet-session')
+          return
+        }
+
+        setWalletSession({ kind: 'evm', address, name: wallet.name })
+        setConnectedEvmProvider(ethereum)
+        const chainId = await ethereum.request({ method: 'eth_chainId' }) as string
+        setEvmChainId(Number.parseInt(chainId, 16))
+      } catch {
+        window.localStorage.removeItem('rixor:wallet-session')
+      }
+    })()
+  }, [detectedWallets, walletSession])
+
   const focusSavingsPanel = () => {
     savingsPanelRef.current?.scrollIntoView({
       behavior: 'smooth',
@@ -1115,6 +1431,19 @@ export default function App() {
     action: 'dashboard' | 'start-plan' = 'dashboard',
     term?: 'flexible' | '30' | '90' | '180' | '365',
   ) => {
+    if (walletSession) {
+      setDashboardView(true)
+      if (action === 'start-plan') {
+        setStartPlanStep('setup')
+        if (term) setStartPlanTerm(term)
+        setStartPlanAmount('')
+        setStartPlanGoal('emergency')
+        setRewardAsset('same')
+        setStartPlanOpen(true)
+      }
+      return
+    }
+
     setWalletError('')
     setPendingWalletAction(action)
     setPendingPlanTerm(term ?? null)
@@ -1140,6 +1469,17 @@ export default function App() {
       behavior: 'smooth',
       block: 'start',
     })
+  }
+
+  const openPublicSection = (sectionId: 'home' | 'how-it-works' | 'plans' | 'security') => {
+    setDashboardView(false)
+    window.setTimeout(() => {
+      if (sectionId === 'home') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
   }
 
   const toggleHowCard = (card: string) => {
@@ -1237,11 +1577,11 @@ export default function App() {
   }, [])
 
   const planOptions = [
-    { id: 'flexible', label: 'Flexible', apy: 3.8, days: 365, access: 'Withdraw anytime' },
-    { id: '30', label: '30 days', apy: 5.2, days: 30, access: '30-day lock' },
-    { id: '90', label: '90 days', apy: 6.8, days: 90, access: '90-day lock' },
-    { id: '180', label: '180 days', apy: 8.1, days: 180, access: '180-day lock' },
-    { id: '365', label: '1 year', apy: 9.4, days: 365, access: '1-year lock' },
+    { id: 'flexible', label: 'Flexible', apy: 3.8, days: 365, access: 'Withdraw anytime', earlyExitMax: 0 },
+    { id: '30', label: '30 days', apy: 5.2, days: 30, access: '30-day lock', earlyExitMax: 2 },
+    { id: '90', label: '90 days', apy: 6.8, days: 90, access: '90-day lock', earlyExitMax: 4 },
+    { id: '180', label: '180 days', apy: 8.1, days: 180, access: '180-day lock', earlyExitMax: 6 },
+    { id: '365', label: '1 year', apy: 9.4, days: 365, access: '1-year lock', earlyExitMax: 8 },
   ] as const
 
   const selectedPlan = planOptions.find((option) => option.id === planTerm) ?? planOptions[2]
@@ -1291,27 +1631,26 @@ export default function App() {
   const openWithdraw = () => {
     setSelectedPlanId(null)
     setWithdrawStep('setup')
-    setWithdrawSource('available')
     setWithdrawAmount('')
     setWithdrawOpen(true)
   }
 
   const rixorAvailableBalance = Number(contractAvailableBalance)
-  const flexiblePlanBalance = 0
-  const lockedPlanBalance = 0
-  const withdrawSourceBalance = withdrawSource === 'available'
-    ? rixorAvailableBalance
-    : withdrawSource === 'flexible'
-      ? flexiblePlanBalance
-      : lockedPlanBalance
+  const withdrawSourceBalance = rixorAvailableBalance
   const withdrawParsed = Number(withdrawAmount || 0)
   const withdrawInsufficient = withdrawParsed > withdrawSourceBalance && withdrawParsed > 0
   const withdrawValid = withdrawParsed > 0 && withdrawParsed <= withdrawSourceBalance
-  const estimatedLockedReward = 0
-  const estimatedRewardForfeited = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : 0
-  const estimatedRewardKept = withdrawSource === 'locked' ? estimatedLockedReward * 0.5 : estimatedLockedReward
 
   const selectedActivePlan = activePlans.find((planItem) => planItem.id === selectedPlanId) ?? null
+  const selectedPlanExitQuote = selectedActivePlan ? getEarlyExitQuote(selectedActivePlan) : null
+  const selectedPlanFeeUsd = selectedPlanExitQuote && ethUsdPrice
+    ? selectedPlanExitQuote.feeAmount * ethUsdPrice
+    : null
+  const planTopUpParsed = Number(planTopUpAmount || 0)
+  const planTopUpValid = planTopUpParsed > 0 && planTopUpParsed <= Number(contractAvailableBalance)
+  const extensionOptions = selectedActivePlan
+    ? planOptions.filter((option, index) => option.id !== 'flexible' && index > selectedActivePlan.planType)
+    : []
 
   const formatPlanDate = (timestamp: number | null) => {
     if (!timestamp) return 'Flexible'
@@ -1371,7 +1710,10 @@ export default function App() {
           </button>
           <span className="plan-detail-brand">RIXOR</span>
           <div className="plan-detail-network">
-            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            <div className="chain-inline-label">
+              {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
+              <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            </div>
             <strong>{shortAddress(walletSession.address)}</strong>
           </div>
         </header>
@@ -1380,7 +1722,7 @@ export default function App() {
           <div className="plan-detail-hero">
             <span>{selectedActivePlan.status === 'matured' ? 'MATURED PLAN' : 'ACTIVE PLAN'}</span>
             <h1>{selectedActivePlan.goal}</h1>
-            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.apy}% APY · rewards in {selectedActivePlan.rewardAsset}</p>
+            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.apy}% rate · rewards in $RIXOR</p>
           </div>
 
           <div className="plan-detail-grid">
@@ -1408,9 +1750,9 @@ export default function App() {
               <div><small>STARTED</small><strong>{formatPlanDate(selectedActivePlan.startedAt)}</strong></div>
               <div><small>TERM</small><strong>{selectedActivePlan.termLabel}</strong></div>
               <div><small>ACCESS</small><strong>{selectedActivePlan.accessLabel}</strong></div>
-              <div><small>RATE</small><strong>{selectedActivePlan.apy}% APY</strong></div>
-              <div><small>REWARD ASSET</small><strong>{selectedActivePlan.rewardAsset}</strong></div>
-              <div><small>ACCRUED REWARD</small><strong>{selectedActivePlan.accruedReward.toFixed(4)} {selectedActivePlan.rewardAsset}</strong></div>
+              <div><small>RATE</small><strong>{selectedActivePlan.apy}%</strong></div>
+              <div><small>REWARD ASSET</small><strong>$RIXOR</strong></div>
+              <div><small>ACCRUED REWARD</small><strong>{selectedActivePlan.accruedReward.toFixed(4)} RIXOR</strong></div>
             </aside>
           </div>
 
@@ -1427,15 +1769,105 @@ export default function App() {
               <span>Withdraw</span>
               <small>Review the effect before exiting this plan.</small>
             </button>
-            <button type="button" disabled>
+            <button
+              type="button"
+              onClick={() => {
+                setPlanTopUpOpen(true)
+                setPlanExtendOpen(false)
+                setPlanTopUpAmount('')
+                setPlanTopUpTxStatus('idle')
+                setPlanTopUpTxHash('')
+                setPlanTopUpTxError('')
+              }}
+            >
               <span>Add more</span>
-              <small>Available after the testnet contract supports plan top-ups.</small>
+              <small>Add from your available Rixor balance into this plan.</small>
             </button>
-            <button type="button" disabled>
+            <button
+              type="button"
+              disabled={extensionOptions.length === 0}
+              onClick={() => {
+                const nextOption = extensionOptions[0]
+                if (!nextOption || nextOption.id === 'flexible') return
+                setPlanExtendTerm(nextOption.id)
+                setPlanExtendOpen(true)
+                setPlanTopUpOpen(false)
+                setPlanExtendTxStatus('idle')
+                setPlanExtendTxHash('')
+                setPlanExtendTxError('')
+              }}
+            >
               <span>Extend plan</span>
-              <small>Available after plan-extension rules are finalized.</small>
+              <small>{extensionOptions.length ? 'Restart the lock on a longer term.' : 'This plan is already on the longest term.'}</small>
             </button>
           </div>
+
+          {planTopUpOpen && (
+            <div className="plan-action-panel">
+              <div className="plan-action-panel-head">
+                <div><span>ADD MORE</span><h2>Increase this plan.</h2></div>
+                <button type="button" onClick={() => setPlanTopUpOpen(false)}>×</button>
+              </div>
+              <div className="plan-action-input-row">
+                <div>
+                  <small>AVAILABLE</small>
+                  <strong>{contractAvailableBalance} ETH</strong>
+                </div>
+                <label>
+                  <input value={planTopUpAmount} onChange={(event) => setPlanTopUpAmount(event.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="0.00" />
+                  <span className="asset-suffix">ETH</span>
+                </label>
+              </div>
+              {(planTopUpTxStatus === 'awaiting-wallet' || planTopUpTxStatus === 'pending') && (
+                <div className="rixor-deposit-loading" role="status" aria-live="polite">
+                  <div className="rixor-deposit-loader" aria-hidden="true" />
+                  <div><small>{planTopUpTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small><strong>{planTopUpTxStatus === 'awaiting-wallet' ? 'Approve the plan top-up' : 'Adding to your plan…'}</strong><span>{planTopUpParsed.toFixed(4)} ETH · Plan #{selectedActivePlan.id}</span></div>
+                </div>
+              )}
+              {planTopUpTxStatus === 'confirmed' ? (
+                <a className="rixor-deposit-receipt" href={planTopUpTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planTopUpTxHash}` : undefined} target="_blank" rel="noreferrer">
+                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{planTopUpParsed.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                  <div className="rixor-receipt-copy"><small>TOP-UP CONFIRMED</small><strong>{planTopUpParsed.toFixed(4)} ETH added</strong><span>Your plan principal has been updated</span></div>
+                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
+                </a>
+              ) : planTopUpTxStatus !== 'awaiting-wallet' && planTopUpTxStatus !== 'pending' && (
+                <button type="button" className="plan-action-confirm" disabled={!planTopUpValid} onClick={topUpSelectedPlan}>Add to plan</button>
+              )}
+              {planTopUpTxStatus === 'failed' && <div className="plan-review-error"><strong>Top-up failed</strong><span>{planTopUpTxError}</span></div>}
+            </div>
+          )}
+
+          {planExtendOpen && (
+            <div className="plan-action-panel">
+              <div className="plan-action-panel-head">
+                <div><span>EXTEND PLAN</span><h2>Choose a longer lock.</h2></div>
+                <button type="button" onClick={() => setPlanExtendOpen(false)}>×</button>
+              </div>
+              <div className="plan-extension-options">
+                {extensionOptions.map((option) => option.id !== 'flexible' && (
+                  <button key={option.id} type="button" className={planExtendTerm === option.id ? 'is-active' : ''} onClick={() => setPlanExtendTerm(option.id)}>
+                    <strong>{option.label}</strong><small>Up to {option.earlyExitMax}% early-exit fee</small>
+                  </button>
+                ))}
+              </div>
+              {(planExtendTxStatus === 'awaiting-wallet' || planExtendTxStatus === 'pending') && (
+                <div className="rixor-deposit-loading" role="status" aria-live="polite">
+                  <div className="rixor-deposit-loader" aria-hidden="true" />
+                  <div><small>{planExtendTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small><strong>{planExtendTxStatus === 'awaiting-wallet' ? 'Approve the extension' : 'Extending your plan…'}</strong><span>New term · {planOptions.find((option) => option.id === planExtendTerm)?.label}</span></div>
+                </div>
+              )}
+              {planExtendTxStatus === 'confirmed' ? (
+                <a className="rixor-deposit-receipt" href={planExtendTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planExtendTxHash}` : undefined} target="_blank" rel="noreferrer">
+                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{planOptions.find((option) => option.id === planExtendTerm)?.label}</span></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                  <div className="rixor-receipt-copy"><small>EXTENSION CONFIRMED</small><strong>Plan term updated</strong><span>The new lock starts from this confirmation</span></div>
+                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
+                </a>
+              ) : planExtendTxStatus !== 'awaiting-wallet' && planExtendTxStatus !== 'pending' && (
+                <button type="button" className="plan-action-confirm" onClick={extendSelectedPlan}>Extend plan</button>
+              )}
+              {planExtendTxStatus === 'failed' && <div className="plan-review-error"><strong>Extension failed</strong><span>{planExtendTxError}</span></div>}
+            </div>
+          )}
 
           {planWithdrawReviewOpen && (
             <div className="plan-exit-review">
@@ -1443,17 +1875,35 @@ export default function App() {
                 <div>
                   <span>EXIT PLAN</span>
                   <h2>Withdraw this plan?</h2>
-                  <p>Your v0.1 principal will return to {shortAddress(walletSession.address)}.</p>
+                  <p>Review the exact early-exit cost before returning funds to {shortAddress(walletSession.address)}.</p>
                 </div>
-                <strong>{selectedActivePlan.principalAmount.toFixed(4)} <em>ETH</em></strong>
+                  <strong className="amount-with-asset"><span>{selectedPlanExitQuote?.amountReturned.toFixed(4)}</span><em>ETH</em></strong>
               </div>
 
               <div className="plan-exit-review-meta">
                 <div><small>PLAN</small><strong>{selectedActivePlan.termLabel}</strong></div>
                 <div><small>GOAL</small><strong>{selectedActivePlan.goal}</strong></div>
                 <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                <div><small>EXIT</small><strong>{selectedActivePlan.maturesAt && Date.now() < selectedActivePlan.maturesAt ? 'Early withdrawal' : 'Standard withdrawal'}</strong></div>
+                <div><small>EXIT</small><strong>{selectedPlanExitQuote?.earlyExit ? 'Early withdrawal' : 'Standard withdrawal'}</strong></div>
+                <div><small>PRINCIPAL</small><strong>{selectedActivePlan.principalAmount.toFixed(4)} ETH</strong></div>
+                <div><small>EARLY EXIT FEE</small><strong>{selectedPlanExitQuote?.earlyExit ? `${((selectedPlanExitQuote.feeBps ?? 0) / 100).toFixed(2)}% · ${(selectedPlanExitQuote.feeAmount ?? 0).toFixed(6)} ETH` : '0%'}</strong></div>
+                <div>
+                  <small>LOSS VALUE</small>
+                  <strong className={selectedPlanExitQuote?.earlyExit ? 'plan-exit-loss' : ''}>
+                    {selectedPlanExitQuote?.earlyExit
+                      ? (selectedPlanFeeUsd !== null ? `−$${selectedPlanFeeUsd.toFixed(2)} USD` : 'USD price loading…')
+                      : '$0.00 USD'}
+                  </strong>
+                </div>
+                <div><small>YOU RECEIVE</small><strong>{selectedPlanExitQuote?.amountReturned.toFixed(6)} ETH</strong></div>
               </div>
+
+              {selectedPlanExitQuote?.earlyExit && (
+                <div className="plan-decision-warning">
+                  <strong>Your fee is already decreasing.</strong>
+                  <p>The early-withdrawal fee falls continuously as this plan approaches maturity and reaches 0% at maturity.</p>
+                </div>
+              )}
 
               {(planWithdrawTxStatus === 'awaiting-wallet' || planWithdrawTxStatus === 'pending') && (
                 <div className="rixor-deposit-loading" role="status" aria-live="polite">
@@ -1461,7 +1911,7 @@ export default function App() {
                   <div>
                     <small>{planWithdrawTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
                     <strong>{planWithdrawTxStatus === 'awaiting-wallet' ? 'Approve the plan withdrawal' : 'Closing plan onchain…'}</strong>
-                    <span>{selectedActivePlan.principalAmount.toFixed(4)} ETH · Plan #{selectedActivePlan.id}</span>
+                    <span>{selectedPlanExitQuote?.amountReturned.toFixed(4)} ETH expected · Plan #{selectedActivePlan.id}</span>
                   </div>
                 </div>
               )}
@@ -1476,8 +1926,8 @@ export default function App() {
               {planWithdrawTxStatus === 'confirmed' && (
                 <>
                   <a className="rixor-deposit-receipt" href={planWithdrawTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planWithdrawTxHash}` : undefined} target="_blank" rel="noreferrer">
-                    <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{selectedActivePlan.principalAmount.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                    <div className="rixor-receipt-copy"><small>PLAN WITHDRAWN</small><strong>{selectedActivePlan.principalAmount.toFixed(4)} ETH returned</strong><span>This plan will now move to Plan History</span></div>
+                    <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{selectedPlanExitQuote?.amountReturned.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
+                    <div className="rixor-receipt-copy"><small>PLAN WITHDRAWN</small><strong>{selectedPlanExitQuote?.amountReturned.toFixed(6)} ETH returned</strong><span className={selectedPlanExitQuote?.earlyExit ? 'plan-exit-loss-copy' : ''}>{selectedPlanExitQuote?.earlyExit ? `−${(selectedPlanExitQuote.feeAmount ?? 0).toFixed(6)} ETH${selectedPlanFeeUsd !== null ? ` · −$${selectedPlanFeeUsd.toFixed(2)}` : ''} early-exit loss` : 'No early-exit fee'} · moved to Plan History</span></div>
                     <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
                   </a>
                   <button
@@ -1527,7 +1977,10 @@ export default function App() {
           </button>
           <span className="withdraw-page-brand">RIXOR</span>
           <div className="withdraw-page-network">
-            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            <div className="chain-inline-label">
+              {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
+              <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
+            </div>
             <strong>{shortAddress(walletSession.address)}</strong>
           </div>
         </header>
@@ -1537,52 +1990,16 @@ export default function App() {
             <>
               <div className="withdraw-page-hero">
                 <span>WITHDRAW</span>
-                <h1>Choose where the money comes from.</h1>
-                <p>Rixor should make the consequence obvious before anything leaves a plan. Pick a source, choose an amount, then review exactly what returns to your wallet.</p>
+                <h1>Withdraw your available balance.</h1>
+                <p>This page only withdraws ETH already sitting in your Rixor available balance. To exit a savings plan, open that specific plan from Active Plans and withdraw it there.</p>
               </div>
 
-              <div className="withdraw-source-grid">
-                <button
-                  type="button"
-                  className={`withdraw-source-card ${withdrawSource === 'available' ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setWithdrawSource('available')
-                    setWithdrawAmount('')
-                  }}
-                >
-                  <span className="withdraw-source-status">Ready</span>
-                  <strong>Available balance</strong>
-                  <p>Money that is already outside a savings lock.</p>
-                  <div><small>WITHDRAWABLE</small><b>{rixorAvailableBalance.toFixed(4)} ETH</b></div>
-                </button>
-
-                <button
-                  type="button"
-                  className={`withdraw-source-card ${withdrawSource === 'flexible' ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setWithdrawSource('flexible')
-                    setWithdrawAmount('')
-                  }}
-                >
-                  <span className="withdraw-source-status">No penalty</span>
-                  <strong>Flexible plan</strong>
-                  <p>Withdraw principal without an early-exit penalty.</p>
-                  <div><small>IN FLEXIBLE PLANS</small><b>{flexiblePlanBalance.toFixed(4)} ETH</b></div>
-                </button>
-
-                <button
-                  type="button"
-                  className={`withdraw-source-card withdraw-source-card--locked ${withdrawSource === 'locked' ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setWithdrawSource('locked')
-                    setWithdrawAmount('')
-                  }}
-                >
-                  <span className="withdraw-source-status">Early exit applies</span>
-                  <strong>Locked plan</strong>
-                  <p>Principal stays intact, but an early withdrawal changes the reward you keep.</p>
-                  <div><small>IN LOCKED PLANS</small><b>{lockedPlanBalance.toFixed(4)} ETH</b></div>
-                </button>
+              <div className="withdraw-available-banner">
+                <div>
+                  <small>AVAILABLE TO WITHDRAW</small>
+                  <strong>{rixorAvailableBalance.toFixed(4)} ETH</strong>
+                </div>
+                <span>{currentEvmNetwork?.shortName ?? 'Testnet'} · {shortAddress(walletSession.address)}</span>
               </div>
 
               <div className="withdraw-page-layout">
@@ -1592,7 +2009,7 @@ export default function App() {
                       <span>AMOUNT</span>
                       <h2>How much do you want back?</h2>
                     </div>
-                    <p><strong>{withdrawSourceBalance.toFixed(4)} ETH</strong> available from this source</p>
+                    <p><strong>{withdrawSourceBalance.toFixed(4)} ETH</strong> available in Rixor</p>
                   </div>
 
                   <div className={`withdraw-amount-input ${withdrawInsufficient ? 'is-insufficient' : ''}`}>
@@ -1603,7 +2020,7 @@ export default function App() {
                       placeholder="0.00"
                       aria-label="Amount to withdraw"
                     />
-                    <span>ETH</span>
+                    <span className="asset-suffix">ETH</span>
                   </div>
 
                   <div className="withdraw-quick-amounts">
@@ -1651,27 +2068,18 @@ export default function App() {
 
                 <aside className="withdraw-summary-card">
                   <span className="withdraw-summary-kicker">WITHDRAWAL SUMMARY</span>
-                  <h2>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</h2>
+                  <h2>Available balance</h2>
 
                   <div className="withdraw-summary-amount">
                     <strong>{withdrawAmount || '0.00'}</strong>
-                    <span>ETH</span>
+                    <span className="asset-suffix">ETH</span>
                   </div>
 
                   <div className="withdraw-summary-list">
                     <div><span>Principal returned</span><strong>{(withdrawParsed || 0).toFixed(4)} ETH</strong></div>
-                    <div><span>Reward kept</span><strong>{estimatedRewardKept.toFixed(4)} ETH</strong></div>
-                    <div><span>Reward forfeited</span><strong className={withdrawSource === 'locked' ? 'is-negative' : ''}>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                    <div><span>Plan impact</span><strong>None</strong></div>
                     <div><span>Destination</span><strong>{shortAddress(walletSession.address)}</strong></div>
                   </div>
-
-                  {withdrawSource === 'locked' && (
-                    <div className="withdraw-impact-card">
-                      <span>EARLY WITHDRAWAL</span>
-                      <strong>You keep your principal.</strong>
-                      <p>Based on the current Rixor rule, 50% of interest earned so far is forfeited when a locked plan is exited early.</p>
-                    </div>
-                  )}
 
                   <button
                     type="button"
@@ -1701,22 +2109,20 @@ export default function App() {
                 </div>
                 <div className="withdraw-review-main refined">
                   <span>YOU RECEIVE</span>
-                  <strong>{withdrawParsed.toFixed(4)} <em>ETH</em></strong>
+                  <strong className="amount-with-asset"><span>{withdrawParsed.toFixed(4)}</span><em>ETH</em></strong>
                   <p>Returned directly to {shortAddress(walletSession.address)}</p>
                   <div className="withdraw-review-meta-grid">
-                    <div><small>SOURCE</small><strong>{withdrawSource === 'available' ? 'Available balance' : withdrawSource === 'flexible' ? 'Flexible plan' : 'Locked plan'}</strong></div>
+                    <div><small>SOURCE</small><strong>Available balance</strong></div>
                     <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
                     <div><small>PRINCIPAL</small><strong>{withdrawParsed.toFixed(4)} ETH</strong></div>
-                    <div><small>FORFEITED</small><strong>{estimatedRewardForfeited.toFixed(4)} ETH</strong></div>
+                    <div><small>PLAN IMPACT</small><strong>None</strong></div>
                   </div>
                 </div>
               </div>
 
               <div className="withdraw-review-note">
                 <strong>Testnet safety</strong>
-                <p>{withdrawSource === 'available'
-                  ? 'This sends a real Sepolia testnet withdrawal from your Rixor available balance back to the connected wallet.'
-                  : 'Plan withdrawals require loading the exact onchain plan ID first. This action remains disabled until that position is selected.'}</p>
+                <p>This sends a real testnet withdrawal from your Rixor available balance back to the connected wallet. Savings-plan exits are handled from the selected Plan Detail page.</p>
               </div>
 
               {(withdrawTxStatus === 'awaiting-wallet' || withdrawTxStatus === 'pending') && (
@@ -1743,9 +2149,9 @@ export default function App() {
                 <button
                   type="button"
                   onClick={withdrawAvailableFromRixor}
-                  disabled={withdrawSource !== 'available' || !currentRixorContractAddress || !withdrawValid}
+                  disabled={!currentRixorContractAddress || !withdrawValid}
                 >
-                  {withdrawSource === 'available' ? 'Withdraw on testnet' : 'Select an onchain plan first'}
+                  Withdraw on testnet
                 </button>
               </div>}
 
@@ -1845,7 +2251,7 @@ export default function App() {
                           {selectedGoal.suggested === option.id && <em>Suggested</em>}
                         </div>
                         <strong>{option.apy}%</strong>
-                        <small>{option.access}</small>
+                        <small>{option.access}{option.earlyExitMax ? ` · up to ${option.earlyExitMax}% early-exit fee` : ''}</small>
                       </button>
                     ))}
                   </div>
@@ -1866,7 +2272,7 @@ export default function App() {
                       placeholder="0.00"
                       aria-label="Amount to save"
                     />
-                    <span>ETH</span>
+                    <span className="asset-suffix">ETH</span>
                   </div>
 
                   <div className="plan-page-quick-amounts">
@@ -1898,36 +2304,20 @@ export default function App() {
 
                   <div className="plan-section-head plan-section-head--reward">
                     <div>
-                      <span>3 · REWARD PREFERENCE</span>
-                      <h2>How should rewards be paid?</h2>
+                      <span>3 · REWARDS</span>
+                      <h2>Rewards are paid in $RIXOR.</h2>
                     </div>
                   </div>
 
                   <div className="plan-reward-grid">
-                    <button
-                      type="button"
-                      className={`plan-reward-card ${rewardAsset === 'same' ? 'is-active' : ''}`}
-                      onClick={() => setRewardAsset('same')}
-                    >
+                    <div className="plan-reward-card is-active">
                       <div className="plan-reward-topline">
-                        <span>Same asset</span>
-                        {rewardAsset === 'same' && <em>Selected</em>}
+                        <span>Rixor reward token</span>
+                        <em>Only reward asset</em>
                       </div>
-                      <strong>Earn in ETH</strong>
-                      <p>Principal and rewards stay in one asset. Simpler to follow and easier to understand.</p>
-                    </button>
-                    <button
-                      type="button"
-                      className={`plan-reward-card ${rewardAsset === 'usdg' ? 'is-active' : ''}`}
-                      onClick={() => setRewardAsset('usdg')}
-                    >
-                      <div className="plan-reward-topline">
-                        <span>Stable reward</span>
-                        {rewardAsset === 'usdg' && <em>Selected</em>}
-                      </div>
-                      <strong>Earn in USDG</strong>
-                      <p>Keep your ETH principal while rewards settle separately in USDG once supported.</p>
-                    </button>
+                      <strong>Earn $RIXOR</strong>
+                      <p>Your saved principal remains ETH. Plan rewards vest separately in $RIXOR and are paid from the protocol rewards treasury.</p>
+                    </div>
                   </div>
                 </section>
 
@@ -1941,26 +2331,22 @@ export default function App() {
 
                   <div className="plan-decision-list">
                     <div><span>Timeline</span><strong>{startPlanSelected.label}</strong></div>
-                    <div><span>Rate</span><strong>{startPlanSelected.apy}% APY</strong></div>
+                    <div><span>Rate</span><strong>{startPlanSelected.apy}%</strong></div>
                     <div><span>Access</span><strong>{startPlanSelected.access}</strong></div>
                     <div><span>Maturity</span><strong>{startPlanMaturity}</strong></div>
-                    <div><span>Rewards</span><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                    <div><span>Rewards</span><strong>$RIXOR</strong></div>
                   </div>
 
                   <div className="plan-decision-estimate">
                     <small>ESTIMATED REWARD VALUE</small>
-                    {rewardAsset === 'same' ? (
-                      <strong>+{startPlanProjected.toFixed(4)} ETH</strong>
-                    ) : (
-                      <strong>Calculated in USDG at settlement</strong>
-                    )}
-                    <p>Illustrative only. Rates are not guaranteed.</p>
+                    <strong>Paid in $RIXOR at settlement</strong>
+                    <p>Reward value accrues through the plan and is settled in $RIXOR. Rates are not guaranteed.</p>
                   </div>
 
                   {startPlanTerm !== 'flexible' && (
                     <div className="plan-decision-warning">
                       <strong>Locked plan</strong>
-                      <p>Early withdrawal keeps principal intact but forfeits 50% of interest earned so far.</p>
+                      <p>Early withdrawal starts at a maximum {startPlanSelected.earlyExitMax}% fee and declines continuously to 0% at maturity.</p>
                     </div>
                   )}
 
@@ -1982,10 +2368,10 @@ export default function App() {
                 <div className="plan-page-hero plan-page-hero--review">
                   <span>FINAL CHECK</span>
                   <h1>Make it official.</h1>
-                  <p>Review the plan once, then approve a single Sepolia transaction.</p>
+                  <p>Review the plan once, then approve a single transaction on the selected testnet.</p>
                 </div>
                 <div className="plan-review-network-pill">
-                  <span />
+                  {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
                   <small>{currentEvmNetwork?.shortName ?? 'Testnet'}</small>
                   <strong>{shortAddress(walletSession.address)}</strong>
                 </div>
@@ -2011,14 +2397,14 @@ export default function App() {
 
                 <div className="plan-review-primary">
                   <span>{selectedGoal.title.toUpperCase()}</span>
-                  <strong>{Number(startPlanAmount || 0).toFixed(4)} <em>ETH</em></strong>
-                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% APY · rewards in {rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</p>
+                    <strong className="amount-with-asset"><span>{Number(startPlanAmount || 0).toFixed(4)}</span><em>ETH</em></strong>
+                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% rate · rewards in $RIXOR</p>
 
                   <div className="plan-review-meta-grid">
                     <div><small>ACCESS</small><strong>{startPlanSelected.access}</strong></div>
                     <div><small>MATURITY</small><strong>{startPlanMaturity}</strong></div>
-                    <div><small>REWARD</small><strong>{rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
-                    <div><small>EST. REWARD*</small><strong>{startPlanProjected.toFixed(4)} {rewardAsset === 'usdg' ? 'USDG' : 'ETH'}</strong></div>
+                    <div><small>REWARD</small><strong>$RIXOR</strong></div>
+                    <div><small>EST. REWARD*</small><strong>Settled in $RIXOR</strong></div>
                   </div>
                 </div>
               </div>
@@ -2027,8 +2413,8 @@ export default function App() {
                 <div>
                   <span className="dashboard-footnote-dot" />
                   <div>
-                    <strong>Your principal stays ETH.</strong>
-                    <p>{rewardAsset === 'usdg' ? 'USDG is only your selected reward preference; it does not replace the ETH principal.' : 'Rewards are set to the same asset preference for this plan.'} Rates shown in the interface are still illustrative in v0.1.</p>
+                    <strong>Your principal stays ETH. Rewards are separate.</strong>
+                    <p>$RIXOR is the only reward asset. Rewards vest over the plan and are funded from a dedicated $RIXOR rewards treasury, with protocol revenue and real yield intended to replenish that treasury over time.</p>
                   </div>
                 </div>
                 <small>{currentRixorContractAddress ? `Contract ${shortAddress(currentRixorContractAddress)}` : 'Contract unavailable'}</small>
@@ -2079,13 +2465,34 @@ export default function App() {
     )
   }
 
-  if (walletSession) {
+  if (walletSession && dashboardView) {
     return (
       <main className={`carbon-stage dashboard-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
         <div className="carbon-layer carbon-base" aria-hidden="true" />
         <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
         <div className="carbon-layer carbon-vignette" aria-hidden="true" />
         <div className="carbon-layer carbon-grain" aria-hidden="true" />
+
+        {walletSession.kind === 'evm' && currentEvmNetwork && (
+          <div className={`dashboard-chain-ambient dashboard-chain-ambient--${currentEvmNetwork.id === 46630 ? 'robinhood' : 'sepolia'}`} aria-hidden="true">
+            {currentEvmNetwork.id === 46630 ? (
+              <img
+                src={lightMode ? '/images/robinhood-chain-feather.jpg' : '/images/robinhood-chain-feather-transparent.png'}
+                alt=""
+                className="dashboard-robinhood-ambient-mark"
+              />
+            ) : (
+              <svg className="dashboard-ambient-eth-mark" viewBox="0 0 784.37 1277.39" role="presentation">
+                <polygon fill="#B9D700" points="392.07,0 383.5,29.11 383.5,873.74 392.07,882.29 784.13,650.54" />
+                <polygon fill="#CFEF00" points="392.07,0 0,650.54 392.07,882.29 392.07,472.33" />
+                <polygon fill="#8FA500" points="392.07,956.52 387.24,962.41 387.24,1263.28 392.07,1277.38 784.37,724.89" />
+                <polygon fill="#CFEF00" points="392.07,1277.38 392.07,956.52 0,724.89" />
+                <polygon fill="#718000" points="392.07,882.29 784.13,650.54 392.07,472.33" />
+                <polygon fill="#A9C300" points="0,650.54 392.07,882.29 392.07,472.33" />
+              </svg>
+            )}
+          </div>
+        )}
 
         <header className="dashboard-topbar">
           <button className="dashboard-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
@@ -2104,7 +2511,9 @@ export default function App() {
             </label>
 
             <button className="dashboard-wallet" type="button" onClick={() => setWalletModalOpen(true)}>
-              <span className="dashboard-wallet-dot" />
+              {walletSession.kind === 'evm' && currentEvmNetwork
+                ? renderChainIcon(currentEvmNetwork.id)
+                : <span className="dashboard-wallet-dot" />}
               <span className="dashboard-wallet-identity">
                 <small>
                   {walletSession.name}
@@ -2130,7 +2539,10 @@ export default function App() {
             </span>
             <span>
               <small>NETWORK</small>
-              <strong>{currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}</strong>
+              <strong className="dashboard-network-value">
+                {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
+                {currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}
+              </strong>
             </span>
             <span>
               <small>{currentEvmNetwork ? `${currentEvmNetwork.shortName.toUpperCase()} WALLET BALANCE` : 'TESTNET WALLET BALANCE'}</small>
@@ -2173,7 +2585,9 @@ export default function App() {
               </div>
 
               <div className="wallet-connected-view">
-                <span className="wallet-connected-dot" />
+                {walletSession.kind === 'evm' && currentEvmNetwork
+                  ? renderChainIcon(currentEvmNetwork.id)
+                  : <span className="wallet-connected-dot" />}
                 <div>
                   <small>{walletSession.name.toUpperCase()}</small>
                   <strong>{shortAddress(walletSession.address)}</strong>
@@ -2216,18 +2630,18 @@ export default function App() {
                   <div className="add-money-chain-summary">
                     <div className="add-money-chain-copy">
                       <span>AVAILABLE ON THIS CHAIN</span>
-                      <h3>{currentEvmNetwork?.shortName ?? 'Unsupported network'}</h3>
+                      <h3 className="chain-title-with-logo">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Unsupported network'}</h3>
                       <p>This is the amount available from your connected wallet on this network.</p>
                     </div>
                     <div className="add-money-chain-balance">
                       <small>YOU CAN ADD UP TO</small>
-                      <strong>{nativeBalance} <em>ETH</em></strong>
+                      <strong className="amount-with-asset"><span>{nativeBalance}</span><em>ETH</em></strong>
                     </div>
                   </div>
 
                   <div className="add-money-asset-card dashboard-soft-card">
                     <div className="add-money-asset-top">
-                      <div className="dashboard-metric-icon">Îž</div>
+                      <div className="add-money-chain-icon">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}</div>
                       <div>
                         <span>FUNDING ASSET</span>
                         <strong>ETH</strong>
@@ -2255,7 +2669,7 @@ export default function App() {
                         onChange={(event) => setAddMoneyAmount(event.target.value.replace(/[^0-9.]/g, ''))}
                         placeholder="0.00"
                       />
-                      <span>ETH</span>
+                      <span className="asset-suffix">ETH</span>
                     </div>
                     <div className="dashboard-range add-money-range">
                       <span
@@ -2289,9 +2703,9 @@ export default function App() {
                       <button
                         type="button"
                         disabled={Number(nativeBalance) <= 0}
-                        onClick={() => setAddMoneyAmount(nativeBalance)}
+                        onClick={() => void setGasSafeDepositMax()}
                       >
-                        Max
+                        Max (keep gas)
                       </button>
                     </div>
 
@@ -2346,13 +2760,13 @@ export default function App() {
 
                     <div className="add-money-review-copy">
                       <span>REVIEW DEPOSIT</span>
-                      <strong>{Number(addMoneyAmount || 0).toFixed(4)} <em>ETH</em></strong>
+                      <strong className="amount-with-asset"><span>{Number(addMoneyAmount || 0).toFixed(4)}</span><em>ETH</em></strong>
                       <p>One wallet approval will move this testnet ETH into your Rixor available balance.</p>
                     </div>
                   </div>
 
                   <div className="add-money-review-meta">
-                    <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
+                    <div><small>NETWORK</small><strong className="chain-meta-value">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
                     <div><small>FROM</small><strong>{shortAddress(walletSession.address)}</strong></div>
                     <div><small>ASSET</small><strong>ETH</strong></div>
                     <div><small>WALLET AFTER</small><strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong></div>
@@ -2440,182 +2854,6 @@ export default function App() {
           </div>
         )}
 
-        {startPlanOpen && (
-          <div className="wallet-modal-backdrop start-plan-backdrop" role="presentation" onMouseDown={() => setStartPlanOpen(false)}>
-            <section
-              className="start-plan-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="start-plan-title"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="start-plan-head">
-                <div>
-                  <span>RIXOR PLAN</span>
-                  <h2 id="start-plan-title">{startPlanStep === 'setup' ? 'Start a plan' : 'Review plan'}</h2>
-                </div>
-                <button type="button" className="wallet-modal-close" onClick={() => setStartPlanOpen(false)} aria-label="Close start plan dialog">
-                  ×
-                </button>
-              </div>
-
-              {startPlanStep === 'setup' ? (
-                <>
-                  <div className="start-plan-balance-row">
-                    <div>
-                      <small>AVAILABLE ETH</small>
-                      <strong>{startPlanAvailableBalance.toFixed(4)} ETH</strong>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStartPlanOpen(false)
-                        openAddMoney()
-                      }}
-                    >
-                      Add money first
-                    </button>
-                  </div>
-
-                  <div className="start-plan-options">
-                    {planOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`start-plan-option ${startPlanTerm === option.id ? 'is-active' : ''}`}
-                        onClick={() => setStartPlanTerm(option.id)}
-                      >
-                        <span>{option.label}</span>
-                        <strong>{option.apy}%</strong>
-                        <small>{option.access}</small>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="start-plan-amount-card dashboard-soft-card">
-                    <div className="start-plan-amount-head">
-                      <div>
-                        <label htmlFor="start-plan-amount">Amount to save</label>
-                        <small>From your available ETH balance</small>
-                      </div>
-                      <span className={`start-plan-available ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
-                        {startPlanAvailableBalance.toFixed(4)} ETH available
-                      </span>
-                    </div>
-
-                    <div className={`start-plan-input ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
-                      <input
-                        id="start-plan-amount"
-                        inputMode="decimal"
-                        value={startPlanAmount}
-                        onChange={(event) => setStartPlanAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-                        placeholder="0.00"
-                      />
-                      <span>ETH</span>
-                    </div>
-
-                    {startPlanInsufficient && (
-                      <div className="start-plan-inline-error">
-                        <span>Not available</span>
-                        <strong>Add money to your Rixor balance first</strong>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="start-plan-preview">
-                    <div>
-                      <small>RATE</small>
-                      <strong>{startPlanSelected.apy}% APY</strong>
-                    </div>
-                    <div>
-                      <small>ACCESS</small>
-                      <strong>{startPlanSelected.access}</strong>
-                    </div>
-                    <div>
-                      <small>{startPlanTerm === 'flexible' ? 'ACCESS' : 'MATURITY'}</small>
-                      <strong>{startPlanMaturity}</strong>
-                    </div>
-                    <div>
-                      <small>EST. EARNINGS</small>
-                      <strong>{startPlanProjected.toFixed(4)} ETH</strong>
-                    </div>
-                  </div>
-
-                  {startPlanTerm !== 'flexible' && (
-                    <p className="start-plan-note">
-                      Early withdrawal keeps your principal intact but forfeits 50% of interest earned so far.
-                    </p>
-                  )}
-
-                  <button
-                    type="button"
-                    className="start-plan-continue"
-                    disabled={!startPlanValid}
-                    onClick={() => setStartPlanStep('review')}
-                  >
-                    <span>Review plan</span>
-                    {actionArrow}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="start-plan-review-main dashboard-soft-card">
-                    <span>{startPlanSelected.label.toUpperCase()} PLAN</span>
-                    <strong>{startPlanAmount} <em>ETH</em></strong>
-                    <p>{startPlanSelected.apy}% APY · {startPlanSelected.access}</p>
-                  </div>
-
-                  <div className="start-plan-review-details">
-                    <div>
-                      <small>NETWORK</small>
-                      <strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong>
-                    </div>
-                    <div>
-                      <small>RATE</small>
-                      <strong>{startPlanSelected.apy}% APY</strong>
-                    </div>
-                    <div>
-                      <small>MATURITY</small>
-                      <strong>{startPlanMaturity}</strong>
-                    </div>
-                    <div>
-                      <small>EST. EARNINGS</small>
-                      <strong>{startPlanProjected.toFixed(4)} ETH</strong>
-                    </div>
-                  </div>
-
-                  <div className="start-plan-review-note">
-                    <span className="dashboard-footnote-dot" />
-                    <p>
-                      This plan is prepared for the testnet flow. Final creation stays disabled until the Rixor savings contract is connected.
-                    </p>
-                  </div>
-
-                  <div className="start-plan-review-actions">
-                    <button type="button" className="start-plan-back" onClick={() => setStartPlanStep('setup')}>
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      className="start-plan-submit"
-                      onClick={createSavingsPlan}
-                      disabled={!currentRixorContractAddress || !startPlanValid || startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending' || startPlanTxStatus === 'confirmed'}
-                    >
-                      {startPlanTxStatus === 'awaiting-wallet'
-                        ? 'Approve in wallet…'
-                        : startPlanTxStatus === 'pending'
-                          ? 'Starting plan…'
-                          : startPlanTxStatus === 'confirmed'
-                            ? 'Plan started'
-                            : 'Start plan on testnet'}
-                    </button>
-                  </div>
-                </>
-              )}
-            </section>
-          </div>
-        )}
-
         <section className="dashboard-shell" aria-labelledby="dashboard-title">
           <div className="dashboard-intro">
             <div>
@@ -2634,7 +2872,7 @@ export default function App() {
                     onClick={() => switchEvmNetwork(network.id)}
                     disabled={networkSwitching !== null}
                   >
-                    <span className="dashboard-network-status" />
+                    {renderChainIcon(network.id)}
                     <span>{network.shortName}</span>
                     {networkSwitching === network.id && <em>Switching…</em>}
                   </button>
@@ -2656,19 +2894,19 @@ export default function App() {
             <div className="dashboard-summary">
               <div className="dashboard-total-card dashboard-soft-card">
                 <span className="dashboard-card-label">AVAILABLE IN RIXOR</span>
-                <strong>{contractAvailableBalance} <em>ETH</em></strong>
+                <strong className="amount-with-asset"><span>{contractAvailableBalance}</span><em>ETH</em></strong>
                 <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
 
-                {evmChainId === 11155111 && !currentRixorContractAddress && (
+                {currentEvmNetwork && !currentRixorContractAddress && (
                   <div className="dashboard-contract-setup">
                     <div>
                       <small>TESTNET CONTRACT</small>
-                      <strong>Sepolia</strong>
-                      <span>Deployment is pinned to Sepolia. Gas is paid with Sepolia test ETH only.</span>
+                      <strong>{currentEvmNetwork.shortName}</strong>
+                      <span>Wallet-signed deployment targets only this selected testnet. Gas is paid with test ETH on this network.</span>
                     </div>
                     <button
                       type="button"
-                      onClick={deployRixorContract}
+                      onClick={() => void deployRixorContract()}
                       disabled={deployStatus === 'awaiting-wallet' || deployStatus === 'pending' || deployStatus === 'confirmed'}
                     >
                       {deployStatus === 'awaiting-wallet'
@@ -2677,10 +2915,10 @@ export default function App() {
                           ? 'Deploying…'
                           : deployStatus === 'confirmed'
                             ? 'Deployed'
-                            : 'Deploy on Sepolia'}
+                            : `Deploy on ${currentEvmNetwork.shortName}`}
                     </button>
                     {deployTxHash && (
-                      <a href={`https://sepolia.etherscan.io/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
+                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
                         View deployment ↗
                       </a>
                     )}
@@ -2694,6 +2932,21 @@ export default function App() {
                     <a href={`${currentEvmNetwork?.explorerUrl}/address/${currentRixorContractAddress}`} target="_blank" rel="noreferrer">
                       {shortAddress(currentRixorContractAddress)} ↗
                     </a>
+                    {hasLatestLocalDeployment ? (
+                      <span className="dashboard-contract-latest">Latest contract active</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void deployRixorContract(true)}
+                        disabled={deployStatus === 'awaiting-wallet' || deployStatus === 'pending'}
+                      >
+                        {deployStatus === 'awaiting-wallet'
+                          ? 'Approve latest…'
+                          : deployStatus === 'pending'
+                            ? 'Deploying latest…'
+                            : 'Deploy latest contract'}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -2852,7 +3105,7 @@ export default function App() {
                         <div>
                           <small>{planItem.goal.toUpperCase()}</small>
                           <strong>{planItem.principalAmount.toFixed(4)} {planItem.principalAsset}</strong>
-                          <span>{planItem.termLabel} · {planItem.apy}% APY</span>
+                          <span>{planItem.termLabel} · {planItem.apy}% rate</span>
                         </div>
                       </div>
                       <div className="dashboard-plan-row-progress">
@@ -2870,12 +3123,21 @@ export default function App() {
               )}
             </article>
 
-            <article className="dashboard-panel dashboard-soft-card">
+            <article className={`dashboard-panel dashboard-soft-card dashboard-activity-panel ${activityExpanded ? 'is-expanded' : ''}`}>
               <div className="dashboard-panel-head">
                 <div>
                   <span>ACTIVITY</span>
                   <h2>Recent movement</h2>
                 </div>
+                {activityItems.length > 3 && (
+                  <button
+                    type="button"
+                    className="dashboard-activity-toggle"
+                    onClick={() => setActivityExpanded((current) => !current)}
+                  >
+                    {activityExpanded ? 'Show less' : 'View more'}
+                  </button>
+                )}
               </div>
               {activityItems.length === 0 ? (
                 <div className="dashboard-empty-activity">
@@ -2883,8 +3145,9 @@ export default function App() {
                   <p>Your confirmed onchain deposits, plan starts, withdrawals, and rewards will appear here for this wallet.</p>
                 </div>
               ) : (
-                <div className="dashboard-activity-list">
-                  {activityItems.map((item) => (
+                <div className="dashboard-activity-viewport">
+                  <div className="dashboard-activity-list">
+                  {(activityExpanded ? activityItems : activityItems.slice(0, 3)).map((item) => (
                     <div className="dashboard-activity-row" key={item.id}>
                       <span className={`dashboard-activity-icon dashboard-activity-icon--${item.type}`}>
                         {item.type === 'deposit' ? '↓' : item.type === 'withdrawal' ? '↑' : item.type === 'reward' ? '↗' : '◎'}
@@ -2911,18 +3174,30 @@ export default function App() {
                       )}
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
             </article>
           </div>
 
-          <article className="dashboard-panel dashboard-soft-card dashboard-history-panel">
+          <article className={`dashboard-panel dashboard-soft-card dashboard-history-panel ${historyExpanded ? 'is-expanded' : ''}`}>
             <div className="dashboard-panel-head">
               <div>
                 <span>PLAN HISTORY</span>
                 <h2>Completed & withdrawn</h2>
               </div>
-              <small>{planHistory.length} closed</small>
+              <div className="dashboard-history-head-actions">
+                <small>{planHistory.length} closed</small>
+                {planHistory.length > 3 && (
+                  <button
+                    type="button"
+                    className="dashboard-history-toggle"
+                    onClick={() => setHistoryExpanded((current) => !current)}
+                  >
+                    {historyExpanded ? 'Show less' : 'View more'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {planHistory.length === 0 ? (
@@ -2934,15 +3209,16 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="dashboard-history-list">
-                {planHistory.map((item) => (
+              <div className="dashboard-history-viewport">
+                <div className="dashboard-history-list">
+                {(historyExpanded ? planHistory : planHistory.slice(0, 3)).map((item) => (
                   <div className="dashboard-history-row" key={`${item.id}-${item.txHash ?? item.closedAt}`}>
                     <div className="dashboard-history-main">
                       <span className="dashboard-history-mark">✓</span>
                       <div>
                         <small>{item.goal.toUpperCase()}</small>
-                        <strong>{item.principalAmount.toFixed(4)} {item.principalAsset}</strong>
-                        <span>{item.termLabel} · rewards in {item.rewardAsset}</span>
+                        <strong>{item.amountReturned.toFixed(4)} {item.principalAsset} returned</strong>
+                        <span>{item.termLabel}{item.earlyExitFee > 0 ? ` · ${item.earlyExitFee.toFixed(4)} ETH early-exit fee` : ''}</span>
                       </div>
                     </div>
                     <div className="dashboard-history-meta">
@@ -2961,6 +3237,7 @@ export default function App() {
                     )}
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </article>
@@ -3076,7 +3353,7 @@ export default function App() {
         </div>
       )}
 
-      <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
+      {!walletSession && <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
         <div className="tab-container" aria-label="Primary navigation">
           <input type="radio" name="tab" id="tab1" className="tab tab--1" checked={activeSection === 'save'} readOnly />
           <label className="tab_label" htmlFor="tab1" onClick={focusSavingsPanel}>Save</label>
@@ -3104,7 +3381,7 @@ export default function App() {
             <div className="slider" />
           </label>
         </div>
-      </header>
+      </header>}
 
       <section id="save" className="hero-copy-shell" aria-labelledby="hero-title">
         <div className="hero-layout">
@@ -3122,8 +3399,8 @@ export default function App() {
             </p>
 
             <div className="hero-actions">
-              <button className="hero-primary" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Start saving</span>
+              <button className="hero-primary" type="button" onClick={() => walletSession ? setDashboardView(true) : openWalletFor('dashboard')}>
+                <span>{walletSession ? 'Dashboard' : 'Start saving'}</span>
                 {actionArrow}
               </button>
               <button className="hero-secondary" type="button" onClick={scrollToHowItWorks}>
@@ -3172,14 +3449,14 @@ export default function App() {
             </div>
 
             <div className="plan-cards">
-              <button type="button" className={`plan-card ${plan === 'flexible' ? 'active' : ''}`} onClick={() => setPlan('flexible')}>
+              <button type="button" className={`plan-card ${plan === 'flexible' ? 'active' : ''}`} onClick={() => { setPlan('flexible'); openWalletFor('start-plan', 'flexible') }}>
                 <span>Flexible</span>
-                <strong>3.8% APY</strong>
+                <strong>3.8% rate</strong>
                 <small>Withdraw anytime</small>
               </button>
-              <button type="button" className={`plan-card ${plan === 'locked' ? 'active' : ''}`} onClick={() => setPlan('locked')}>
+              <button type="button" className={`plan-card ${plan === 'locked' ? 'active' : ''}`} onClick={() => { setPlan('locked'); openWalletFor('start-plan', '90') }}>
                 <span>Locked</span>
-                <strong>6.8% APY</strong>
+                <strong>6.8% rate</strong>
                 <small>Higher return</small>
               </button>
             </div>
@@ -3189,8 +3466,8 @@ export default function App() {
               <strong>+{projected.toFixed(4)} ETH / year</strong>
             </div>
 
-            <button className="connect-wallet" type="button" onClick={() => openWalletFor('dashboard')}>
-              <span>Connect Wallet</span>
+            <button className="connect-wallet" type="button" onClick={() => walletSession ? setDashboardView(true) : openWalletFor('dashboard')}>
+              <span>{walletSession ? 'Open dashboard' : 'Connect Wallet'}</span>
             </button>
           </aside>
         </div>
@@ -3250,8 +3527,8 @@ export default function App() {
                 Connect an EVM or Solana wallet and sign a simple ownership message. Rixor
                 reads your public address only — never your seed phrase or private key.
               </p>
-              <button className="how-card-action" type="button" onClick={() => toggleHowCard('connect')}>
-                <span>{openHowCard === 'connect' ? 'Close' : 'Explore'}</span>
+              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
+                <span>Connect wallet</span>
                 {actionArrow}
               </button>
             </div>
@@ -3277,8 +3554,8 @@ export default function App() {
                 Supported deposits stay tied to the asset you chose to save. Reward payout is a
                 separate choice, so USDG can be used for rewards without changing your principal.
               </p>
-              <button className="how-card-action" type="button" onClick={() => toggleHowCard('convert')}>
-                <span>{openHowCard === 'convert' ? 'Close' : 'See flow'}</span>
+              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
+                <span>Connect wallet</span>
                 {actionArrow}
               </button>
             </div>
@@ -3306,8 +3583,8 @@ export default function App() {
                 you’re comfortable committing for longer. You review the amount, term and
                 illustrative rate before anything moves.
               </p>
-              <button className="how-card-action" type="button" onClick={() => toggleHowCard('choose')}>
-                <span>{openHowCard === 'choose' ? 'Close' : 'Compare'}</span>
+              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
+                <span>Connect wallet</span>
                 {actionArrow}
               </button>
             </div>
@@ -3335,8 +3612,8 @@ export default function App() {
                 Follow plan balances, earnings, maturity dates and activity from one place.
                 Locked plans show the time remaining; Flexible plans stay available.
               </p>
-              <button className="how-card-action" type="button" onClick={() => toggleHowCard('track')}>
-                <span>{openHowCard === 'track' ? 'Close' : 'View progress'}</span>
+              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
+                <span>Connect wallet</span>
                 {actionArrow}
               </button>
             </div>
@@ -3365,8 +3642,8 @@ export default function App() {
                 Before a money-moving action is confirmed, Rixor shows the important details
                 in plain language so you know exactly what you’re agreeing to.
               </p>
-              <button className="how-card-action" type="button" onClick={() => toggleHowCard('review')}>
-                <span>{openHowCard === 'review' ? 'Close' : 'Preview'}</span>
+              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
+                <span>Connect wallet</span>
                 {actionArrow}
               </button>
             </div>
@@ -3397,8 +3674,19 @@ export default function App() {
           <span className="plans-kicker">PLANS</span>
           <h2 id="plans-title">Choose the pace.</h2>
           <p>
-            Keep access flexible or lock your savings for longer. Move the amount, switch the
-            timeline, choose a reward preference, and see what the plan could look like before you start.
+            Keep access flexible or lock your savings for longer. Your principal stays in ETH,
+            while every plan reward is paid separately in $RIXOR.
+          </p>
+        </div>
+
+        <div className="plans-reward-model">
+          <span>HOW $RIXOR REWARDS WORK</span>
+          <strong>Rewards vest while you stay committed.</strong>
+          <p>
+            Rixor uses a dedicated $RIXOR rewards treasury for plan payouts. At launch, that treasury
+            funds saver rewards from a fixed allocation rather than unlimited minting. As the protocol
+            begins generating real yield and revenue, those sources are intended to replenish the rewards
+            treasury over time. Your ETH principal remains separate from the $RIXOR reward.
           </p>
         </div>
 
@@ -3409,18 +3697,26 @@ export default function App() {
                 <span>Plan type</span>
                 <strong>{selectedPlan.label}</strong>
               </div>
-              <span className="plans-apy-chip">{selectedPlan.apy}% APY</span>
+              <span className="plans-apy-chip">{selectedPlan.apy}% rate</span>
             </div>
 
             <div className="glass-radio-group plans-radio-group">
               {planOptions.map((option) => (
-                <label key={option.id} className={planTerm === option.id ? 'is-active' : ''}>
+                <label
+                  key={option.id}
+                  className={planTerm === option.id ? 'is-active' : ''}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    setPlanTerm(option.id)
+                    openWalletFor('start-plan', option.id)
+                  }}
+                >
                   <input
                     type="radio"
                     name="savings-plan"
                     value={option.id}
                     checked={planTerm === option.id}
-                    onChange={() => setPlanTerm(option.id)}
+                    onChange={() => undefined}
                   />
                   <span>{option.label}</span>
                 </label>
@@ -3483,7 +3779,7 @@ export default function App() {
 
             <div className="plans-preview-rate">
               <strong>{selectedPlan.apy}%</strong>
-              <span>illustrative APY</span>
+                <span>APY</span>
             </div>
 
             <div className="plans-preview-list">
@@ -3497,7 +3793,7 @@ export default function App() {
               </div>
               <div>
                 <span>{planTerm === 'flexible' ? 'Estimated / year' : 'At maturity'}</span>
-                <strong>+{planEarnings.toFixed(4)} ETH</strong>
+                <strong>$RIXOR reward</strong>
               </div>
               <div>
                 <span>Maturity</span>
@@ -3507,8 +3803,8 @@ export default function App() {
 
             {planTerm !== 'flexible' && (
               <p className="plans-warning">
-                Early withdrawal keeps your principal intact but forfeits 50% of interest
-                earned so far.
+                Early withdrawal starts at a maximum {selectedPlan.earlyExitMax}% fee and declines
+                continuously to 0% at maturity.
               </p>
             )}
 
@@ -3541,7 +3837,16 @@ export default function App() {
           <div className="security-side security-side--wallet">
             <span className="security-side-label">YOUR WALLET</span>
             <div className="security-wallet-card">
-              <span className="security-wallet-mark">R</span>
+              <span className="security-wallet-mark" aria-hidden="true">
+                <svg className="security-eth-mark" viewBox="0 0 784.37 1277.39" role="presentation">
+                  <polygon fill="#343434" points="392.07,0 383.5,29.11 383.5,873.74 392.07,882.29 784.13,650.54" />
+                  <polygon fill="#8C8C8C" points="392.07,0 0,650.54 392.07,882.29 392.07,472.33" />
+                  <polygon fill="#3C3C3B" points="392.07,956.52 387.24,962.41 387.24,1263.28 392.07,1277.38 784.37,724.89" />
+                  <polygon fill="#8C8C8C" points="392.07,1277.38 392.07,956.52 0,724.89" />
+                  <polygon fill="#141414" points="392.07,882.29 784.13,650.54 392.07,472.33" />
+                  <polygon fill="#393939" points="0,650.54 392.07,882.29 392.07,472.33" />
+                </svg>
+              </span>
               <div>
                 <strong>Private keys</strong>
                 <span>Stay with you</span>

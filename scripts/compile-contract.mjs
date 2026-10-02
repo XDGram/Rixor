@@ -42,9 +42,18 @@ const artifact = {
   deployedBytecode: `0x${contract.evm.deployedBytecode.object}`,
 }
 
+const serializedArtifact = JSON.stringify(artifact, null, 2)
+
 fs.writeFileSync(
   path.join(artifactsDir, 'RixorSavings.json'),
-  JSON.stringify(artifact, null, 2),
+  serializedArtifact,
 )
 
-console.log('Compiled RixorSavings -> artifacts/RixorSavings.json')
+const frontendArtifactDir = path.join(root, 'src', 'contracts')
+fs.mkdirSync(frontendArtifactDir, { recursive: true })
+fs.writeFileSync(
+  path.join(frontendArtifactDir, 'RixorSavingsArtifact.json'),
+  serializedArtifact,
+)
+
+console.log('Compiled RixorSavings -> artifacts/RixorSavings.json + src/contracts/RixorSavingsArtifact.json')

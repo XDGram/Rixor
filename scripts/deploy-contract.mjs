@@ -7,7 +7,7 @@ import { ContractFactory, JsonRpcProvider, Wallet } from 'ethers'
 const networks = {
   sepolia: {
     chainId: 11155111,
-    rpcUrl: process.env.RIXOR_SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
+    rpcUrl: process.env.RIXOR_SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
     explorer: 'https://sepolia.etherscan.io',
   },
   robinhood: {
