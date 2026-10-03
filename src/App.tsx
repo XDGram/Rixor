@@ -189,16 +189,6 @@ export default function App() {
     return address.slice(0, 6) + '…' + address.slice(-4)
   }
 
-  const ownershipMessage = (address: string, kind: WalletKind) => [
-    'Rixor wallet verification',
-    '',
-    'Sign this message to confirm you own this wallet.',
-    'This does not create a transaction or move funds.',
-    '',
-    'Wallet: ' + address,
-    'Network: ' + (kind === 'evm' ? 'EVM' : 'Solana'),
-  ].join('\n')
-
   const connectEvmWallet = async (wallet: DetectedWallet) => {
     setWalletConnecting(wallet.id)
     setWalletError('')
@@ -209,11 +199,6 @@ export default function App() {
       const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[]
       const address = accounts?.[0]
       if (!address) throw new Error('No wallet account was returned.')
-
-      await ethereum.request({
-        method: 'personal_sign',
-        params: [ownershipMessage(address, 'evm'), address],
-      })
 
       setWalletSession({ kind: 'evm', address, name: wallet.name })
       setDashboardView(true)
@@ -246,8 +231,6 @@ export default function App() {
 
       const response = await solana.connect()
       const address = response.publicKey.toString()
-      const message = new TextEncoder().encode(ownershipMessage(address, 'solana'))
-      await solana.signMessage(message, 'utf8')
 
       setWalletSession({ kind: 'solana', address, name: wallet.name })
       setDashboardView(true)
