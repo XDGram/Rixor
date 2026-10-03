@@ -127,6 +127,7 @@ export default function App() {
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const [dashboardView, setDashboardView] = useState(true)
+  const [dashboardNavTab, setDashboardNavTab] = useState<'home' | 'diamond'>('home')
   const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
   const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
@@ -2536,16 +2537,34 @@ export default function App() {
             {renderRixorBrand()}
           </button>
 
-          <nav className="dashboard-site-nav" aria-label="Dashboard navigation">
-            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={() => document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            >
-              Diamond Hands
-            </button>
+          <nav className="dashboard-tab-container" aria-label="Dashboard navigation">
+            <input
+              type="radio"
+              name="dashboard-tab"
+              id="dashboard-tab-home"
+              className="dashboard-tab dashboard-tab--1"
+              checked={dashboardNavTab === 'home'}
+              onChange={() => {
+                setDashboardNavTab('home')
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+            />
+            <label className="dashboard-tab-label" htmlFor="dashboard-tab-home">Home</label>
+
+            <input
+              type="radio"
+              name="dashboard-tab"
+              id="dashboard-tab-diamond"
+              className="dashboard-tab dashboard-tab--2"
+              checked={dashboardNavTab === 'diamond'}
+              onChange={() => {
+                setDashboardNavTab('diamond')
+                document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            />
+            <label className="dashboard-tab-label" htmlFor="dashboard-tab-diamond">Diamond Hands</label>
+
+            <div className="dashboard-tab-indicator" />
           </nav>
 
           <div className="dashboard-topbar-actions">
