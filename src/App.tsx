@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
-import { Interface, decodeBytes32String, encodeBytes32String, formatEther } from 'ethers'
+import { Interface, decodeBytes32String, encodeBytes32String, formatEther, formatUnits } from 'ethers'
 
 type WalletKind = 'evm' | 'solana'
 
@@ -47,6 +47,15 @@ type ActivePlan = {
   accruedReward: number
   status: 'active' | 'matured'
   txHash?: string
+}
+
+type WalletToken = {
+  address: string
+  name: string
+  symbol: string
+  decimals: number
+  rawBalance: string
+  balance: string
 }
 
 type ActivityItem = {
@@ -127,6 +136,8 @@ export default function App() {
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
   const [nativeBalanceStatus, setNativeBalanceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [nativeBalanceError, setNativeBalanceError] = useState('')
+  const [diamondTokens, setDiamondTokens] = useState<WalletToken[]>([])
+  const [diamondTokensStatus, setDiamondTokensStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [deployStatus, setDeployStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [deployTxHash, setDeployTxHash] = useState('')
   const [deployError, setDeployError] = useState('')
@@ -316,6 +327,63 @@ export default function App() {
     : evmChainId === 46630
       ? deployedRobinhoodTestnetAddress
       : undefined
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadDiamondTokens = async () => {
+      if (walletSession?.kind !== 'evm' || evmChainId !== 46630) {
+        setDiamondTokens([])
+        setDiamondTokensStatus('idle')
+        return
+      }
+
+      setDiamondTokensStatus('loading')
+      try {
+        const response = await fetch(`https://explorer.testnet.chain.robinhood.com/api/v2/addresses/${walletSession.address}/token-balances`)
+        if (!response.ok) throw new Error('Could not read wallet token balances.')
+
+        const payload = await response.json() as Array<{
+          token?: {
+            address_hash?: string
+            decimals?: string | null
+            name?: string | null
+            symbol?: string | null
+            type?: string | null
+          }
+          value?: string | null
+        }>
+
+        const tokens = payload
+          .filter((item) => item.token?.type === 'ERC-20' && item.token.address_hash && item.value && BigInt(item.value) > 0n)
+          .map((item) => {
+            const decimals = Number(item.token?.decimals ?? '18')
+            const rawBalance = item.value!
+            return {
+              address: item.token!.address_hash!,
+              name: item.token?.name || item.token?.symbol || 'Token',
+              symbol: item.token?.symbol || 'TOKEN',
+              decimals,
+              rawBalance,
+              balance: formatUnits(BigInt(rawBalance), decimals),
+            }
+          })
+
+        if (!cancelled) {
+          setDiamondTokens(tokens)
+          setDiamondTokensStatus('ready')
+        }
+      } catch {
+        if (!cancelled) {
+          setDiamondTokens([])
+          setDiamondTokensStatus('error')
+        }
+      }
+    }
+
+    void loadDiamondTokens()
+    return () => { cancelled = true }
+  }, [walletSession?.address, walletSession?.kind, evmChainId])
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
   const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
@@ -2858,6 +2926,84 @@ export default function App() {
           {walletSession.kind === 'evm' && walletError && (
             <p className="dashboard-network-error">{walletError}</p>
           )}
+
+          <article className="dashboard-diamond-panel dashboard-soft-card">
+            <div className="dashboard-diamond-head">
+              <div>
+                <span>DIAMOND HANDS</span>
+                <h2>Lock what you already hold.</h2>
+                <p>Pick a token already sitting in this wallet and commit to holding it until your chosen unlock date.</p>
+              </div>
+              {evmChainId === 46630 ? (
+                <span className="dashboard-diamond-network">
+                  {renderChainIcon(46630)}
+                  Robinhood
+                </span>
+              ) : (
+                <button type="button" onClick={() => void switchEvmNetwork(46630)}>
+                  Switch to Robinhood
+                </button>
+              )}
+            </div>
+
+            {evmChainId !== 46630 ? (
+              <div className="dashboard-diamond-empty">
+                <strong>Robinhood Chain only.</strong>
+                <span>Switch networks to see tokens already held by this wallet.</span>
+              </div>
+            ) : diamondTokensStatus === 'loading' ? (
+              <div className="dashboard-diamond-empty">
+                <strong>Reading your wallet…</strong>
+                <span>Checking Robinhood Chain for ERC-20 balances.</span>
+              </div>
+            ) : diamondTokensStatus === 'error' ? (
+              <div className="dashboard-diamond-empty">
+                <strong>Could not read wallet tokens.</strong>
+                <span>Refresh the page or try again in a moment.</span>
+              </div>
+            ) : diamondTokens.length === 0 ? (
+              <div className="dashboard-diamond-empty">
+                <strong>No ERC-20s found in this wallet.</strong>
+                <span>Tokens only appear here when the connected wallet actually holds them.</span>
+              </div>
+            ) : (
+              <div className="dashboard-diamond-list">
+                {diamondTokens.map((token) => {
+                  const numericBalance = Number(token.balance)
+                  const displayBalance = Number.isFinite(numericBalance)
+                    ? numericBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })
+                    : token.balance
+
+                  return (
+                    <div className="dashboard-diamond-row" key={token.address}>
+                      <div className="dashboard-diamond-token">
+                        <span className="dashboard-diamond-mark">{token.symbol.slice(0, 2).toUpperCase()}</span>
+                        <div>
+                          <small>IN YOUR WALLET</small>
+                          <strong>{token.symbol}</strong>
+                          <span>{token.name}</span>
+                        </div>
+                      </div>
+                      <div className="dashboard-diamond-balance">
+                        <small>AVAILABLE TO LOCK</small>
+                        <strong>{displayBalance} {token.symbol}</strong>
+                      </div>
+                      <div className="dashboard-diamond-contract">
+                        <small>TOKEN</small>
+                        <strong>{shortAddress(token.address)}</strong>
+                      </div>
+                      <span className="dashboard-diamond-status">Wallet-held</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="dashboard-diamond-foot">
+              <span>Conviction, enforced.</span>
+              <small>Only wallet-held tokens are eligible. The actual token-lock transaction layer comes next.</small>
+            </div>
+          </article>
 
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">
