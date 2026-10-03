@@ -329,6 +329,21 @@ export default function App() {
       ? deployedRobinhoodTestnetAddress
       : undefined
 
+  const isLikelyMemeToken = (token: { name?: string | null; symbol?: string | null }) => {
+    const symbol = (token.symbol || '').trim().toUpperCase()
+    const name = (token.name || '').trim().toLowerCase()
+    const memeSymbols = new Set([
+      'DOGE', 'SHIB', 'PEPE', 'BONK', 'WIF', 'FLOKI', 'MOG', 'BRETT', 'POPCAT', 'MEW',
+      'TURBO', 'NEIRO', 'PONKE', 'BABYDOGE', 'MEME', 'WOJAK', 'COQ', 'MYRO', 'BOME', 'SLERF',
+    ])
+    const memeNameHints = [
+      'doge', 'shib', 'pepe', 'bonk', 'dogwif', 'floki', 'mog', 'brett', 'popcat', 'cat',
+      'meme', 'wojak', 'frog', 'inu', 'baby doge', 'ponke', 'neiro', 'turbo',
+    ]
+
+    return memeSymbols.has(symbol) || memeNameHints.some((hint) => name.includes(hint))
+  }
+
   useEffect(() => {
     let cancelled = false
 
@@ -356,7 +371,13 @@ export default function App() {
         }>
 
         const tokens = payload
-          .filter((item) => item.token?.type === 'ERC-20' && item.token.address_hash && item.value && BigInt(item.value) > 0n)
+          .filter((item) => (
+            item.token?.type === 'ERC-20'
+            && item.token.address_hash
+            && item.value
+            && BigInt(item.value) > 0n
+            && isLikelyMemeToken(item.token)
+          ))
           .map((item) => {
             const decimals = Number(item.token?.decimals ?? '18')
             const rawBalance = item.value!
@@ -2962,8 +2983,8 @@ export default function App() {
             <div className="dashboard-diamond-head">
               <div>
                 <span>DIAMOND HANDS</span>
-                <h2>Lock what you already hold.</h2>
-                <p>Pick a token already sitting in this wallet and commit to holding it until your chosen unlock date.</p>
+                <h2>Hold your memes with conviction.</h2>
+                <p>You already bought it. Diamond Hands is for locking a meme you believe in so you cannot paper-hand it before your chosen unlock date.</p>
               </div>
               {evmChainId === 46630 ? (
                 <span className="dashboard-diamond-network">
@@ -2980,25 +3001,25 @@ export default function App() {
             {evmChainId !== 46630 ? (
               <div className="dashboard-diamond-empty">
                 <strong>Robinhood Chain only.</strong>
-                <span>Switch networks to see tokens already held by this wallet.</span>
+                <span>Switch networks to see meme coins already held by this wallet.</span>
               </div>
             ) : diamondTokensStatus === 'loading' ? (
               <div className="dashboard-diamond-empty">
-                <strong>Reading your wallet…</strong>
-                <span>Checking Robinhood Chain for ERC-20 balances.</span>
+                <strong>Checking your meme bag…</strong>
+                <span>Looking for recognized meme coins already held in this wallet.</span>
               </div>
             ) : diamondTokensStatus === 'error' ? (
               <div className="dashboard-diamond-empty">
-                <strong>Could not read wallet tokens.</strong>
+                <strong>Could not read your meme holdings.</strong>
                 <span>Refresh the page or try again in a moment.</span>
               </div>
             ) : diamondTokens.length === 0 ? (
               <div className="dashboard-diamond-empty">
-                <strong>No ERC-20s found in this wallet.</strong>
-                <span>Tokens only appear here when the connected wallet actually holds them.</span>
+                <strong>No recognized memes found in this wallet.</strong>
+                <span>Diamond Hands only shows meme coins you already hold. Tokenized stocks and unrelated ERC-20s stay out.</span>
               </div>
             ) : (
-              <div className="dashboard-diamond-list">
+              <div className="dashboard-diamond-cards">
                 {diamondTokens.map((token) => {
                   const numericBalance = Number(token.balance)
                   const displayBalance = Number.isFinite(numericBalance)
@@ -3006,24 +3027,25 @@ export default function App() {
                     : token.balance
 
                   return (
-                    <div className="dashboard-diamond-row" key={token.address}>
-                      <div className="dashboard-diamond-token">
+                    <div className="dashboard-diamond-card" key={token.address}>
+                      <div className="dashboard-diamond-card-top">
                         <span className="dashboard-diamond-mark">{token.symbol.slice(0, 2).toUpperCase()}</span>
-                        <div>
-                          <small>IN YOUR WALLET</small>
-                          <strong>{token.symbol}</strong>
-                          <span>{token.name}</span>
-                        </div>
+                        <span className="dashboard-diamond-status">In wallet</span>
                       </div>
-                      <div className="dashboard-diamond-balance">
-                        <small>AVAILABLE TO LOCK</small>
-                        <strong>{displayBalance} {token.symbol}</strong>
+                      <div className="dashboard-diamond-card-copy">
+                        <small>MEME HOLDING</small>
+                        <strong>{token.symbol}</strong>
+                        <span>{token.name}</span>
                       </div>
-                      <div className="dashboard-diamond-contract">
-                        <small>TOKEN</small>
-                        <strong>{shortAddress(token.address)}</strong>
+                      <div className="dashboard-diamond-card-balance">
+                        <small>READY TO DIAMOND HAND</small>
+                        <strong>{displayBalance}</strong>
+                        <span>{token.symbol}</span>
                       </div>
-                      <span className="dashboard-diamond-status">Wallet-held</span>
+                      <div className="dashboard-diamond-card-foot">
+                        <span>Conviction lock</span>
+                        <small>{shortAddress(token.address)}</small>
+                      </div>
                     </div>
                   )
                 })}
@@ -3032,7 +3054,7 @@ export default function App() {
 
             <div className="dashboard-diamond-foot">
               <span>Conviction, enforced.</span>
-              <small>Only wallet-held tokens are eligible. The actual token-lock transaction layer comes next.</small>
+              <small>Only meme coins already held in the connected wallet appear here. The actual lock transaction layer comes next.</small>
             </div>
           </article>
 
