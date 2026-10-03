@@ -96,11 +96,15 @@ input {
   width: 130px;
   height: 28px;
   position: absolute;
+  top: 2px;
   z-index: 4;
   outline: none;
   opacity: 0;
   cursor: pointer;
 }
+
+.dashboard-tab--1 { left: 2px; }
+.dashboard-tab--2 { left: calc(130px + 2px); }
 
 .dashboard-tab-label {
   width: 130px;
@@ -150,6 +154,40 @@ input {
 
 #diamond-hands {
   scroll-margin-top: 118px;
+}
+
+.dashboard-shell {
+  transition:
+    filter .18s cubic-bezier(.2,.8,.2,1),
+    transform .22s cubic-bezier(.2,.8,.2,1),
+    opacity .18s ease;
+  transform-origin: 50% 18%;
+}
+
+.dashboard-shell.is-nav-transitioning {
+  filter: blur(14px) saturate(.75);
+  transform: scale(.985) translateY(3px);
+  opacity: .28;
+  pointer-events: none;
+}
+
+.dashboard-stage::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 24%, rgba(207,239,0,.065), transparent 34%);
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
+  transition: opacity .18s ease, backdrop-filter .18s ease, -webkit-backdrop-filter .18s ease;
+}
+
+.dashboard-stage:has(.dashboard-shell.is-nav-transitioning)::after {
+  opacity: 1;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .dark-mode .dashboard-site-nav {
@@ -3054,6 +3092,9 @@ input {
   .dashboard-tab-indicator {
     width: calc((100% - 4px) / 2);
   }
+
+  .dashboard-tab--1 { left:2px; }
+  .dashboard-tab--2 { left:calc(50% + 1px); }
 
   .dashboard-tab--2:checked ~ .dashboard-tab-indicator {
     left: calc(50% + 1px);

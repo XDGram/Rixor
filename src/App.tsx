@@ -128,6 +128,7 @@ export default function App() {
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const [dashboardView, setDashboardView] = useState(true)
   const [dashboardNavTab, setDashboardNavTab] = useState<'home' | 'diamond'>('home')
+  const [dashboardNavTransitioning, setDashboardNavTransitioning] = useState(false)
   const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
   const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
@@ -268,6 +269,25 @@ export default function App() {
     setWalletModalOpen(false)
     setPendingWalletAction(null)
     setPendingPlanTerm(null)
+  }
+
+  const switchDashboardSection = (next: 'home' | 'diamond') => {
+    if (dashboardNavTransitioning) return
+
+    setDashboardNavTransitioning(true)
+    window.setTimeout(() => {
+      setDashboardNavTab(next)
+
+      if (next === 'home') {
+        window.scrollTo({ top: 0, behavior: 'auto' })
+      } else {
+        document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'auto', block: 'start' })
+      }
+
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => setDashboardNavTransitioning(false), 180)
+      })
+    }, 170)
   }
 
   const evmNetworks = [
@@ -2565,10 +2585,7 @@ export default function App() {
               id="dashboard-tab-home"
               className="dashboard-tab dashboard-tab--1"
               checked={dashboardNavTab === 'home'}
-              onChange={() => {
-                setDashboardNavTab('home')
-                window.scrollTo({ top: 0, behavior: 'smooth' })
-              }}
+              onChange={() => switchDashboardSection('home')}
             />
             <label className="dashboard-tab-label" htmlFor="dashboard-tab-home">Home</label>
 
@@ -2578,10 +2595,7 @@ export default function App() {
               id="dashboard-tab-diamond"
               className="dashboard-tab dashboard-tab--2"
               checked={dashboardNavTab === 'diamond'}
-              onChange={() => {
-                setDashboardNavTab('diamond')
-                document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
+              onChange={() => switchDashboardSection('diamond')}
             />
             <label className="dashboard-tab-label" htmlFor="dashboard-tab-diamond">Diamond Hands</label>
 
@@ -2943,7 +2957,7 @@ export default function App() {
           </div>
         )}
 
-        <section className="dashboard-shell" aria-labelledby="dashboard-title">
+        <section className={`dashboard-shell ${dashboardNavTransitioning ? 'is-nav-transitioning' : ''}`} aria-labelledby="dashboard-title">
           <div className="dashboard-intro">
             <div>
               <span className="dashboard-kicker">YOUR SAVINGS</span>
