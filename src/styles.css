@@ -99,6 +99,18 @@ input {
   background: rgba(127,127,127,.1);
 }
 
+.dashboard-site-nav button:first-child {
+  opacity: 1;
+}
+
+.dashboard-site-nav button:last-child {
+  color: var(--accent);
+}
+
+#diamond-hands {
+  scroll-margin-top: 118px;
+}
+
 .dark-mode .dashboard-site-nav {
   background: rgba(255,255,255,.035);
   border: 1px solid rgba(255,255,255,.07);

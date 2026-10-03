@@ -2536,6 +2536,18 @@ export default function App() {
             {renderRixorBrand()}
           </button>
 
+          <nav className="dashboard-site-nav" aria-label="Dashboard navigation">
+            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+              Home
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            >
+              Diamond Hands
+            </button>
+          </nav>
+
           <div className="dashboard-topbar-actions">
             <label className="switch" aria-label={lightMode ? 'Switch to dark mode' : 'Switch to light mode'}>
               <input
@@ -2927,7 +2939,7 @@ export default function App() {
             <p className="dashboard-network-error">{walletError}</p>
           )}
 
-          <article className="dashboard-diamond-panel dashboard-soft-card">
+          <article id="diamond-hands" className="dashboard-diamond-panel dashboard-soft-card">
             <div className="dashboard-diamond-head">
               <div>
                 <span>DIAMOND HANDS</span>
