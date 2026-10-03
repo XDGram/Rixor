@@ -1265,9 +1265,6 @@ export default function App() {
         isCoinbaseWallet?: boolean
         providers?: Array<EvmProvider & { isMetaMask?: boolean; isCoinbaseWallet?: boolean }>
       }
-      solana?: SolanaProvider
-      phantom?: { solana?: SolanaProvider }
-      backpack?: SolanaProvider
     }
 
     const injectedProviders = browser.ethereum?.providers?.length
@@ -1292,25 +1289,6 @@ export default function App() {
         provider,
       })
     })
-
-    const phantom = browser.phantom?.solana || (browser.solana?.isPhantom ? browser.solana : undefined)
-    if (phantom) {
-      addWallet({
-        id: 'solana:phantom',
-        name: 'Phantom',
-        kind: 'solana',
-        provider: phantom,
-      })
-    }
-
-    if (browser.backpack || browser.solana?.isBackpack) {
-      addWallet({
-        id: 'solana:backpack',
-        name: 'Backpack',
-        kind: 'solana',
-        provider: browser.backpack || browser.solana!,
-      })
-    }
 
     return () => {
       window.removeEventListener('eip6963:announceProvider', onEip6963)
@@ -3266,48 +3244,32 @@ export default function App() {
             <>
                 <p className="wallet-modal-copy">
                   Your wallet is your Rixor account. Rixor checks this browser for compatible
-                  wallets, then asks you to sign a free ownership message. No funds move here.
+                  EVM wallets and requests your public address only. No funds move when you connect.
                 </p>
 
                 <div className="wallet-options">
                   {detectedWallets.map((wallet) => {
-                    const gradientId = 'solana-gradient-' + wallet.id.replace(/[^a-z0-9]/gi, '-')
-
                     return (
                       <button
                         key={wallet.id}
                         type="button"
                         className="wallet-option"
-                        onClick={() => wallet.kind === 'evm' ? connectEvmWallet(wallet) : connectSolanaWallet(wallet)}
+                        onClick={() => connectEvmWallet(wallet)}
                         disabled={walletConnecting !== null}
                       >
-                        <span className={`wallet-option-mark ${wallet.kind === 'evm' ? 'wallet-option-mark--eth' : 'wallet-option-mark--sol'}`} aria-hidden="true">
-                          {wallet.kind === 'evm' ? (
-                            <svg viewBox="0 0 256 417" role="presentation">
-                              <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
-                              <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
-                              <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
-                              <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
-                              <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
-                              <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 397 311" role="presentation">
-                              <defs>
-                                <linearGradient id={gradientId} x1="360" y1="17" x2="141" y2="335" gradientUnits="userSpaceOnUse">
-                                  <stop stopColor="#00FFA3" />
-                                  <stop offset="1" stopColor="#DC1FFF" />
-                                </linearGradient>
-                              </defs>
-                              <path d="M64.8 237.9c2.6-2.6 6.2-4.1 9.9-4.1h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7c-6.2 0-9.3-7.5-4.9-11.9l62.7-62.7Z" fill={`url(#${gradientId})`} />
-                              <path d="M64.8 4.1C67.4 1.5 71 0 74.7 0h317.5c6.2 0 9.3 7.5 4.9 11.9l-62.7 62.7c-2.6 2.6-6.2 4.1-9.9 4.1H7C.8 78.7-2.3 71.2 2.1 66.8L64.8 4.1Z" fill={`url(#${gradientId})`} />
-                              <path d="M332.4 120.4c-2.6-2.6-6.2-4.1-9.9-4.1H5c-6.2 0-9.3 7.5-4.9 11.9l62.7 62.7c2.6 2.6 6.2 4.1 9.9 4.1h317.5c6.2 0 9.3-7.5 4.9-11.9l-62.7-62.7Z" fill={`url(#${gradientId})`} />
-                            </svg>
-                          )}
+                        <span className="wallet-option-mark wallet-option-mark--eth" aria-hidden="true">
+                          <svg viewBox="0 0 256 417" role="presentation">
+                            <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
+                            <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
+                            <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
+                            <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
+                            <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
+                            <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
+                          </svg>
                         </span>
                         <span>
                           <strong>{wallet.name}</strong>
-                          <small>{wallet.kind === 'evm' ? 'EVM wallet detected' : 'Solana wallet detected'}</small>
+                          <small>EVM wallet detected</small>
                         </span>
                         <em>{walletConnecting === wallet.id ? 'Connecting…' : 'Detected'}</em>
                       </button>
@@ -3318,8 +3280,7 @@ export default function App() {
                     <div className="wallet-empty-state">
                       <span>No compatible wallet detected.</span>
                       <small>
-                        Install an EVM wallet such as MetaMask or a Solana wallet such as Phantom,
-                        then reopen this panel.
+                        Install an EVM wallet such as Zerion, MetaMask, or Coinbase Wallet, then reopen this panel.
                       </small>
                     </div>
                   )}
@@ -3377,7 +3338,7 @@ export default function App() {
 
           <div className="hero-bottom-row hero-enter hero-enter--3">
             <p className="hero-description">
-              Save supported assets with flexible access or lock in longer for higher returns.
+              Save testnet ETH with flexible access or lock in longer for higher returns.
             </p>
 
             <div className="hero-actions">
@@ -3465,8 +3426,8 @@ export default function App() {
           <span className="how-kicker">HOW RIXOR WORKS</span>
           <h2 id="how-title">One balance. Your timeline.</h2>
           <p>
-            Bring funds in from the wallet you already use, keep the asset you chose to save,
-            then choose how long you want that money to work and how rewards should be paid.
+            Bring testnet ETH in from the EVM wallet you already use, then choose how long you want
+            that money to stay in a savings plan.
           </p>
         </div>
 
@@ -3475,9 +3436,9 @@ export default function App() {
             <span className="how-intro-label">THE SIMPLE VERSION</span>
             <h3>Your money moves through one clear path.</h3>
             <p>
-              Connect your wallet, fund Rixor, choose whether to stay flexible or lock for longer,
-              then choose how you want rewards paid. From there, Rixor keeps the position,
-              progress and next action visible in one place.
+              Connect your wallet, fund Rixor with testnet ETH, then choose whether to stay flexible
+              or lock for longer. From there, Rixor keeps the position, progress and next action
+              visible in one place.
             </p>
           </div>
 
@@ -3506,8 +3467,8 @@ export default function App() {
               <h3>Connect</h3>
               <p className="how-card-lead">Start with the wallet you already have.</p>
               <p className="how-card-more">
-                Connect an EVM or Solana wallet and sign a simple ownership message. Rixor
-                reads your public address only — never your seed phrase or private key.
+                Connect a compatible EVM wallet. Rixor requests your public address only — never
+                your seed phrase or private key — and connecting by itself does not move funds.
               </p>
               <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
                 <span>Connect wallet</span>
@@ -3531,10 +3492,10 @@ export default function App() {
             </div>
             <div className="how-card-copy">
               <h3>Convert</h3>
-              <p className="how-card-lead">Different assets in. One savings balance out.</p>
+              <p className="how-card-lead">Testnet ETH in. One clear savings balance.</p>
               <p className="how-card-more">
-                Supported deposits stay tied to the asset you chose to save. Reward payout is a
-                separate choice, so USDG can be used for rewards without changing your principal.
+                Deposited testnet ETH stays denominated in ETH throughout the current tester build.
+                The separate $RIXOR rewards system shown in the product direction is not live onchain yet.
               </p>
               <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
                 <span>Connect wallet</span>
