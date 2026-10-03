@@ -277,12 +277,7 @@ export default function App() {
     setDashboardNavTransitioning(true)
     window.setTimeout(() => {
       setDashboardNavTab(next)
-
-      if (next === 'home') {
-        window.scrollTo({ top: 0, behavior: 'auto' })
-      } else {
-        document.getElementById('diamond-hands')?.scrollIntoView({ behavior: 'auto', block: 'start' })
-      }
+      window.scrollTo({ top: 0, behavior: 'auto' })
 
       window.requestAnimationFrame(() => {
         window.setTimeout(() => setDashboardNavTransitioning(false), 180)
@@ -2958,6 +2953,7 @@ export default function App() {
         )}
 
         <section className={`dashboard-shell ${dashboardNavTransitioning ? 'is-nav-transitioning' : ''}`} aria-labelledby="dashboard-title">
+          <div className={`dashboard-home-view ${dashboardNavTab === 'home' ? 'is-active' : ''}`}>
           <div className="dashboard-intro">
             <div>
               <span className="dashboard-kicker">YOUR SAVINGS</span>
@@ -2992,7 +2988,14 @@ export default function App() {
           {walletSession.kind === 'evm' && walletError && (
             <p className="dashboard-network-error">{walletError}</p>
           )}
+          </div>
 
+          <div className={`dashboard-diamond-view ${dashboardNavTab === 'diamond' ? 'is-active' : ''}`}>
+          <div className="dashboard-diamond-page-intro">
+            <span>DIAMOND HANDS</span>
+            <h1>Conviction without the sell button.</h1>
+            <p>Lock meme coins you already hold on Robinhood Chain and commit to your own long-term thesis.</p>
+          </div>
           <article id="diamond-hands" className="dashboard-diamond-panel dashboard-soft-card">
             <div className="dashboard-diamond-head">
               <div>
@@ -3071,7 +3074,9 @@ export default function App() {
               <small>Only meme coins already held in the connected wallet appear here. The actual lock transaction layer comes next.</small>
             </div>
           </article>
+          </div>
 
+          <div className={`dashboard-home-view ${dashboardNavTab === 'home' ? 'is-active' : ''}`}>
           <div className="dashboard-hero-grid">
             <div className="dashboard-summary">
               <div className="dashboard-total-card dashboard-soft-card">
@@ -3419,6 +3424,7 @@ export default function App() {
                   ? 'This supported testnet does not have a configured Rixor contract yet.'
                   : 'Rixor is not available on this network yet.'}
             </p>
+          </div>
           </div>
         </section>
       </main>
