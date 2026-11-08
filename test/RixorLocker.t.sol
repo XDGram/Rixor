@@ -3,6 +3,7 @@ pragma solidity 0.8.30;
 
 import {RixorBase} from "./utils/RixorBase.sol";
 import {RixorLocker} from "../contracts/RixorLocker.sol";
+import {Vm, VmSafe} from "forge-std/Vm.sol";
 import {
     MockERC20,
     MockSafe,
@@ -17,78 +18,83 @@ import {
 contract RixorLockerTest is RixorBase {
     // ------------------------------------------------------------------ construction and roles
 
+    function _one(address token, uint256 unit, uint256 cap, uint8 cls)
+        internal
+        pure
+        returns (RixorLocker.Listing[] memory l)
+    {
+        l = new RixorLocker.Listing[](1);
+        l[0] = RixorLocker.Listing(token, unit, cap, cls);
+    }
+
     function _deploy(address owner_, address guardian_, address token, uint256 unit, uint256 cap)
         internal
         returns (RixorLocker)
     {
-        address[] memory tokens = new address[](1);
-        tokens[0] = token;
-        uint256[] memory units = new uint256[](1);
-        units[0] = unit;
-        uint256[] memory caps = new uint256[](1);
-        caps[0] = cap;
-        return new RixorLocker(address(wif), owner_, guardian_, tokens, units, caps);
+        return new RixorLocker(owner_, guardian_, _one(token, unit, cap, 1));
     }
 
     function test_constructor_rejectsEoaOwner() public {
         vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotContract.selector, alice));
-        _deploy(alice, address(guardianSafe), address(wif), WIF_UNIT, WIF_CAP);
+        _deploy(alice, address(guardianSafe), address(pepe), PEPE_UNIT, PEPE_CAP);
     }
 
     function test_constructor_rejectsEoaGuardian() public {
         vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotContract.selector, alice));
-        _deploy(address(ownerSafe), alice, address(wif), WIF_UNIT, WIF_CAP);
+        _deploy(address(ownerSafe), alice, address(pepe), PEPE_UNIT, PEPE_CAP);
     }
 
-    function test_constructor_requiresWifListed() public {
-        vm.expectRevert(abi.encodeWithSelector(RixorLocker.InvalidToken.selector, address(wif)));
-        _deploy(address(ownerSafe), address(guardianSafe), address(dope), DOPE_UNIT, DOPE_CAP);
+    function test_constructor_noRewardTokenRequired() public {
+        // V2: no token is mandatory. A Locker can start empty or with only community meme tokens.
+        RixorLocker empty = new RixorLocker(address(ownerSafe), address(guardianSafe), new RixorLocker.Listing[](0));
+        assertEq(empty.listedTokens().length, 0);
+        RixorLocker memeOnly = _deploy(address(ownerSafe), address(guardianSafe), address(dope), DOPE_UNIT, DOPE_CAP);
+        assertTrue(memeOnly.isListed(address(dope)));
+        assertFalse(locker.isListed(address(wif)), "the reward token is not listed in the base fixture");
     }
 
-    function test_constructor_rejectsBadDecimalsAndZeroUnit() public {
+    function test_constructor_rejectsBadDecimalsZeroUnitBadClassAndHugeCap() public {
         BadDecimalsToken bad = new BadDecimalsToken();
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(wif);
-        tokens[1] = address(bad);
-        uint256[] memory units = new uint256[](2);
-        units[0] = WIF_UNIT;
-        units[1] = 1 ether;
-        uint256[] memory caps = new uint256[](2);
-        caps[0] = WIF_CAP;
-        caps[1] = 100 ether;
         vm.expectRevert(abi.encodeWithSelector(RixorLocker.InvalidToken.selector, address(bad)));
-        new RixorLocker(address(wif), address(ownerSafe), address(guardianSafe), tokens, units, caps);
-
+        new RixorLocker(address(ownerSafe), address(guardianSafe), _one(address(bad), 1 ether, 100 ether, 1));
         vm.expectRevert(RixorLocker.InvalidAmount.selector);
-        _deploy(address(ownerSafe), address(guardianSafe), address(wif), 0, WIF_CAP);
+        _deploy(address(ownerSafe), address(guardianSafe), address(pepe), 0, PEPE_CAP);
+        vm.expectRevert(RixorLocker.InvalidRiskClass.selector);
+        new RixorLocker(address(ownerSafe), address(guardianSafe), _one(address(pepe), 1 ether, 100 ether, 0));
+        vm.expectRevert(RixorLocker.InvalidRiskClass.selector);
+        new RixorLocker(address(ownerSafe), address(guardianSafe), _one(address(pepe), 1 ether, 100 ether, 3));
+        vm.expectRevert(RixorLocker.InvalidAmount.selector);
+        new RixorLocker(
+            address(ownerSafe), address(guardianSafe), _one(address(pepe), 1 ether, uint256(type(uint128).max) + 1, 1)
+        );
     }
 
     function test_constructor_rejectsDuplicateToken() public {
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(wif);
-        tokens[1] = address(wif);
-        uint256[] memory units = new uint256[](2);
-        units[0] = WIF_UNIT;
-        units[1] = WIF_UNIT;
-        uint256[] memory caps = new uint256[](2);
-        caps[0] = WIF_CAP;
-        caps[1] = WIF_CAP;
-        vm.expectRevert(abi.encodeWithSelector(RixorLocker.AlreadyListed.selector, address(wif)));
-        new RixorLocker(address(wif), address(ownerSafe), address(guardianSafe), tokens, units, caps);
+        RixorLocker.Listing[] memory l = new RixorLocker.Listing[](2);
+        l[0] = RixorLocker.Listing(address(pepe), PEPE_UNIT, PEPE_CAP, 1);
+        l[1] = RixorLocker.Listing(address(pepe), PEPE_UNIT, PEPE_CAP, 2);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.AlreadyListed.selector, address(pepe)));
+        new RixorLocker(address(ownerSafe), address(guardianSafe), l);
     }
 
     function test_constructor_state() public view {
         assertEq(locker.owner(), address(ownerSafe));
         assertEq(locker.guardian(), address(guardianSafe));
-        assertEq(locker.WIF(), address(wif));
-        assertTrue(locker.isListed(address(wif)) && locker.isListed(address(dope)));
+        assertTrue(locker.isListed(address(pepe)) && locker.isListed(address(dope)));
         assertEq(locker.unitAmount(address(dope)), DOPE_UNIT);
         assertEq(locker.listedTokens().length, 2);
-        assertEq(locker.tokenMultiplierBps(address(wif)), 20_000);
-        assertEq(locker.tokenMultiplierBps(address(dope)), 10_000);
+        assertEq(locker.riskClass(address(dope)), 1);
         assertEq(locker.tierMultiplierBps(0), 5_000);
         assertEq(locker.tierMultiplierBps(1), 15_000);
         assertEq(locker.tierMultiplierBps(2), 25_000);
+        // Genesis checkpoint written at listing.
+        assertEq(locker.checkpointCount(address(dope)), 1);
+        (uint64 t, uint256 w) = locker.checkpointAt(address(dope), 0);
+        assertEq(t, block.timestamp);
+        assertEq(w, 0);
+        (uint8 mask, uint256 maxTerm) = locker.allowedTiers(address(dope));
+        assertEq(mask, 7);
+        assertEq(maxTerm, 90);
     }
 
     function test_ownership_twoStepContractOnly() public {
@@ -115,7 +121,7 @@ contract RixorLockerTest is RixorBase {
         vm.expectRevert(RixorLocker.NotOwner.selector);
         locker.unpause();
         vm.expectRevert(RixorLocker.NotOwner.selector);
-        locker.proposeListing(address(meme3), 1 ether, 10 ether);
+        locker.proposeListing(address(meme3), 1 ether, 10 ether, 1);
         vm.expectRevert(RixorLocker.NotOwner.selector);
         locker.proposeUnitAmount(address(dope), DOPE_UNIT);
         vm.expectRevert(RixorLocker.NotOwner.selector);
@@ -126,6 +132,12 @@ contract RixorLockerTest is RixorBase {
         locker.disableLocks(address(dope));
         vm.expectRevert(RixorLocker.NotOwner.selector);
         locker.proposeEnableLocks(address(dope));
+        vm.expectRevert(RixorLocker.NotOwner.selector);
+        locker.downgradeClass(address(dope));
+        vm.expectRevert(RixorLocker.NotOwner.selector);
+        locker.proposeClassUpgrade(address(dope));
+        vm.expectRevert(RixorLocker.NotGuardian.selector);
+        locker.releaseToken(address(dope));
         vm.expectRevert(RixorLocker.NotGuardian.selector);
         locker.pause();
         vm.expectRevert(RixorLocker.NotGuardian.selector);
@@ -138,7 +150,7 @@ contract RixorLockerTest is RixorBase {
     function test_lock_allTiersRecordPositions() public {
         uint256 flex = lockAs(alice, address(dope), 2_000 ether, 0, 0);
         uint256 committed = lockAs(alice, address(dope), 3_000 ether, 1, 30);
-        uint256 diamond = lockAs(alice, address(wif), 70_000 ether, 2, 90);
+        uint256 diamond = lockAs(alice, address(pepe), 70_000 ether, 2, 90);
 
         RixorLocker.PositionView memory f = locker.positionOf(flex);
         assertEq(f.owner, alice);
@@ -265,7 +277,7 @@ contract RixorLockerTest is RixorBase {
     }
 
     function test_exit_diamondLockedUntilExactEnd() public {
-        uint256 id = lockAs(alice, address(wif), 70_000 ether, 2, 30);
+        uint256 id = lockAs(alice, address(pepe), 70_000 ether, 2, 30);
         uint64 endsAt = locker.positionOf(id).endsAt;
         vm.warp(endsAt - 1);
         vm.prank(alice);
@@ -324,7 +336,7 @@ contract RixorLockerTest is RixorBase {
     }
 
     function test_emergency_freesDiamondWithoutFeeAndIsIrreversible() public {
-        uint256 diamond = lockAs(alice, address(wif), 70_000 ether, 2, 90);
+        uint256 diamond = lockAs(alice, address(pepe), 70_000 ether, 2, 90);
         uint256 committed = lockAs(bob, address(dope), 10_000 ether, 1, 90);
         asGuardian(abi.encodeCall(RixorLocker.activateEmergency, ()));
         assertEq(locker.emergencyActivatedAt(), block.timestamp);
@@ -334,7 +346,7 @@ contract RixorLockerTest is RixorBase {
         locker.exit(diamond, 0);
         vm.prank(bob);
         locker.exit(committed, 0);
-        assertEq(wif.balanceOf(address(locker)), 0);
+        assertEq(pepe.balanceOf(address(locker)), 0);
         assertEq(dope.balanceOf(address(locker)), 0);
 
         vm.expectRevert(RixorLocker.EmergencyActive.selector);
@@ -368,17 +380,18 @@ contract RixorLockerTest is RixorBase {
     // ------------------------------------------------------------------ registry timelocks
 
     function test_listing_timelocked() public {
-        asOwner(abi.encodeCall(RixorLocker.proposeListing, (address(meme3), 500 ether, 100_000 ether)));
+        asOwner(abi.encodeCall(RixorLocker.proposeListing, (address(meme3), 500 ether, 100_000 ether, 2)));
         vm.expectRevert();
         locker.executeListing(address(meme3));
         vm.warp(block.timestamp + 48 hours);
         locker.executeListing(address(meme3)); // anyone may execute a matured change
         assertTrue(locker.isListed(address(meme3)));
+        assertEq(locker.riskClass(address(meme3)), 2);
         lockAs(alice, address(meme3), 500 ether, 0, 0);
     }
 
     function test_listing_cancel() public {
-        asOwner(abi.encodeCall(RixorLocker.proposeListing, (address(meme3), 500 ether, 100_000 ether)));
+        asOwner(abi.encodeCall(RixorLocker.proposeListing, (address(meme3), 500 ether, 100_000 ether, 1)));
         asOwner(abi.encodeCall(RixorLocker.cancelListing, (address(meme3))));
         vm.warp(block.timestamp + 48 hours);
         vm.expectRevert(RixorLocker.NothingPending.selector);
@@ -438,7 +451,187 @@ contract RixorLockerTest is RixorBase {
         lockAs(alice, address(dope), DOPE_UNIT, 0, 0);
     }
 
+    // ------------------------------------------------------------------ V2: risk classes
+
+    function test_classB_noDiamondAndShorterTerms() public {
+        _listClass(address(meme3), 500 ether, 100_000 ether, 2);
+        (uint8 mask, uint256 maxTerm) = locker.allowedTiers(address(meme3));
+        assertEq(mask, 3);
+        assertEq(maxTerm, 60);
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.TierNotAllowed.selector, 2));
+        locker.lock(address(meme3), 500 ether, 2, 30);
+        vm.expectRevert(RixorLocker.InvalidTerm.selector);
+        locker.lock(address(meme3), 500 ether, 1, 61);
+        locker.lock(address(meme3), 500 ether, 1, 60);
+        locker.lock(address(meme3), 500 ether, 0, 0);
+        vm.stopPrank();
+    }
+
+    function test_class_downgradeImmediateUpgradeTimelocked() public {
+        uint256 diamond = lockAs(alice, address(dope), DOPE_UNIT, 2, 90);
+        asOwner(abi.encodeCall(RixorLocker.downgradeClass, (address(dope))));
+        assertEq(locker.riskClass(address(dope)), 2);
+        // Existing positions keep their terms; new Diamond locks are blocked.
+        assertEq(locker.positionOf(diamond).endsAt, block.timestamp + 90 days);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.TierNotAllowed.selector, 2));
+        locker.lock(address(dope), DOPE_UNIT, 2, 30);
+        vm.expectRevert(RixorLocker.OutOfBounds.selector);
+        asOwner(abi.encodeCall(RixorLocker.downgradeClass, (address(dope)))); // already B
+
+        asOwner(abi.encodeCall(RixorLocker.proposeClassUpgrade, (address(dope))));
+        vm.warp(block.timestamp + 48 hours - 1);
+        vm.expectRevert();
+        locker.executeClassUpgrade(address(dope));
+        vm.warp(block.timestamp + 1);
+        locker.executeClassUpgrade(address(dope));
+        assertEq(locker.riskClass(address(dope)), 1);
+        lockAs(alice, address(dope), DOPE_UNIT, 2, 90);
+    }
+
+    function test_class_downgradeCancelsPendingUpgrade() public {
+        _listClass(address(meme3), 500 ether, 100_000 ether, 2);
+        asOwner(abi.encodeCall(RixorLocker.proposeClassUpgrade, (address(meme3))));
+        asOwner(abi.encodeCall(RixorLocker.cancelClassUpgrade, (address(meme3))));
+        vm.warp(block.timestamp + 48 hours);
+        vm.expectRevert(RixorLocker.NothingPending.selector);
+        locker.executeClassUpgrade(address(meme3));
+    }
+
+    // ------------------------------------------------------------------ V2: per-token release
+
+    function test_release_freesDiamondOfThatTokenOnly() public {
+        uint256 dDiamond = lockAs(alice, address(dope), 10 * DOPE_UNIT, 2, 90);
+        uint256 dCommitted = lockAs(bob, address(dope), 10 * DOPE_UNIT, 1, 90);
+        uint256 pDiamond = lockAs(carol, address(pepe), PEPE_UNIT, 2, 90);
+        asGuardian(abi.encodeCall(RixorLocker.releaseToken, (address(dope))));
+        assertEq(locker.releasedAt(address(dope)), block.timestamp);
+        assertFalse(locker.locksEnabled(address(dope)));
+        (uint8 mask,) = locker.allowedTiers(address(dope));
+        assertEq(mask, 0);
+
+        (bool allowed, uint256 fee) = locker.exitTerms(dDiamond);
+        assertTrue(allowed);
+        assertEq(fee, 0);
+        vm.prank(alice);
+        locker.exit(dDiamond, 0);
+        vm.prank(bob);
+        locker.exit(dCommitted, 0); // no early-exit fee after release
+        assertEq(dope.balanceOf(address(locker)), 0);
+        assertEq(dope.balanceOf(DEAD), 0);
+
+        // Other tokens are unaffected.
+        vm.prank(carol);
+        vm.expectRevert(RixorLocker.StillLocked.selector);
+        locker.exit(pDiamond, 10_000);
+        lockAs(carol, address(pepe), PEPE_UNIT, 0, 0);
+    }
+
+    function test_release_irreversibleAndBlocksLocks() public {
+        asOwner(abi.encodeCall(RixorLocker.releaseToken, (address(dope))));
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.TokenReleasedAlready.selector, address(dope)));
+        asGuardian(abi.encodeCall(RixorLocker.releaseToken, (address(dope))));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.LocksNotEnabled.selector, address(dope)));
+        locker.lock(address(dope), DOPE_UNIT, 0, 0);
+        vm.expectRevert(RixorLocker.OutOfBounds.selector);
+        asOwner(abi.encodeCall(RixorLocker.proposeEnableLocks, (address(dope))));
+        vm.expectRevert(RixorLocker.OutOfBounds.selector);
+        asOwner(abi.encodeCall(RixorLocker.proposeClassUpgrade, (address(dope))));
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotListed.selector, address(meme3)));
+        asGuardian(abi.encodeCall(RixorLocker.releaseToken, (address(meme3))));
+    }
+
+    function test_release_cancelsPendingEnable() public {
+        asOwner(abi.encodeCall(RixorLocker.disableLocks, (address(dope))));
+        asOwner(abi.encodeCall(RixorLocker.proposeEnableLocks, (address(dope))));
+        asGuardian(abi.encodeCall(RixorLocker.releaseToken, (address(dope))));
+        vm.warp(block.timestamp + 48 hours);
+        vm.expectRevert(RixorLocker.NothingPending.selector);
+        locker.executeEnableLocks(address(dope));
+    }
+
+    // ------------------------------------------------------------------ V2: weight checkpoints
+
+    function test_checkpoints_trackWeightOnLockAndExit() public {
+        uint256 a = lockAs(alice, address(dope), 4 * DOPE_UNIT, 2, 90); // weight 10,000 ether
+        vm.warp(block.timestamp + 1 hours);
+        uint256 b = lockAs(bob, address(dope), 2 * DOPE_UNIT, 0, 0); // weight 1,000 ether
+        RixorLocker.PositionView memory pa = locker.positionOf(a);
+        RixorLocker.PositionView memory pb = locker.positionOf(b);
+        assertEq(pa.weight, 10_000 ether);
+        assertEq(pb.weight, 1_000 ether);
+        // The first lock happened in the listing block, so it collapsed into the genesis checkpoint.
+        assertEq(pa.startCheckpoint, 0);
+        assertEq(pb.startCheckpoint, 1);
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(bob);
+        locker.exit(b, 0);
+        assertEq(locker.positionOf(b).endCheckpoint, 2);
+        assertEq(locker.checkpointCount(address(dope)), 3);
+        uint256[3] memory expected = [uint256(10_000 ether), 11_000 ether, 10_000 ether];
+        for (uint256 i = 0; i < 3; i++) {
+            (, uint256 w) = locker.checkpointAt(address(dope), i);
+            assertEq(w, expected[i]);
+        }
+        assertEq(locker.tokenConfig(address(dope)).totalWeight, 10_000 ether);
+        // Pepe's checkpoints are independent.
+        assertEq(locker.checkpointCount(address(pepe)), 1);
+    }
+
+    function test_checkpoints_sameBlockChangesCollapse() public {
+        vm.warp(block.timestamp + 1);
+        uint256 a = lockAs(alice, address(dope), DOPE_UNIT, 0, 0);
+        uint256 b = lockAs(bob, address(dope), DOPE_UNIT, 1, 30);
+        vm.prank(alice);
+        locker.exit(a, 0);
+        assertEq(locker.checkpointCount(address(dope)), 2);
+        assertEq(locker.positionOf(a).startCheckpoint, 1);
+        assertEq(locker.positionOf(a).endCheckpoint, 1);
+        assertEq(locker.positionOf(b).startCheckpoint, 1);
+        (, uint256 w) = locker.checkpointAt(address(dope), 1);
+        assertEq(w, 1_500 ether);
+    }
+
+    function test_exit_makesNoCallsOtherThanTheToken() public {
+        // Exit independence: the only external call an exit makes is the token transfer back to the user.
+        uint256 id = lockAs(alice, address(dope), DOPE_UNIT, 0, 0);
+        vm.recordLogs();
+        vm.startStateDiffRecording();
+        vm.prank(alice);
+        locker.exit(id, 0);
+        Vm.AccountAccess[] memory accesses = vm.stopAndReturnStateDiff();
+        for (uint256 i = 0; i < accesses.length; i++) {
+            if (accesses[i].kind == VmSafe.AccountAccessKind.Call || accesses[i].kind == VmSafe.AccountAccessKind.StaticCall)
+            {
+                address target = accesses[i].account;
+                assertTrue(target == address(locker) || target == address(dope), "unexpected external call");
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ fuzz
+
+    function testFuzz_checkpointWeightEqualsOpenPositions(uint256 seed) public {
+        uint256[] memory ids = new uint256[](8);
+        uint256 open;
+        for (uint256 i = 0; i < 8; i++) {
+            vm.warp(block.timestamp + (uint256(keccak256(abi.encode(seed, i))) % 3 hours));
+            uint8 tier = uint8(uint256(keccak256(abi.encode(seed, i, "t"))) % 3);
+            uint256 amount = DOPE_UNIT * (1 + uint256(keccak256(abi.encode(seed, i, "a"))) % 50);
+            ids[i] = lockAs(i % 2 == 0 ? alice : bob, address(dope), amount, tier, tier == 0 ? 0 : 30);
+            open += locker.positionOf(ids[i]).weight;
+            if (tier == 0 && uint256(keccak256(abi.encode(seed, i, "x"))) % 2 == 0) {
+                vm.prank(i % 2 == 0 ? alice : bob);
+                locker.exit(ids[i], 0);
+                open -= locker.positionOf(ids[i]).weight;
+            }
+            (, uint256 w) = locker.checkpointAt(address(dope), locker.checkpointCount(address(dope)) - 1);
+            assertEq(w, open);
+            assertEq(locker.tokenConfig(address(dope)).totalWeight, open);
+        }
+    }
 
     function testFuzz_committedFeeMonotonicAndBounded(uint256 termDays, uint256 elapsed) public {
         termDays = bound(termDays, 30, 90);
@@ -477,8 +670,14 @@ contract RixorLockerTest is RixorBase {
 
     // ------------------------------------------------------------------ helpers
 
+    function _listClass(address token, uint256 unit, uint256 cap, uint8 cls) internal {
+        asOwner(abi.encodeCall(RixorLocker.proposeListing, (token, unit, cap, cls)));
+        vm.warp(block.timestamp + 48 hours);
+        locker.executeListing(token);
+    }
+
     function _listViaTimelock(address token, uint256 unit, uint256 cap) internal {
-        asOwner(abi.encodeCall(RixorLocker.proposeListing, (token, unit, cap)));
+        asOwner(abi.encodeCall(RixorLocker.proposeListing, (token, unit, cap, 1)));
         vm.warp(block.timestamp + 48 hours);
         locker.executeListing(token);
     }

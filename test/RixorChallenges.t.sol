@@ -42,6 +42,12 @@ contract RixorChallengesTest is RixorBase {
         return challenges.sweep(id);
     }
 
+    function _listMeme3() internal {
+        asOwner(abi.encodeCall(RixorLocker.proposeListing, (address(meme3), 500 ether, 100_000 ether, 1)));
+        vm.warp(block.timestamp + 48 hours);
+        locker.executeListing(address(meme3));
+    }
+
     function _assertAccounting(uint256 id) internal view {
         RixorChallenges.Challenge memory c = challenges.getChallenge(id);
         assertEq(c.claimedTotal + c.refundedTotal + c.sweptTotal + c.escrow, c.pool, "per-challenge conservation");
@@ -52,13 +58,15 @@ contract RixorChallengesTest is RixorBase {
 
     function test_constructor_minHoldBounds() public {
         vm.expectRevert(RixorChallenges.InvalidParams.selector);
-        new RixorChallenges(IRixorLocker(address(locker)), 1 hours - 1);
+        new RixorChallenges(IRixorLocker(address(locker)), address(wif), 1 hours - 1);
         vm.expectRevert(RixorChallenges.InvalidParams.selector);
-        new RixorChallenges(IRixorLocker(address(locker)), 7 days + 1);
-        new RixorChallenges(IRixorLocker(address(locker)), 1 hours);
-        new RixorChallenges(IRixorLocker(address(locker)), 7 days);
+        new RixorChallenges(IRixorLocker(address(locker)), address(wif), 7 days + 1);
+        new RixorChallenges(IRixorLocker(address(locker)), address(wif), 1 hours);
+        new RixorChallenges(IRixorLocker(address(locker)), address(wif), 7 days);
         vm.expectRevert(RixorChallenges.InvalidParams.selector);
-        new RixorChallenges(IRixorLocker(alice), 24 hours);
+        new RixorChallenges(IRixorLocker(alice), address(wif), 24 hours);
+        vm.expectRevert(RixorChallenges.InvalidParams.selector);
+        new RixorChallenges(IRixorLocker(address(locker)), alice, 24 hours); // prize token must be a contract
         assertEq(challenges.wif(), address(wif));
         assertEq(challenges.minHold(), MIN_HOLD);
     }
@@ -66,7 +74,7 @@ contract RixorChallengesTest is RixorBase {
     // ------------------------------------------------------------------ creation
 
     function test_create_poolBounds() public {
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 2 days);
         vm.prank(sponsorA);
         vm.expectRevert(RixorChallenges.InvalidAmount.selector);
         challenges.createChallenge(p, 100_000 ether - 1);
@@ -83,42 +91,57 @@ contract RixorChallengesTest is RixorBase {
     }
 
     function test_create_communityTokenRules() public {
+        // Any 1-3 distinct listed tokens. $WIF is not a lockable token and is never required.
+        _listMeme3();
         address[] memory none = new address[](0);
-        address[] memory wifFirst = new address[](2);
-        wifFirst[0] = address(wif);
-        wifFirst[1] = address(dope);
         address[] memory dupe = new address[](2);
         dupe[0] = address(dope);
         dupe[1] = address(dope);
-        address[] memory wifWif = new address[](2);
-        wifWif[0] = address(wif);
-        wifWif[1] = address(wif);
-        address[] memory three = new address[](3);
-        three[0] = address(dope);
-        three[1] = address(wif);
-        three[2] = address(meme3);
+        address[] memory dupeOfThree = new address[](3);
+        dupeOfThree[0] = address(dope);
+        dupeOfThree[1] = address(pepe);
+        dupeOfThree[2] = address(dope);
+        address[] memory four = new address[](4);
+        four[0] = address(dope);
+        four[1] = address(pepe);
+        four[2] = address(meme3);
+        four[3] = makeAddr("fourth");
 
-        address[][5] memory bad = [none, wifFirst, dupe, wifWif, three];
-        for (uint256 i = 0; i < bad.length; i++) {
-            RixorChallenges.CreateParams memory p = params(bad[i], 1 days, 2 days);
-            vm.prank(sponsorA);
-            vm.expectRevert(RixorChallenges.InvalidParams.selector);
-            challenges.createChallenge(p, POOL);
-        }
-        // Unlisted token
         vm.prank(sponsorA);
-        vm.expectRevert(abi.encodeWithSelector(RixorChallenges.InvalidToken.selector, address(meme3)));
-        challenges.createChallenge(params(only(address(meme3)), 1 days, 2 days), POOL);
+        vm.expectRevert(RixorChallenges.InvalidParams.selector);
+        challenges.createChallenge(params(none, 1 days, 2 days), POOL);
+        vm.prank(sponsorA);
+        vm.expectRevert(RixorChallenges.InvalidParams.selector);
+        challenges.createChallenge(params(four, 1 days, 2 days), POOL);
+        vm.prank(sponsorA);
+        vm.expectRevert(abi.encodeWithSelector(RixorChallenges.InvalidToken.selector, address(dope)));
+        challenges.createChallenge(params(dupe, 1 days, 2 days), POOL);
+        vm.prank(sponsorA);
+        vm.expectRevert(abi.encodeWithSelector(RixorChallenges.InvalidToken.selector, address(dope)));
+        challenges.createChallenge(params(dupeOfThree, 1 days, 2 days), POOL);
+        // $WIF itself is not listed, so it cannot be a challenge token.
+        vm.prank(sponsorA);
+        vm.expectRevert(abi.encodeWithSelector(RixorChallenges.InvalidToken.selector, address(wif)));
+        challenges.createChallenge(params(only(address(wif)), 1 days, 2 days), POOL);
+        // Unlisted token
+        address unlisted = makeAddr("unlisted");
+        vm.prank(sponsorA);
+        vm.expectRevert(abi.encodeWithSelector(RixorChallenges.InvalidToken.selector, unlisted));
+        challenges.createChallenge(params(only(unlisted), 1 days, 2 days), POOL);
 
-        // Valid shapes
-        createWith(sponsorA, params(only(address(wif)), 1 days, 2 days), POOL);
-        uint256 id = createWith(sponsorA, params(dopeWif(), 1 days, 2 days), POOL);
+        // Valid shapes: one, two and three tokens, in any order.
+        createWith(sponsorA, params(only(address(pepe)), 1 days, 2 days), POOL);
+        createWith(sponsorA, params(dopePepe(), 1 days, 2 days), POOL);
+        address[] memory three = new address[](3);
+        three[0] = address(meme3);
+        three[1] = address(pepe);
+        three[2] = address(dope);
+        uint256 id = createWith(sponsorA, params(three, 1 days, 2 days), POOL);
         address[] memory toks = challenges.challengeTokens(id);
-        assertEq(toks.length, 2);
+        assertEq(toks.length, 3);
         assertEq(challenges.unitSnapshot(id, address(dope)), DOPE_UNIT);
-        assertEq(challenges.unitSnapshot(id, address(wif)), WIF_UNIT);
-        assertEq(challenges.tokenMultiplierSnapshot(id, address(wif)), 20_000);
-        assertEq(challenges.tokenMultiplierSnapshot(id, address(dope)), 10_000);
+        assertEq(challenges.unitSnapshot(id, address(pepe)), PEPE_UNIT);
+        assertEq(challenges.unitSnapshot(id, address(meme3)), 500 ether);
         assertFalse(challenges.getChallenge(id).isSeason);
 
         // Listed but locks disabled
@@ -129,7 +152,7 @@ contract RixorChallengesTest is RixorBase {
     }
 
     function test_createSeason_ownerOnlyAndManyTokens() public {
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 2 days);
         vm.prank(alice);
         vm.expectRevert(RixorChallenges.NotLockerOwner.selector);
         challenges.createSeason(p, POOL);
@@ -163,7 +186,7 @@ contract RixorChallengesTest is RixorBase {
 
     function test_create_timingBoundaries() public {
         uint64 nowTs = uint64(block.timestamp);
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 2 days);
 
         p.joinDeadline = nowTs; // must be strictly in the future
         vm.prank(sponsorA);
@@ -195,11 +218,11 @@ contract RixorChallengesTest is RixorBase {
     function test_create_paramValidation() public {
         RixorChallenges.CreateParams memory p;
 
-        p = params(dopeWif(), 1 days, 2 days);
+        p = params(dopePepe(), 1 days, 2 days);
         p.minTier = 3;
         _expectCreateRevert(p, RixorChallenges.InvalidParams.selector);
 
-        p = params(dopeWif(), 1 days, 2 days);
+        p = params(dopePepe(), 1 days, 2 days);
         p.minUnitsPerEntry = 0;
         _expectCreateRevert(p, RixorChallenges.InvalidParams.selector);
         p.minUnitsPerEntry = 11;
@@ -207,7 +230,7 @@ contract RixorChallengesTest is RixorBase {
         p.minUnitsPerEntry = 10;
         createWith(sponsorA, p, POOL);
 
-        p = params(dopeWif(), 1 days, 2 days);
+        p = params(dopePepe(), 1 days, 2 days);
         p.maxParticipants = 0;
         _expectCreateRevert(p, RixorChallenges.InvalidParams.selector);
         p.maxParticipants = 201;
@@ -215,7 +238,7 @@ contract RixorChallengesTest is RixorBase {
         p.maxParticipants = 200;
         createWith(sponsorA, p, POOL);
 
-        p = params(dopeWif(), 1 days, 2 days);
+        p = params(dopePepe(), 1 days, 2 days);
         p.title = "";
         _expectCreateRevert(p, RixorChallenges.InvalidParams.selector);
         p.title = string(new bytes(81));
@@ -234,7 +257,7 @@ contract RixorChallengesTest is RixorBase {
     }
 
     function test_create_blockedWhenPausedOrEmergency() public {
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 2 days);
         asGuardian(abi.encodeCall(RixorLocker.pause, ()));
         _expectCreateRevert(p, RixorChallenges.IsPaused.selector);
         asOwner(abi.encodeCall(RixorLocker.unpause, ()));
@@ -245,39 +268,25 @@ contract RixorChallengesTest is RixorBase {
 
     function test_create_rejectsFeeOnTransferRewardToken() public {
         FeeOnTransferToken fee = new FeeOnTransferToken();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(fee);
-        uint256[] memory units = new uint256[](1);
-        units[0] = 1 ether;
-        uint256[] memory caps = new uint256[](1);
-        caps[0] = 1_000 ether;
-        RixorLocker l2 = new RixorLocker(address(fee), address(ownerSafe), address(guardianSafe), tokens, units, caps);
-        RixorChallenges c2 = new RixorChallenges(IRixorLocker(address(l2)), MIN_HOLD);
+        RixorChallenges c2 = new RixorChallenges(IRixorLocker(address(locker)), address(fee), MIN_HOLD);
         fee.mint(sponsorA, POOL);
         vm.startPrank(sponsorA);
         fee.approve(address(c2), type(uint256).max);
         vm.expectRevert(RixorChallenges.IncompatibleToken.selector);
-        c2.createChallenge(params(only(address(fee)), 1 days, 2 days), POOL);
+        c2.createChallenge(params(only(address(dope)), 1 days, 2 days), POOL);
         vm.stopPrank();
     }
 
     function test_create_reentrancyBlocked() public {
         ReentrantToken rt = new ReentrantToken();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(rt);
-        uint256[] memory units = new uint256[](1);
-        units[0] = 1 ether;
-        uint256[] memory caps = new uint256[](1);
-        caps[0] = 1_000 ether;
-        RixorLocker l2 = new RixorLocker(address(rt), address(ownerSafe), address(guardianSafe), tokens, units, caps);
-        RixorChallenges c2 = new RixorChallenges(IRixorLocker(address(l2)), MIN_HOLD);
+        RixorChallenges c2 = new RixorChallenges(IRixorLocker(address(locker)), address(rt), MIN_HOLD);
         rt.mint(sponsorA, 10 * POOL);
         vm.prank(sponsorA);
         rt.approve(address(c2), type(uint256).max);
         // Re-entry attempt: during the pool transfer, the token calls sponsor() on the same contract.
         rt.arm(address(c2), abi.encodeCall(RixorChallenges.sponsor, (1, 10_000 ether)));
         vm.prank(sponsorA);
-        c2.createChallenge(params(only(address(rt)), 1 days, 2 days), POOL);
+        c2.createChallenge(params(only(address(dope)), 1 days, 2 days), POOL);
         assertTrue(rt.reentered());
         assertFalse(rt.lastCallSucceeded(), "reentrant call must fail");
         assertEq(c2.getChallenge(1).pool, POOL);
@@ -338,12 +347,12 @@ contract RixorChallengesTest is RixorBase {
 
     function test_scoring_workedExample() public {
         uint256 id = createDefault(sponsorA, POOL);
-        uint256 pa = lockAs(alice, address(wif), 70_000 ether, 2, 90); // 10 WIF units Diamond
+        uint256 pa = lockAs(alice, address(pepe), 70_000 ether, 2, 90); // 10 tMEMEC units Diamond
         uint256 pb = lockAs(bob, address(dope), 10 * DOPE_UNIT, 2, 90); // 10 DOPE units Diamond
         uint256 pc = lockAs(carol, address(dope), 3 * DOPE_UNIT, 1, 30); // 3 DOPE units Committed
         uint256 pd = lockAs(dan, address(dope), 20 * DOPE_UNIT, 0, 0); // 20 units Flexible, capped at 10
 
-        assertEq(challenges.previewPoints(id, pa), 500_000);
+        assertEq(challenges.previewPoints(id, pa), 250_000); // every token counts equally
         assertEq(challenges.previewPoints(id, pb), 250_000);
         assertEq(challenges.previewPoints(id, pc), 45_000);
         assertEq(challenges.previewPoints(id, pd), 50_000);
@@ -352,31 +361,31 @@ contract RixorChallengesTest is RixorBase {
         joinAs(bob, id, pb);
         joinAs(carol, id, pc);
         joinAs(dan, id, pd);
-        assertEq(challenges.getChallenge(id).joinedPoints, 845_000);
-        assertEq(challenges.entryOf(id, alice).points, 500_000);
+        assertEq(challenges.getChallenge(id).joinedPoints, 595_000);
+        assertEq(challenges.entryOf(id, alice).points, 250_000);
 
         vm.warp(endTimeOf(id) + 1);
         settleAll(id);
         RixorChallenges.Challenge memory c = challenges.getChallenge(id);
         assertTrue(c.settled);
         assertTrue(c.success);
-        assertEq(c.qualifiedPoints, 845_000);
+        assertEq(c.qualifiedPoints, 595_000);
         assertEq(c.qualifiedCount, 4);
         assertEq(c.claimDeadline, block.timestamp + 30 days);
 
         address[4] memory who = [alice, bob, carol, dan];
-        uint256[4] memory pts = [uint256(500_000), 250_000, 45_000, 50_000];
+        uint256[4] memory pts = [uint256(250_000), 250_000, 45_000, 50_000];
         uint256 paid;
         for (uint256 i = 0; i < 4; i++) {
-            uint256 expected = POOL * pts[i] / 845_000;
+            uint256 expected = POOL * pts[i] / 595_000;
             assertEq(challenges.claimable(id, who[i]), expected);
             uint256 before = wif.balanceOf(who[i]);
             assertEq(claimAs(who[i], id), expected);
             assertEq(wif.balanceOf(who[i]) - before, expected);
             paid += expected;
         }
-        // 591,715.976... / 295,857.988... / 53,254.437... / 59,171.597... WIF
-        assertEq(POOL * 500_000 / 845_000, 591_715_976_331_360_946_745_562);
+        // 420,168.067... / 420,168.067... / 75,630.252... / 84,033.613... WIF
+        assertEq(POOL * 250_000 / 595_000, 420_168_067_226_890_756_302_521);
         uint256 dust = POOL - paid;
         assertLt(dust, 4, "rounding dust is below one wei per claimant");
         assertEq(challenges.getChallenge(id).escrow, dust);
@@ -395,8 +404,8 @@ contract RixorChallengesTest is RixorBase {
         uint256 big = lockAs(alice, address(dope), 50 * DOPE_UNIT, 2, 90); // maximum position size
         uint256 small = lockAs(bob, address(dope), 10 * DOPE_UNIT, 2, 90);
         assertEq(challenges.previewPoints(id, big), challenges.previewPoints(id, small));
-        uint256 wifBig = lockAs(carol, address(wif), 50 * WIF_UNIT, 2, 90);
-        assertEq(challenges.previewPoints(id, wifBig), 500_000); // global maximum per entry
+        uint256 pepeBig = lockAs(carol, address(pepe), 50 * PEPE_UNIT, 2, 90);
+        assertEq(challenges.previewPoints(id, pepeBig), 250_000); // global maximum per entry
         uint256 minimum = lockAs(dan, address(dope), DOPE_UNIT, 0, 0);
         assertEq(challenges.previewPoints(id, minimum), 5_000); // global minimum per entry
     }
@@ -410,7 +419,7 @@ contract RixorChallengesTest is RixorBase {
     // ------------------------------------------------------------------ unit-size manipulation
 
     function test_unitChangeAfterCreationDoesNotAffectSnapshot() public {
-        uint256 id1 = createWith(sponsorA, params(dopeWif(), 10 days, 12 days), POOL);
+        uint256 id1 = createWith(sponsorA, params(dopePepe(), 10 days, 12 days), POOL);
         uint256 p = lockAs(alice, address(dope), 10 * DOPE_UNIT, 2, 90);
 
         // Owner halves DOPE's unit (doubling every DOPE holder's units in new challenges).
@@ -425,7 +434,7 @@ contract RixorChallengesTest is RixorBase {
         joinAs(alice, id1, p);
         assertEq(challenges.entryOf(id1, alice).points, 250_000);
 
-        uint256 id2 = createWith(sponsorA, params(dopeWif(), 1 days, 2 days), POOL);
+        uint256 id2 = createWith(sponsorA, params(dopePepe(), 1 days, 2 days), POOL);
         assertEq(challenges.unitSnapshot(id2, address(dope)), DOPE_UNIT / 2);
         assertEq(challenges.previewPoints(id2, p2), 250_000, "new challenge uses the new unit");
     }
@@ -450,7 +459,7 @@ contract RixorChallengesTest is RixorBase {
         pr.minUnitsPerEntry = 3;
         uint256 id = createWith(sponsorA, pr, POOL);
 
-        uint256 wifPos = lockAs(alice, address(wif), WIF_UNIT * 5, 2, 90);
+        uint256 otherToken = lockAs(alice, address(pepe), PEPE_UNIT * 5, 2, 90);
         uint256 flex = lockAs(alice, address(dope), 5 * DOPE_UNIT, 0, 0);
         uint256 twoUnits = lockAs(alice, address(dope), 2 * DOPE_UNIT, 1, 30);
         uint256 good = lockAs(alice, address(dope), 3 * DOPE_UNIT, 1, 30);
@@ -465,7 +474,7 @@ contract RixorChallengesTest is RixorBase {
 
         vm.startPrank(alice);
         vm.expectRevert(RixorChallenges.TokenNotAllowed.selector);
-        challenges.join(id, wifPos, address(0));
+        challenges.join(id, otherToken, address(0));
         vm.expectRevert(RixorChallenges.TierTooLow.selector);
         challenges.join(id, flex, address(0));
         vm.expectRevert(RixorChallenges.BelowMinimumUnits.selector);
@@ -493,7 +502,7 @@ contract RixorChallengesTest is RixorBase {
         uint256 early = lockAs(alice, address(dope), DOPE_UNIT, 1, 30); // ends now + 30 days
         uint256 earlyD = lockAs(bob, address(dope), DOPE_UNIT, 2, 30);
         vm.warp(block.timestamp + 1);
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 30 days); // ends 1s after the positions
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 30 days); // ends 1s after the positions
         uint256 id = createWith(sponsorA, p, POOL);
         vm.prank(alice);
         vm.expectRevert(RixorChallenges.PositionEndsTooEarly.selector);
@@ -504,7 +513,7 @@ contract RixorChallengesTest is RixorBase {
 
         // endsAt == endTime is accepted.
         uint256 exact = lockAs(carol, address(dope), DOPE_UNIT, 1, 30);
-        uint256 id2 = createWith(sponsorA, params(dopeWif(), 1 days, 30 days), POOL);
+        uint256 id2 = createWith(sponsorA, params(dopePepe(), 1 days, 30 days), POOL);
         assertEq(locker.positionOf(exact).endsAt, endTimeOf(id2));
         joinAs(carol, id2, exact);
         // Flexible positions have no end and may join any challenge.
@@ -513,7 +522,7 @@ contract RixorChallengesTest is RixorBase {
     }
 
     function test_join_oncePerAddressAndMaxParticipants() public {
-        RixorChallenges.CreateParams memory pr = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory pr = params(dopePepe(), 1 days, 2 days);
         pr.maxParticipants = 2;
         uint256 id = createWith(sponsorA, pr, POOL);
         uint256 a1 = lockAs(alice, address(dope), DOPE_UNIT, 0, 0);
@@ -574,8 +583,8 @@ contract RixorChallengesTest is RixorBase {
 
     function test_lanes_seasonStacksWithOneCommunity() public {
         uint256 c1 = createDefault(sponsorA, POOL);
-        uint256 s1 = seasonAsOwner(params(dopeWif(), 1 days, 2 days), POOL);
-        uint256 s2 = seasonAsOwner(params(dopeWif(), 1 days, 2 days), POOL);
+        uint256 s1 = seasonAsOwner(params(dopePepe(), 1 days, 2 days), POOL);
+        uint256 s2 = seasonAsOwner(params(dopePepe(), 1 days, 2 days), POOL);
         uint256 p = lockAs(alice, address(dope), DOPE_UNIT, 2, 90);
         joinAs(alice, c1, p);
         joinAs(alice, s1, p);
@@ -588,7 +597,7 @@ contract RixorChallengesTest is RixorBase {
 
     function test_lanes_sequentialReuseAfterEnd() public {
         uint256 c1 = createDefault(sponsorA, POOL); // ends now + 2 days
-        uint256 c2 = createWith(sponsorB, params(dopeWif(), 3 days, 4 days), POOL);
+        uint256 c2 = createWith(sponsorB, params(dopePepe(), 3 days, 4 days), POOL);
         uint256 p = lockAs(alice, address(dope), DOPE_UNIT, 2, 90);
         joinAs(alice, c1, p);
         vm.warp(endTimeOf(c1) - 1);
@@ -702,7 +711,7 @@ contract RixorChallengesTest is RixorBase {
     }
 
     function test_goal_successAtExactGoalFailureBelow() public {
-        RixorChallenges.CreateParams memory pr = params(dopeWif(), 1 days, 2 days);
+        RixorChallenges.CreateParams memory pr = params(dopePepe(), 1 days, 2 days);
         pr.goalPoints = 10_000;
         uint256 ok = createWith(sponsorA, pr, POOL);
         uint256 failing = createWith(sponsorA, pr, POOL);
@@ -956,13 +965,13 @@ contract RixorChallengesTest is RixorBase {
         uint8 exits
     ) public {
         pool = bound(pool, 100_000 ether, 10_000_000 ether);
-        uint256 id = createWith(sponsorA, params(dopeWif(), 1 days, 2 days), pool);
+        uint256 id = createWith(sponsorA, params(dopePepe(), 1 days, 2 days), pool);
         address[4] memory who = [alice, bob, carol, dan];
         uint256[4] memory pids;
         for (uint256 i = 0; i < 4; i++) {
             uint8 tier = tiers[i] % 3;
-            address token = i % 2 == 0 ? address(dope) : address(wif);
-            uint256 unit = token == address(dope) ? DOPE_UNIT : WIF_UNIT;
+            address token = i % 2 == 0 ? address(dope) : address(pepe);
+            uint256 unit = token == address(dope) ? DOPE_UNIT : PEPE_UNIT;
             uint256 amount = bound(amounts[i], unit, 50 * unit);
             pids[i] = lockAs(who[i], token, amount, tier, tier == 0 ? 0 : 90);
             joinAs(who[i], id, pids[i]);
@@ -994,7 +1003,7 @@ contract RixorChallengesTest is RixorBase {
     function testFuzz_refundAndSweepNeverExceedContribution(uint256 a, uint256 b, bool succeed) public {
         a = bound(a, 100_000 ether, 5_000_000 ether);
         b = bound(b, 10_000 ether, 5_000_000 ether);
-        uint256 id = createWith(sponsorA, params(dopeWif(), 1 days, 2 days), a);
+        uint256 id = createWith(sponsorA, params(dopePepe(), 1 days, 2 days), a);
         vm.prank(sponsorB);
         challenges.sponsor(id, b);
         if (succeed) joinAs(alice, id, lockAs(alice, address(dope), DOPE_UNIT, 0, 0));

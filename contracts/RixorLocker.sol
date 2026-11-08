@@ -3,20 +3,30 @@ pragma solidity 0.8.30;
 
 import {IRixorLocker} from "./interfaces/IRixorLocker.sol";
 
-/// @title RixorLocker
-/// @notice Multi-token, time-based conviction locks for a curated allowlist of meme tokens.
+/// @title RixorLocker (V2)
+/// @notice Time-based conviction locks for a curated allowlist of community meme tokens. Users lock tokens
+///         they already hold; no reward or utility token is required to lock.
 ///
 /// Tiers (time only; no price oracle):
 ///   Flexible  0.5x  exit any time, no fee.
 ///   Committed 1.5x  30-90 day term; exiting early costs a fee of up to 10%, falling linearly to 0 at the end.
 ///   Diamond   2.5x  30-90 day term; no exit before the end of the term.
-/// $WIF positions carry a 2.0x token multiplier, every other listed token 1.0x. Multipliers are constants.
+///
+/// Risk classes (set per token at listing; they limit what a user can commit to, never what they can withdraw):
+///   Class A  Flexible, Committed and Diamond; terms up to 90 days.
+///   Class B  Flexible and Committed only; terms up to 60 days.
+///
+/// Every lock and exit writes a per-token weight checkpoint (weight = amount x tier multiplier). Reward
+/// contracts read these checkpoints; the Locker never calls them, so exits cannot depend on them.
 ///
 /// Administration (owner = a Safe, required to be a contract):
-///   - token listing, unit-size changes, cap increases and re-enabling locks are timelocked (48h) and bounded;
-///   - lowering a cap or disabling new locks for a token is immediate (risk-reducing only).
-/// Guardian (a Safe): may pause new activity (reversible by the owner) and activate an irreversible emergency
-/// in which every position, including Diamond, can exit immediately with no fee.
+///   - token listing, unit-size changes, cap increases, class upgrades and re-enabling locks are timelocked
+///     (48h) and bounded;
+///   - lowering a cap, downgrading a class or disabling new locks for a token is immediate (risk-reducing only).
+/// Guardian (a Safe) or owner:
+///   - pause new activity (reversible by the owner);
+///   - release one token (irreversible): its positions, including Diamond, can exit immediately with no fee;
+///   - activate an irreversible global emergency with the same effect for every token.
 ///
 /// No account can move a user's principal except that user via exit(). There is no upgrade path, no
 /// withdrawal function for admins, and no way to block exits.
@@ -31,11 +41,13 @@ contract RixorLocker is IRixorLocker {
     uint256 public constant FLEXIBLE_MULTIPLIER_BPS = 5_000;
     uint256 public constant COMMITTED_MULTIPLIER_BPS = 15_000;
     uint256 public constant DIAMOND_MULTIPLIER_BPS = 25_000;
-    uint256 public constant WIF_MULTIPLIER_BPS = 20_000;
-    uint256 public constant DEFAULT_TOKEN_MULTIPLIER_BPS = 10_000;
+
+    uint8 public constant CLASS_A = 1;
+    uint8 public constant CLASS_B = 2;
 
     uint256 public constant MIN_TERM_DAYS = 30;
     uint256 public constant MAX_TERM_DAYS = 90;
+    uint256 public constant CLASS_B_MAX_TERM_DAYS = 60;
     uint256 public constant COMMITTED_MAX_FEE_BPS = 1_000;
     uint256 public constant MAX_POSITION_UNITS = 50;
 
@@ -55,10 +67,21 @@ contract RixorLocker is IRixorLocker {
         bool listed;
         bool locksEnabled;
         uint8 decimals;
+        uint8 riskClass;
         uint64 lastUnitChange;
+        uint64 releasedAt;
         uint256 unitAmount;
         uint256 maxTotalLocked;
         uint256 totalLocked;
+        uint256 totalWeight;
+    }
+
+    /// @notice Listing parameters. `riskClass` is CLASS_A or CLASS_B.
+    struct Listing {
+        address token;
+        uint256 unitAmount;
+        uint256 maxTotalLocked;
+        uint8 riskClass;
     }
 
     struct Position {
@@ -68,12 +91,22 @@ contract RixorLocker is IRixorLocker {
         uint64 endsAt;
         uint64 closedAt;
         address token;
+        uint32 startCheckpoint;
+        uint32 endCheckpoint;
         uint256 amount;
+        uint256 weight;
+    }
+
+    /// @notice Total weight of a token in force from `time` until the next checkpoint.
+    struct Checkpoint {
+        uint64 time;
+        uint192 totalWeight;
     }
 
     struct PendingListing {
         uint256 unitAmount;
         uint256 maxTotalLocked;
+        uint8 riskClass;
         uint64 eta;
     }
 
@@ -83,8 +116,6 @@ contract RixorLocker is IRixorLocker {
     }
 
     // ------------------------------------------------------------------ storage
-
-    address public immutable override WIF;
 
     address public override owner;
     address public pendingOwner;
@@ -104,6 +135,8 @@ contract RixorLocker is IRixorLocker {
     mapping(address token => PendingValue) public pendingUnitAmount;
     mapping(address token => PendingValue) public pendingCapIncrease;
     mapping(address token => uint64 eta) public pendingEnableLocks;
+    mapping(address token => PendingValue) public pendingClassUpgrade;
+    mapping(address token => Checkpoint[]) internal _checkpoints;
 
     /// @notice Fees that could not be delivered to FEE_SINK. They stay in this contract permanently
     ///         (there is no function to withdraw them), which is economically equivalent to a burn.
@@ -120,8 +153,12 @@ contract RixorLocker is IRixorLocker {
     event Unpaused(address indexed by);
     event EmergencyActivated(address indexed by, uint64 at);
 
-    event TokenListed(address indexed token, uint8 decimals, uint256 unitAmount, uint256 maxTotalLocked);
-    event ListingProposed(address indexed token, uint256 unitAmount, uint256 maxTotalLocked, uint64 eta);
+    event TokenListed(
+        address indexed token, uint8 decimals, uint256 unitAmount, uint256 maxTotalLocked, uint8 riskClass
+    );
+    event ListingProposed(
+        address indexed token, uint256 unitAmount, uint256 maxTotalLocked, uint8 riskClass, uint64 eta
+    );
     event ListingCancelled(address indexed token);
     event UnitAmountProposed(address indexed token, uint256 currentUnit, uint256 newUnit, uint64 eta);
     event UnitAmountChanged(address indexed token, uint256 previousUnit, uint256 newUnit);
@@ -133,12 +170,18 @@ contract RixorLocker is IRixorLocker {
     event EnableLocksProposed(address indexed token, uint64 eta);
     event LocksEnabled(address indexed token);
     event EnableLocksCancelled(address indexed token);
+    event RiskClassChanged(address indexed token, uint8 previousClass, uint8 newClass);
+    event ClassUpgradeProposed(address indexed token, uint8 newClass, uint64 eta);
+    event ClassUpgradeCancelled(address indexed token);
+    event TokenReleased(address indexed token, address indexed by, uint64 at);
+    event Checkpointed(address indexed token, uint256 indexed index, uint64 time, uint256 totalWeight);
 
     event Locked(
         address indexed owner,
         uint256 indexed positionId,
         address indexed token,
         uint256 amount,
+        uint256 weight,
         uint8 tier,
         uint64 startedAt,
         uint64 endsAt
@@ -150,7 +193,7 @@ contract RixorLocker is IRixorLocker {
         uint256 amountReturned,
         uint256 fee,
         bool feeBurned,
-        bool emergency
+        bool released
     );
 
     // ------------------------------------------------------------------ errors
@@ -181,6 +224,9 @@ contract RixorLocker is IRixorLocker {
     error TimelockNotReady(uint64 eta);
     error OutOfBounds();
     error TooSoon(uint64 allowedAt);
+    error InvalidRiskClass();
+    error TierNotAllowed(uint8 tier);
+    error TokenReleasedAlready(address token);
 
     // ------------------------------------------------------------------ modifiers
 
@@ -198,38 +244,19 @@ contract RixorLocker is IRixorLocker {
 
     // ------------------------------------------------------------------ construction
 
-    /// @param wif_ The $WIF token. It must be among the initial tokens.
     /// @param owner_ Administrative Safe. Must be a contract; an EOA owner is rejected.
     /// @param guardian_ Emergency Safe. Must be a contract.
-    /// @param tokens Initial allowlist (exact addresses). Public at deployment, so not timelocked.
-    /// @param unitAmounts Unit size per token (token base units per scoring unit).
-    /// @param maxTotalLocked Per-token cap on total locked principal (token base units).
-    constructor(
-        address wif_,
-        address owner_,
-        address guardian_,
-        address[] memory tokens,
-        uint256[] memory unitAmounts,
-        uint256[] memory maxTotalLocked
-    ) {
-        if (wif_ == address(0)) revert ZeroAddress();
+    /// @param initial Initial allowlist (exact addresses). Public at deployment, so not timelocked. May be empty.
+    constructor(address owner_, address guardian_, Listing[] memory initial) {
         _requireContract(owner_);
         _requireContract(guardian_);
-        if (tokens.length == 0 || tokens.length != unitAmounts.length || tokens.length != maxTotalLocked.length) {
-            revert InvalidAmount();
-        }
-        WIF = wif_;
         owner = owner_;
         guardian = guardian_;
         emit OwnershipTransferred(address(0), owner_);
         emit GuardianChanged(address(0), guardian_);
-
-        bool wifListed;
-        for (uint256 i = 0; i < tokens.length; i++) {
-            _list(tokens[i], unitAmounts[i], maxTotalLocked[i]);
-            if (tokens[i] == wif_) wifListed = true;
+        for (uint256 i = 0; i < initial.length; i++) {
+            _list(initial[i].token, initial[i].unitAmount, initial[i].maxTotalLocked, initial[i].riskClass);
         }
-        if (!wifListed) revert InvalidToken(wif_);
     }
 
     // ------------------------------------------------------------------ ownership and roles
@@ -269,7 +296,8 @@ contract RixorLocker is IRixorLocker {
     }
 
     /// @notice Irreversible. All positions become exitable immediately with no fee; challenges still running
-    ///         at this moment become refund-only (enforced by RixorChallenges). New activity stops for good.
+    ///         at this moment become refund-only (enforced by RixorChallenges); reward accrual stops at this
+    ///         timestamp (enforced by RixorRewards). New activity stops for good.
     function activateEmergency() external {
         if (msg.sender != guardian && msg.sender != owner) revert NotGuardian();
         if (emergencyActivatedAt != 0) revert EmergencyActive();
@@ -278,14 +306,33 @@ contract RixorLocker is IRixorLocker {
         emit EmergencyActivated(msg.sender, uint64(block.timestamp));
     }
 
+    /// @notice Irreversible, for an incident affecting one token (exploit, hostile admin action, liquidity
+    ///         removed). Every position in `token`, including Diamond, can exit immediately with no fee; new
+    ///         locks in `token` stop for good; reward accrual for `token` stops at this timestamp. This can only
+    ///         make exits easier: it never moves funds.
+    function releaseToken(address token) external {
+        if (msg.sender != guardian && msg.sender != owner) revert NotGuardian();
+        TokenConfig storage config = _listed(token);
+        if (config.releasedAt != 0) revert TokenReleasedAlready(token);
+        config.releasedAt = uint64(block.timestamp);
+        config.locksEnabled = false;
+        delete pendingEnableLocks[token];
+        delete pendingClassUpgrade[token];
+        emit TokenReleased(token, msg.sender, uint64(block.timestamp));
+    }
+
     // ------------------------------------------------------------------ token registry (timelocked)
 
-    function proposeListing(address token, uint256 unitAmount_, uint256 maxTotalLocked_) external onlyOwner {
+    function proposeListing(address token, uint256 unitAmount_, uint256 maxTotalLocked_, uint8 riskClass_)
+        external
+        onlyOwner
+    {
         if (_tokens[token].listed) revert AlreadyListed(token);
         _validateToken(token, unitAmount_, maxTotalLocked_);
+        _checkClass(riskClass_);
         uint64 eta = uint64(block.timestamp + TIMELOCK_DELAY);
-        pendingListing[token] = PendingListing(unitAmount_, maxTotalLocked_, eta);
-        emit ListingProposed(token, unitAmount_, maxTotalLocked_, eta);
+        pendingListing[token] = PendingListing(unitAmount_, maxTotalLocked_, riskClass_, eta);
+        emit ListingProposed(token, unitAmount_, maxTotalLocked_, riskClass_, eta);
     }
 
     function cancelListing(address token) external onlyOwner {
@@ -300,7 +347,7 @@ contract RixorLocker is IRixorLocker {
         if (pending.eta == 0) revert NothingPending();
         if (block.timestamp < pending.eta) revert TimelockNotReady(pending.eta);
         delete pendingListing[token];
-        _list(token, pending.unitAmount, pending.maxTotalLocked);
+        _list(token, pending.unitAmount, pending.maxTotalLocked, pending.riskClass);
     }
 
     /// @notice Propose a new unit size, bounded to [50%, 150%] of the current one. Takes effect only for
@@ -333,10 +380,48 @@ contract RixorLocker is IRixorLocker {
         config.lastUnitChange = uint64(block.timestamp);
     }
 
+    /// @notice Immediate, risk-reducing only: Class A -> Class B. Existing positions keep their terms.
+    function downgradeClass(address token) external onlyOwner {
+        TokenConfig storage config = _listed(token);
+        if (config.riskClass != CLASS_A) revert OutOfBounds();
+        config.riskClass = CLASS_B;
+        delete pendingClassUpgrade[token];
+        emit RiskClassChanged(token, CLASS_A, CLASS_B);
+    }
+
+    /// @notice Class B -> Class A is timelocked.
+    function proposeClassUpgrade(address token) external onlyOwner {
+        TokenConfig storage config = _listed(token);
+        if (config.riskClass != CLASS_B || config.releasedAt != 0) revert OutOfBounds();
+        uint64 eta = uint64(block.timestamp + TIMELOCK_DELAY);
+        pendingClassUpgrade[token] = PendingValue(CLASS_A, eta);
+        emit ClassUpgradeProposed(token, CLASS_A, eta);
+    }
+
+    function cancelClassUpgrade(address token) external onlyOwner {
+        if (pendingClassUpgrade[token].eta == 0) revert NothingPending();
+        delete pendingClassUpgrade[token];
+        emit ClassUpgradeCancelled(token);
+    }
+
+    function executeClassUpgrade(address token) external {
+        TokenConfig storage config = _listed(token);
+        PendingValue memory pending = pendingClassUpgrade[token];
+        if (pending.eta == 0) revert NothingPending();
+        if (block.timestamp < pending.eta) revert TimelockNotReady(pending.eta);
+        if (config.riskClass != CLASS_B || config.releasedAt != 0) revert OutOfBounds();
+        delete pendingClassUpgrade[token];
+        config.riskClass = CLASS_A;
+        emit RiskClassChanged(token, CLASS_B, CLASS_A);
+    }
+
     /// @notice Raising a cap is timelocked and limited to doubling per update.
     function proposeCapIncrease(address token, uint256 newCap) external onlyOwner {
         TokenConfig storage config = _listed(token);
-        if (newCap <= config.maxTotalLocked || newCap > config.maxTotalLocked * MAX_CAP_GROWTH_FACTOR) {
+        if (
+            newCap <= config.maxTotalLocked || newCap > config.maxTotalLocked * MAX_CAP_GROWTH_FACTOR
+                || newCap > type(uint128).max
+        ) {
             revert OutOfBounds();
         }
         uint64 eta = uint64(block.timestamp + TIMELOCK_DELAY);
@@ -382,7 +467,7 @@ contract RixorLocker is IRixorLocker {
 
     function proposeEnableLocks(address token) external onlyOwner {
         TokenConfig storage config = _listed(token);
-        if (config.locksEnabled) revert OutOfBounds();
+        if (config.locksEnabled || config.releasedAt != 0) revert OutOfBounds();
         uint64 eta = uint64(block.timestamp + TIMELOCK_DELAY);
         pendingEnableLocks[token] = eta;
         emit EnableLocksProposed(token, eta);
@@ -399,6 +484,7 @@ contract RixorLocker is IRixorLocker {
         uint64 eta = pendingEnableLocks[token];
         if (eta == 0) revert NothingPending();
         if (block.timestamp < eta) revert TimelockNotReady(eta);
+        if (config.releasedAt != 0) revert OutOfBounds();
         delete pendingEnableLocks[token];
         config.locksEnabled = true;
         emit LocksEnabled(token);
@@ -406,7 +492,8 @@ contract RixorLocker is IRixorLocker {
 
     // ------------------------------------------------------------------ positions
 
-    /// @param termDays Must be 0 for Flexible, 30-90 for Committed and Diamond.
+    /// @param termDays Must be 0 for Flexible; for Committed and Diamond 30 up to the class maximum
+    ///        (90 days for Class A, 60 days for Class B). Diamond requires Class A.
     function lock(address token, uint256 amount, uint8 tier, uint256 termDays)
         external
         nonReentrant
@@ -417,7 +504,9 @@ contract RixorLocker is IRixorLocker {
         if (!config.listed) revert NotListed(token);
         if (!config.locksEnabled) revert LocksNotEnabled(token);
         if (tier > TIER_DIAMOND) revert InvalidTier();
-        if (tier == TIER_FLEXIBLE ? termDays != 0 : (termDays < MIN_TERM_DAYS || termDays > MAX_TERM_DAYS)) {
+        if (tier == TIER_DIAMOND && config.riskClass != CLASS_A) revert TierNotAllowed(tier);
+        uint256 maxTerm = config.riskClass == CLASS_A ? MAX_TERM_DAYS : CLASS_B_MAX_TERM_DAYS;
+        if (tier == TIER_FLEXIBLE ? termDays != 0 : (termDays < MIN_TERM_DAYS || termDays > maxTerm)) {
             revert InvalidTerm();
         }
         if (amount < config.unitAmount || amount > config.unitAmount * MAX_POSITION_UNITS) revert InvalidAmount();
@@ -426,6 +515,10 @@ contract RixorLocker is IRixorLocker {
         positionId = nextPositionId++;
         uint64 startedAt = uint64(block.timestamp);
         uint64 endsAt = tier == TIER_FLEXIBLE ? startedAt : uint64(block.timestamp + termDays * 1 days);
+        uint256 weight = (amount * tierMultiplierBps(tier)) / BPS;
+        config.totalLocked += amount;
+        config.totalWeight += weight;
+        uint32 checkpoint = _writeCheckpoint(token, config.totalWeight);
         _positions[positionId] = Position({
             owner: msg.sender,
             tier: tier,
@@ -433,13 +526,15 @@ contract RixorLocker is IRixorLocker {
             endsAt: endsAt,
             closedAt: 0,
             token: token,
-            amount: amount
+            startCheckpoint: checkpoint,
+            endCheckpoint: 0,
+            amount: amount,
+            weight: weight
         });
         _positionsByOwner[msg.sender].push(positionId);
-        config.totalLocked += amount;
 
         _pullExact(token, msg.sender, amount);
-        emit Locked(msg.sender, positionId, token, amount, tier, startedAt, endsAt);
+        emit Locked(msg.sender, positionId, token, amount, weight, tier, startedAt, endsAt);
     }
 
     /// @param maxFeeBps The highest fee the caller accepts (protects against a stale quote).
@@ -456,9 +551,12 @@ contract RixorLocker is IRixorLocker {
         uint256 amount = position.amount;
         uint256 fee = (amount * feeBps) / BPS;
 
-        // Effects: closedAt is written exactly once, here.
+        // Effects: closedAt and endCheckpoint are written exactly once, here.
+        TokenConfig storage config = _tokens[token];
         position.closedAt = uint64(block.timestamp);
-        _tokens[token].totalLocked -= amount;
+        config.totalLocked -= amount;
+        config.totalWeight -= position.weight;
+        position.endCheckpoint = _writeCheckpoint(token, config.totalWeight);
 
         // Interactions.
         _push(token, msg.sender, amount - fee);
@@ -467,14 +565,19 @@ contract RixorLocker is IRixorLocker {
             burned = _tryPush(token, FEE_SINK, fee);
             if (!burned) retainedFees[token] += fee;
         }
-        emit Exited(msg.sender, positionId, token, amount - fee, fee, burned, emergencyActivatedAt != 0);
+        emit Exited(
+            msg.sender, positionId, token, amount - fee, fee, burned, emergencyActivatedAt != 0 || config.releasedAt != 0
+        );
     }
 
     // ------------------------------------------------------------------ views
 
     function positionOf(uint256 positionId) external view override returns (PositionView memory view_) {
         Position storage p = _positions[positionId];
-        view_ = PositionView(p.owner, p.token, p.tier, p.startedAt, p.endsAt, p.closedAt, p.amount);
+        view_ = PositionView(
+            p.owner, p.token, p.tier, p.startedAt, p.endsAt, p.closedAt, p.amount, p.weight, p.startCheckpoint,
+            p.endCheckpoint
+        );
     }
 
     function positionsOf(address account) external view returns (uint256[] memory) {
@@ -501,15 +604,40 @@ contract RixorLocker is IRixorLocker {
         return _tokens[token].unitAmount;
     }
 
+    function riskClass(address token) external view returns (uint8) {
+        return _tokens[token].riskClass;
+    }
+
+    function releasedAt(address token) external view override returns (uint64) {
+        return _tokens[token].releasedAt;
+    }
+
+    /// @notice Tiers a user may choose for `token` right now, as a bitmask (bit i = tier i).
+    function allowedTiers(address token) external view returns (uint8 mask, uint256 maxTermDays) {
+        TokenConfig storage config = _tokens[token];
+        if (!config.listed || !config.locksEnabled || paused) return (0, 0);
+        return config.riskClass == CLASS_A ? (uint8(7), MAX_TERM_DAYS) : (uint8(3), CLASS_B_MAX_TERM_DAYS);
+    }
+
+    function checkpointCount(address token) external view override returns (uint256) {
+        return _checkpoints[token].length;
+    }
+
+    function checkpointAt(address token, uint256 index)
+        external
+        view
+        override
+        returns (uint64 time, uint256 totalWeight)
+    {
+        Checkpoint storage c = _checkpoints[token][index];
+        return (c.time, c.totalWeight);
+    }
+
     function tierMultiplierBps(uint8 tier) public pure override returns (uint256) {
         if (tier == TIER_FLEXIBLE) return FLEXIBLE_MULTIPLIER_BPS;
         if (tier == TIER_COMMITTED) return COMMITTED_MULTIPLIER_BPS;
         if (tier == TIER_DIAMOND) return DIAMOND_MULTIPLIER_BPS;
         revert InvalidTier();
-    }
-
-    function tokenMultiplierBps(address token) external view override returns (uint256) {
-        return token == WIF ? WIF_MULTIPLIER_BPS : DEFAULT_TOKEN_MULTIPLIER_BPS;
     }
 
     /// @notice Current exit terms for a position: whether it can exit now and at what fee.
@@ -522,7 +650,7 @@ contract RixorLocker is IRixorLocker {
     // ------------------------------------------------------------------ internals
 
     function _exitTerms(Position storage position) internal view returns (bool allowed, uint256 feeBps) {
-        if (emergencyActivatedAt != 0) return (true, 0);
+        if (emergencyActivatedAt != 0 || _tokens[position.token].releasedAt != 0) return (true, 0);
         if (position.tier == TIER_FLEXIBLE || block.timestamp >= position.endsAt) return (true, 0);
         if (position.tier == TIER_DIAMOND) return (false, 0);
         uint256 duration = uint256(position.endsAt) - uint256(position.startedAt);
@@ -531,20 +659,47 @@ contract RixorLocker is IRixorLocker {
         return (true, (COMMITTED_MAX_FEE_BPS * remaining + duration - 1) / duration);
     }
 
-    function _list(address token, uint256 unitAmount_, uint256 maxTotalLocked_) internal {
+    function _list(address token, uint256 unitAmount_, uint256 maxTotalLocked_, uint8 riskClass_) internal {
         if (_tokens[token].listed) revert AlreadyListed(token);
         uint8 decimals = _validateToken(token, unitAmount_, maxTotalLocked_);
+        _checkClass(riskClass_);
         _tokens[token] = TokenConfig({
             listed: true,
             locksEnabled: true,
             decimals: decimals,
+            riskClass: riskClass_,
             lastUnitChange: uint64(block.timestamp),
+            releasedAt: 0,
             unitAmount: unitAmount_,
             maxTotalLocked: maxTotalLocked_,
-            totalLocked: 0
+            totalLocked: 0,
+            totalWeight: 0
         });
         _listedTokens.push(token);
-        emit TokenListed(token, decimals, unitAmount_, maxTotalLocked_);
+        // Genesis checkpoint: reward integration for this token starts here with zero weight.
+        _checkpoints[token].push(Checkpoint(uint64(block.timestamp), 0));
+        emit Checkpointed(token, 0, uint64(block.timestamp), 0);
+        emit TokenListed(token, decimals, unitAmount_, maxTotalLocked_, riskClass_);
+    }
+
+    /// @dev One checkpoint per (token, timestamp): several changes in one block collapse into the last value.
+    ///      Readers must treat a checkpoint stamped with the current block timestamp as not yet final.
+    function _writeCheckpoint(address token, uint256 totalWeight) internal returns (uint32 index) {
+        Checkpoint[] storage cps = _checkpoints[token];
+        uint256 n = cps.length;
+        // totalWeight <= 2.5 x maxTotalLocked <= 2.5 x 2^128, so it always fits in uint192.
+        if (cps[n - 1].time == uint64(block.timestamp)) {
+            cps[n - 1].totalWeight = uint192(totalWeight);
+            index = uint32(n - 1);
+        } else {
+            cps.push(Checkpoint(uint64(block.timestamp), uint192(totalWeight)));
+            index = uint32(n);
+        }
+        emit Checkpointed(token, index, uint64(block.timestamp), totalWeight);
+    }
+
+    function _checkClass(uint8 riskClass_) internal pure {
+        if (riskClass_ != CLASS_A && riskClass_ != CLASS_B) revert InvalidRiskClass();
     }
 
     function _validateToken(address token, uint256 unitAmount_, uint256 maxTotalLocked_)
@@ -553,7 +708,9 @@ contract RixorLocker is IRixorLocker {
         returns (uint8 decimals)
     {
         if (token == address(0) || token.code.length == 0) revert InvalidToken(token);
-        if (unitAmount_ == 0 || maxTotalLocked_ < unitAmount_) revert InvalidAmount();
+        if (unitAmount_ == 0 || maxTotalLocked_ < unitAmount_ || maxTotalLocked_ > type(uint128).max) {
+            revert InvalidAmount();
+        }
         // Guard against overflow in unitAmount * MAX_POSITION_UNITS and in challenge scoring.
         if (unitAmount_ > type(uint128).max) revert InvalidAmount();
         (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSignature("decimals()"));

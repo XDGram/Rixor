@@ -7,7 +7,9 @@ out = "out"
 cache_path = "cache"
 libs = ["lib"]
 solc_version = "0.8.30"
-evm_version = "shanghai"
+# Robinhood Chain (Arbitrum Orbit) runs Cancun: verified tokens there (e.g. TORCH, compiled for cancun) execute
+# Cancun opcodes on mainnet. Fork tests must use the same rules or such tokens fail with NotActivated.
+evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 via_ir = false

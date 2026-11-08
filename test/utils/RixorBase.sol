@@ -14,6 +14,8 @@ abstract contract RixorBase is Test {
     MockERC20 internal wif;
     MockERC20 internal dope;
     MockERC20 internal meme3;
+    /// @dev Second listed meme token (Class A). Takes the lock-side role $WIF had in Gate 1 fixtures.
+    MockERC20 internal pepe;
     MockSafe internal ownerSafe;
     MockSafe internal guardianSafe;
 
@@ -26,8 +28,8 @@ abstract contract RixorBase is Test {
     address internal sponsorA = makeAddr("sponsorA");
     address internal sponsorB = makeAddr("sponsorB");
 
-    uint256 internal constant WIF_UNIT = 7_000 ether;
-    uint256 internal constant WIF_CAP = 3_500_000 ether;
+    uint256 internal constant PEPE_UNIT = 7_000 ether;
+    uint256 internal constant PEPE_CAP = 3_500_000 ether;
     uint256 internal constant DOPE_UNIT = 1_000 ether;
     uint256 internal constant DOPE_CAP = 500_000 ether;
     uint256 internal constant MIN_HOLD = 24 hours;
@@ -38,31 +40,29 @@ abstract contract RixorBase is Test {
         wif = new MockERC20("Test Reward Token (WIF stand-in)", "tWIF", 18);
         dope = new MockERC20("Test Meme A", "tMEMEA", 18);
         meme3 = new MockERC20("Test Meme B", "tMEMEB", 18);
+        pepe = new MockERC20("Test Meme C", "tMEMEC", 18);
         ownerSafe = new MockSafe(admin);
         guardianSafe = new MockSafe(guardianOperator);
 
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(wif);
-        tokens[1] = address(dope);
-        uint256[] memory units = new uint256[](2);
-        units[0] = WIF_UNIT;
-        units[1] = DOPE_UNIT;
-        uint256[] memory caps = new uint256[](2);
-        caps[0] = WIF_CAP;
-        caps[1] = DOPE_CAP;
+        // $WIF is the reward and prize token only; it is not listed in the Locker.
+        RixorLocker.Listing[] memory initial = new RixorLocker.Listing[](2);
+        initial[0] = RixorLocker.Listing(address(pepe), PEPE_UNIT, PEPE_CAP, 1);
+        initial[1] = RixorLocker.Listing(address(dope), DOPE_UNIT, DOPE_CAP, 1);
 
-        locker = new RixorLocker(address(wif), address(ownerSafe), address(guardianSafe), tokens, units, caps);
-        challenges = new RixorChallenges(IRixorLocker(address(locker)), MIN_HOLD);
+        locker = new RixorLocker(address(ownerSafe), address(guardianSafe), initial);
+        challenges = new RixorChallenges(IRixorLocker(address(locker)), address(wif), MIN_HOLD);
 
         address[8] memory people = [alice, bob, carol, dan, sponsorA, sponsorB, address(ownerSafe), makeAddr("spare")];
         for (uint256 i = 0; i < people.length; i++) {
             wif.mint(people[i], 50_000_000 ether);
             dope.mint(people[i], 50_000_000 ether);
             meme3.mint(people[i], 50_000_000 ether);
+            pepe.mint(people[i], 50_000_000 ether);
             vm.startPrank(people[i]);
             wif.approve(address(locker), type(uint256).max);
             dope.approve(address(locker), type(uint256).max);
             meme3.approve(address(locker), type(uint256).max);
+            pepe.approve(address(locker), type(uint256).max);
             wif.approve(address(challenges), type(uint256).max);
             vm.stopPrank();
         }
@@ -108,10 +108,10 @@ abstract contract RixorBase is Test {
         p.description = "Test challenge";
     }
 
-    function dopeWif() internal view returns (address[] memory tokens) {
+    function dopePepe() internal view returns (address[] memory tokens) {
         tokens = new address[](2);
         tokens[0] = address(dope);
-        tokens[1] = address(wif);
+        tokens[1] = address(pepe);
     }
 
     function only(address token) internal pure returns (address[] memory tokens) {
@@ -121,7 +121,7 @@ abstract contract RixorBase is Test {
 
     /// @dev Standard community challenge: join window 1 day, ends 1 day + MIN_HOLD later.
     function createDefault(address sponsor_, uint256 pool) internal returns (uint256 id) {
-        RixorChallenges.CreateParams memory p = params(dopeWif(), 1 days, 1 days + uint64(MIN_HOLD));
+        RixorChallenges.CreateParams memory p = params(dopePepe(), 1 days, 1 days + uint64(MIN_HOLD));
         vm.prank(sponsor_);
         id = challenges.createChallenge(p, pool);
     }

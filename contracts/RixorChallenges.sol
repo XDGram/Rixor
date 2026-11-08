@@ -4,13 +4,16 @@ pragma solidity 0.8.30;
 import {IRixorLocker} from "./interfaces/IRixorLocker.sol";
 
 /// @title RixorChallenges
-/// @notice Community and Season challenges paid in $WIF from prefunded, per-challenge escrow.
+/// @notice Community and Season challenges for locked meme-token positions, paid in $WIF from prefunded,
+///         per-challenge escrow. $WIF is the prize currency only; it is never required to take part.
 ///
 /// - A challenge escrows its full WIF pool at creation; anyone may add more (co-sponsor) before it ends.
 ///   Every payout is debited from that challenge's own escrow, so one challenge can never use another's funds.
-/// - Holders join with an open RixorLocker position. Points are computed at join from a scoring table frozen
-///   when the challenge was created:  points = units x tierMultiplier x tokenMultiplier / 10_000, where
-///   units = min(amount / unitSnapshot, 10) and units must be >= the challenge's minimum.
+/// - A community challenge names 1-3 distinct listed tokens; a Season challenge up to 8.
+/// - Holders join with an open RixorLocker position in one of those tokens. Points are computed at join from a
+///   scoring table frozen when the challenge was created:  points = units x tierMultiplier, where
+///   units = min(amount / unitSnapshot, 10) and units must be >= the challenge's minimum. The per-token unit
+///   size is what makes different tokens comparable; every token counts equally.
 ///   Points are relative scoring units for splitting this challenge's pool. They are not USD values.
 /// - Lanes: a position can be in at most one community challenge and one Season challenge at a time.
 /// - Qualification is retroactive and deterministic: a participant qualifies if the Locker's write-once
@@ -26,7 +29,7 @@ contract RixorChallenges {
     uint256 public constant MAX_PARTICIPANTS = 200;
     uint256 public constant MAX_DURATION = 30 days;
     uint256 public constant CLAIM_WINDOW = 30 days;
-    uint256 public constant MAX_COMMUNITY_TOKENS = 2;
+    uint256 public constant MAX_COMMUNITY_TOKENS = 3;
     uint256 public constant MAX_SEASON_TOKENS = 8;
     uint256 public constant MIN_CREATE_POOL = 100_000 ether;
     uint256 public constant MIN_SPONSOR_AMOUNT = 10_000 ether;
@@ -95,7 +98,6 @@ contract RixorChallenges {
     mapping(uint256 id => Challenge) internal _challenges;
     mapping(uint256 id => address[]) internal _tokens;
     mapping(uint256 id => mapping(address token => uint256)) public unitSnapshot;
-    mapping(uint256 id => mapping(address token => uint256)) public tokenMultiplierSnapshot;
     mapping(uint256 id => address[]) internal _participants;
     mapping(uint256 id => mapping(address account => Entry)) internal _entries;
     mapping(uint256 id => mapping(address sponsor => uint256)) public contributionOf;
@@ -178,21 +180,21 @@ contract RixorChallenges {
         _reentrancy = 1;
     }
 
-    constructor(IRixorLocker locker_, uint256 minHold_) {
-        if (address(locker_).code.length == 0) revert InvalidParams();
+    /// @param wif_ The prize token ($WIF). Fixed for the life of this contract.
+    constructor(IRixorLocker locker_, address wif_, uint256 minHold_) {
+        if (address(locker_).code.length == 0 || wif_.code.length == 0) revert InvalidParams();
         if (minHold_ < MIN_HOLD_LOWER_BOUND || minHold_ > MIN_HOLD_UPPER_BOUND) revert InvalidParams();
         locker = locker_;
-        wif = locker_.WIF();
+        wif = wif_;
         minHold = minHold_;
     }
 
     // ------------------------------------------------------------------ creation and sponsorship
 
-    /// @notice Create a community challenge: one listed token, optionally plus $WIF as the second token.
+    /// @notice Create a community challenge for 1-3 distinct listed tokens.
     function createChallenge(CreateParams calldata params, uint256 amount) external nonReentrant returns (uint256) {
         uint256 count = params.tokens.length;
         if (count == 0 || count > MAX_COMMUNITY_TOKENS) revert InvalidParams();
-        if (count == 2 && (params.tokens[1] != wif || params.tokens[0] == wif)) revert InvalidParams();
         return _create(params, amount, false);
     }
 
@@ -230,7 +232,7 @@ contract RixorChallenges {
         if (p.owner != msg.sender) revert NotPositionOwner();
         if (p.closedAt != 0) revert PositionClosed();
         uint256 unit = unitSnapshot[id][p.token];
-        if (unit == 0) revert TokenNotAllowed();
+        if (unit == 0 || locker.releasedAt(p.token) != 0) revert TokenNotAllowed();
         if (p.tier < c.minTier) revert TierTooLow();
         if (p.tier != 0 && p.endsAt < c.endTime) revert PositionEndsTooEarly();
 
@@ -241,7 +243,7 @@ contract RixorChallenges {
         uint256 units = p.amount / unit;
         if (units > MAX_UNITS) units = MAX_UNITS;
         if (units == 0 || units < c.minUnitsPerEntry) revert BelowMinimumUnits();
-        uint256 points = units * locker.tierMultiplierBps(p.tier) * tokenMultiplierSnapshot[id][p.token] / BPS;
+        uint256 points = units * locker.tierMultiplierBps(p.tier);
 
         lane[positionId] = id;
         _entries[id][msg.sender] = Entry({positionId: positionId, points: points, qualified: false, claimed: false});
@@ -385,11 +387,11 @@ contract RixorChallenges {
     function previewPoints(uint256 id, uint256 positionId) external view returns (uint256) {
         IRixorLocker.PositionView memory p = locker.positionOf(positionId);
         uint256 unit = unitSnapshot[id][p.token];
-        if (unit == 0 || p.closedAt != 0) return 0;
+        if (unit == 0 || p.closedAt != 0 || locker.releasedAt(p.token) != 0) return 0;
         uint256 units = p.amount / unit;
         if (units > MAX_UNITS) units = MAX_UNITS;
         if (units == 0 || units < _challenges[id].minUnitsPerEntry) return 0;
-        return units * locker.tierMultiplierBps(p.tier) * tokenMultiplierSnapshot[id][p.token] / BPS;
+        return units * locker.tierMultiplierBps(p.tier);
     }
 
     // ------------------------------------------------------------------ internals
@@ -423,11 +425,12 @@ contract RixorChallenges {
         uint256[] memory units = new uint256[](params.tokens.length);
         for (uint256 i = 0; i < params.tokens.length; i++) {
             address token = params.tokens[i];
-            if (!locker.isListed(token) || !locker.locksEnabled(token)) revert InvalidToken(token);
+            if (!locker.isListed(token) || !locker.locksEnabled(token) || locker.releasedAt(token) != 0) {
+                revert InvalidToken(token);
+            }
             if (unitSnapshot[id][token] != 0) revert InvalidToken(token); // duplicate
             uint256 unit = locker.unitAmount(token);
             unitSnapshot[id][token] = unit;
-            tokenMultiplierSnapshot[id][token] = locker.tokenMultiplierBps(token);
             _tokens[id].push(token);
             units[i] = unit;
         }

@@ -8,6 +8,7 @@ import {console2} from "forge-std/console2.sol";
 import {RixorBase} from "../utils/RixorBase.sol";
 import {RixorLocker} from "../../contracts/RixorLocker.sol";
 import {RixorChallenges} from "../../contracts/RixorChallenges.sol";
+import {RixorRewards} from "../../contracts/RixorRewards.sol";
 import {IRixorLocker} from "../../contracts/interfaces/IRixorLocker.sol";
 import {MockERC20, MockSafe} from "../utils/Mocks.sol";
 
@@ -16,8 +17,10 @@ import {MockERC20, MockSafe} from "../utils/Mocks.sol";
 contract RixorHandler is Test {
     RixorLocker internal locker;
     RixorChallenges internal challenges;
+    RixorRewards internal rewards;
     MockERC20 internal wif;
     MockERC20 internal dope;
+    MockERC20 internal pepe;
     MockSafe internal ownerSafe;
     MockSafe internal guardianSafe;
     address internal admin;
@@ -28,6 +31,7 @@ contract RixorHandler is Test {
 
     uint256[] public positions;
     uint256[] public challengeIds;
+    uint256[] public streamIds;
 
     struct LaneRecord {
         uint256 positionId;
@@ -48,15 +52,28 @@ contract RixorHandler is Test {
     bool public closedAtRewritten;
     bool public crossChallengeOutflow;
     bool public emergencyOn;
+    bool public releasedOn;
+    bool public allowedExitReverted;
+    bool public syncReverted;
+    bool public rewardPayoutMismatch;
 
     mapping(bytes32 => uint256) public calls;
     mapping(bytes32 => uint256) public successes;
 
-    constructor(RixorLocker locker_, RixorChallenges challenges_, MockERC20 wif_, MockERC20 dope_) {
+    constructor(
+        RixorLocker locker_,
+        RixorChallenges challenges_,
+        RixorRewards rewards_,
+        MockERC20 wif_,
+        MockERC20 dope_,
+        MockERC20 pepe_
+    ) {
         locker = locker_;
         challenges = challenges_;
+        rewards = rewards_;
         wif = wif_;
         dope = dope_;
+        pepe = pepe_;
     }
 
     function init(
@@ -80,6 +97,10 @@ contract RixorHandler is Test {
 
     function positionCount() external view returns (uint256) {
         return positions.length;
+    }
+
+    function streamCount() external view returns (uint256) {
+        return streamIds.length;
     }
 
     function challengeCount() external view returns (uint256) {
@@ -129,10 +150,10 @@ contract RixorHandler is Test {
 
     // ------------------------------------------------------------------ actions
 
-    function lock(uint256 actorSeed, bool useWif, uint256 amountSeed, uint256 tierSeed, uint256 termSeed) external {
+    function lock(uint256 actorSeed, bool usePepe, uint256 amountSeed, uint256 tierSeed, uint256 termSeed) external {
         calls["lock"]++;
         address who = actors[actorSeed % 4];
-        address token = useWif ? address(wif) : address(dope);
+        address token = usePepe ? address(pepe) : address(dope);
         uint256 unit = locker.unitAmount(token);
         uint256 amount = bound(amountSeed, unit, 12 * unit);
         uint8 tier = uint8(tierSeed % 3);
@@ -149,10 +170,14 @@ contract RixorHandler is Test {
         if (positions.length == 0) return;
         uint256 id = positions[positionSeed % positions.length];
         IRixorLocker.PositionView memory p = locker.positionOf(id);
+        (bool allowed,) = locker.exitTerms(id);
         vm.prank(p.owner);
         try locker.exit(id, 10_000) {
             successes["exit"]++;
-        } catch {}
+        } catch {
+            // An exit the Locker reports as allowed must always succeed, whatever Rewards or Challenges hold.
+            if (allowed) allowedExitReverted = true;
+        }
         _syncClosedAt(id);
     }
 
@@ -164,12 +189,12 @@ contract RixorHandler is Test {
         RixorChallenges.CreateParams memory p;
         if (si == 2) {
             p.tokens = new address[](2);
-            p.tokens[0] = address(wif);
+            p.tokens[0] = address(pepe);
             p.tokens[1] = address(dope);
         } else if (sponsorSeed % 2 == 0) {
             p.tokens = new address[](2);
             p.tokens[0] = address(dope);
-            p.tokens[1] = address(wif);
+            p.tokens[1] = address(pepe);
         } else {
             p.tokens = new address[](1);
             p.tokens[0] = address(dope);
@@ -345,6 +370,63 @@ contract RixorHandler is Test {
         successes["emergency"]++;
     }
 
+    // ------------------------------------------------------------------ rewards actions
+
+    function fundStream(uint256 sponsorSeed, bool usePepe, uint256 amountSeed, uint256 daysSeed) external {
+        calls["fund"]++;
+        address who = sponsors[sponsorSeed % 2];
+        address token = usePepe ? address(pepe) : address(dope);
+        vm.prank(who);
+        try rewards.fund(token, bound(amountSeed, 10_000 ether, 500_000 ether), bound(daysSeed, 7, 90)) returns (
+            uint256 sid
+        ) {
+            streamIds.push(sid);
+            successes["fund"]++;
+        } catch {}
+    }
+
+    function claimRewards(uint256 positionSeed) external {
+        calls["claimRewards"]++;
+        if (positions.length == 0) return;
+        uint256 id = positions[positionSeed % positions.length];
+        IRixorLocker.PositionView memory p = locker.positionOf(id);
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = id;
+        uint256 before = wif.balanceOf(p.owner);
+        vm.prank(p.owner);
+        try rewards.claim(ids, 400) returns (uint256 paid) {
+            successes["claimRewards"]++;
+            if (wif.balanceOf(p.owner) - before != paid) rewardPayoutMismatch = true;
+        } catch {}
+    }
+
+    function refundStream(uint256 streamSeed) external {
+        calls["refundStream"]++;
+        if (streamIds.length == 0) return;
+        try rewards.refund(streamIds[streamSeed % streamIds.length], 400) {
+            successes["refundStream"]++;
+        } catch {}
+    }
+
+    function syncRewards(bool usePepe, uint256 stepsSeed) external {
+        calls["sync"]++;
+        try rewards.sync(usePepe ? address(pepe) : address(dope), bound(stepsSeed, 1, 50)) {
+            successes["sync"]++;
+        } catch {
+            syncReverted = true; // sync must never revert for a listed token
+        }
+    }
+
+    /// @dev Rare per-token release of DOPE (hashed, like emergency).
+    function release(uint256 seed) external {
+        calls["release"]++;
+        if (releasedOn || uint256(keccak256(abi.encode(seed, block.timestamp, "r"))) % 80 != 0) return;
+        vm.prank(guardianOperator);
+        guardianSafe.exec(address(locker), abi.encodeCall(RixorLocker.releaseToken, (address(dope))));
+        releasedOn = true;
+        successes["release"]++;
+    }
+
     /// @dev Every WIF that leaves the Challenges contract during a payout must come out of that
     ///      challenge's own escrow, and no other challenge's escrow may change.
     function _recordOutflow(uint256 id, uint256 balBefore, uint256 escrowBefore) internal {
@@ -362,13 +444,19 @@ contract RixorHandler is Test {
 
 contract RixorInvariantsTest is StdInvariant, RixorBase {
     RixorHandler internal handler;
+    RixorRewards internal rewards;
 
     function setUp() public override {
         super.setUp();
-        handler = new RixorHandler(locker, challenges, wif, dope);
+        rewards = new RixorRewards(IRixorLocker(address(locker)), address(wif));
+        vm.prank(sponsorA);
+        wif.approve(address(rewards), type(uint256).max);
+        vm.prank(sponsorB);
+        wif.approve(address(rewards), type(uint256).max);
+        handler = new RixorHandler(locker, challenges, rewards, wif, dope, pepe);
         handler.init(ownerSafe, guardianSafe, admin, guardianOperator, [alice, bob, carol, dan], [sponsorA, sponsorB]);
         // Weighted selector table: deep-state actions appear more than once.
-        bytes4[] memory selectors = new bytes4[](20);
+        bytes4[] memory selectors = new bytes4[](27);
         selectors[0] = RixorHandler.lock.selector;
         selectors[1] = RixorHandler.lock.selector;
         selectors[2] = RixorHandler.lock.selector;
@@ -389,6 +477,13 @@ contract RixorInvariantsTest is StdInvariant, RixorBase {
         selectors[17] = RixorHandler.sweep.selector;
         selectors[18] = RixorHandler.emergency.selector;
         selectors[19] = RixorHandler.warpLong.selector;
+        selectors[20] = RixorHandler.fundStream.selector;
+        selectors[21] = RixorHandler.fundStream.selector;
+        selectors[22] = RixorHandler.claimRewards.selector;
+        selectors[23] = RixorHandler.claimRewards.selector;
+        selectors[24] = RixorHandler.refundStream.selector;
+        selectors[25] = RixorHandler.syncRewards.selector;
+        selectors[26] = RixorHandler.release.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -468,7 +563,7 @@ contract RixorInvariantsTest is StdInvariant, RixorBase {
 
     /// The Locker always holds every open position's principal.
     function invariant_lockerSolvent() public view {
-        address[2] memory toks = [address(wif), address(dope)];
+        address[2] memory toks = [address(pepe), address(dope)];
         for (uint256 t = 0; t < 2; t++) {
             RixorLocker.TokenConfig memory cfg = locker.tokenConfig(toks[t]);
             assertGe(MockERC20(toks[t]).balanceOf(address(locker)), cfg.totalLocked, "locker solvency");
@@ -481,13 +576,76 @@ contract RixorInvariantsTest is StdInvariant, RixorBase {
             if (p.closedAt == 0 && p.token == address(dope)) openSum += p.amount;
         }
         assertEq(openSum, locker.tokenConfig(address(dope)).totalLocked, "open DOPE positions == totalLocked");
+        assertEq(locker.tokenConfig(address(wif)).totalLocked, 0, "the reward token is never lockable");
+    }
+
+    /// Per token: the latest checkpoint, totalWeight and the sum of open position weights agree.
+    function invariant_checkpointsMatchOpenWeight() public view {
+        address[2] memory toks = [address(pepe), address(dope)];
+        uint256 n = handler.positionCount();
+        for (uint256 t = 0; t < 2; t++) {
+            uint256 open;
+            for (uint256 i = 0; i < n; i++) {
+                IRixorLocker.PositionView memory p = locker.positionOf(handler.positions(i));
+                if (p.closedAt == 0 && p.token == toks[t]) open += p.weight;
+            }
+            (, uint256 last) = locker.checkpointAt(toks[t], locker.checkpointCount(toks[t]) - 1);
+            assertEq(last, open, "latest checkpoint == open weight");
+            assertEq(locker.tokenConfig(toks[t]).totalWeight, open, "totalWeight == open weight");
+        }
+    }
+
+    /// Exits that the Locker allows never revert (independent of Rewards and Challenges).
+    function invariant_allowedExitsNeverRevert() public view {
+        assertFalse(handler.allowedExitReverted(), "an allowed exit reverted");
+    }
+
+    /// Rewards: the WIF balance equals funded - claimed - refunded, and covers everything currently payable.
+    function invariant_rewardsSolventAndConserved() public view {
+        uint256 bal = wif.balanceOf(address(rewards));
+        assertEq(bal, rewards.totalFunded() - rewards.totalClaimed() - rewards.totalRefunded(), "rewards balance");
+        uint256 payable_;
+        uint256 n = handler.positionCount();
+        for (uint256 i = 0; i < n; i++) {
+            uint256 id = handler.positions(i);
+            (uint256 total, bool ready) = rewards.earned(id);
+            if (ready) {
+                assertGe(total, rewards.claimedOf(id), "earned never decreases below claimed");
+                payable_ += total - rewards.claimedOf(id);
+            }
+        }
+        uint256 m = handler.streamCount();
+        for (uint256 i = 0; i < m; i++) {
+            uint256 sid = handler.streamIds(i);
+            if (rewards.streamOf(sid).refunded) continue;
+            (uint256 amount, bool ready) = rewards.refundable(sid);
+            if (ready) payable_ += amount;
+        }
+        assertLe(payable_, bal, "payable obligations covered");
+        assertFalse(handler.syncReverted(), "sync reverted");
+        assertFalse(handler.rewardPayoutMismatch(), "claim paid a different amount than reported");
     }
 
     /// @dev Totals of successful handler actions, logged once per run (visible with -vv) to show the
     ///      fuzzer reaches deep states rather than reverting harmlessly.
     function afterInvariant() external view {
-        bytes32[10] memory k =
-            [bytes32("lock"), "exit", "create", "sponsor", "join", "settle", "claim", "refund", "sweep", "emergency"];
+        bytes32[15] memory k = [
+            bytes32("lock"),
+            "exit",
+            "create",
+            "sponsor",
+            "join",
+            "settle",
+            "claim",
+            "refund",
+            "sweep",
+            "emergency",
+            "fund",
+            "claimRewards",
+            "refundStream",
+            "sync",
+            "release"
+        ];
         string memory line = "successes:";
         for (uint256 i = 0; i < k.length; i++) {
             line = string.concat(line, " ", _str(k[i]), "=", vm.toString(handler.successes(k[i])));
