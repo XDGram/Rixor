@@ -6,6 +6,7 @@ import { TxNotice } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDate, fmtDuration, fmtPoints, fmtToken, MAX_POOL, MIN_SPONSOR, parseAmount, pct, phaseOf, PHASE_LABEL, TIERS, type Challenge } from '../model'
 import { loadStandings, type Standing } from '../useProtocol'
+import { ENV } from '../envtext'
 
 type Sponsor = { address: string; amount: bigint }
 
@@ -74,7 +75,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
     })
   }, [c, ctx.snapshot.positions, ctx.snapshot.challenges, previews, now])
 
-  if (!c) return <div className="view"><div className="notice notice--warn"><strong>Challenge not found</strong><span>It may not exist on this demo chain.</span></div></div>
+  if (!c) return <div className="view"><div className="notice notice--warn"><strong>Challenge not found</strong><span>It may not exist on this {ENV.chain}.</span></div></div>
 
   const phase = phaseOf(c, now)
   const symbols = c.tokens.map((t) => ctx.snapshot.tokens.find((x) => x.address.toLowerCase() === t.toLowerCase())?.symbol ?? '?').join(' + ')
@@ -148,7 +149,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
       {/* ---------------------------------------------------------------- my actions */}
       <section className="card">
         <header className="panel-head"><div><small className="kicker">Your part</small><h2>{myEntry ? 'You are in' : c.me.contribution > 0n ? 'You sponsor this' : 'Take part'}</h2></div></header>
-        {!wallet && <button type="button" className="btn btn--lime btn--block" onClick={ctx.openWallet}>Connect demo wallet</button>}
+        {!wallet && <button type="button" className="btn btn--lime btn--block" onClick={ctx.openWallet}>Connect {ENV.wallet}</button>}
         {/* One stable place for this challenge's transaction status: the action that started it may disappear
             once the chain state changes (for example, the join form after joining). */}
         {['join', 'sponsor', 'settle', 'claim', 'refund', 'sweep'].map((k) => <TxNotice key={k} tx={tx.tx} for={k} />)}
@@ -178,7 +179,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
                   {eligible.map(({ p, reason, points }) => (
                     <li key={p.id}>
                       <button type="button" disabled={reason !== null} className={`choice ${positionId === p.id ? 'is-active' : ''}`} onClick={() => setPositionId(p.id)} aria-pressed={positionId === p.id}>
-                        <span><strong>#{p.id} · {TIERS[p.tier].name}</strong><small>{fmtToken(p.amount)} {ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === p.token.toLowerCase())?.symbol ?? ''}</small></span>
+                        <span><strong>#{p.id} · {TIERS[p.tier].name}</strong><small>{fmtToken(p.amount, ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === p.token.toLowerCase())?.decimals ?? 18)} {ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === p.token.toLowerCase())?.symbol ?? ''}</small></span>
                         <span>{reason ? <small className="is-loss">{reason}</small> : <strong>{points !== null ? `${fmtPoints(points)} pts` : '…'}</strong>}</span>
                       </button>
                     </li>

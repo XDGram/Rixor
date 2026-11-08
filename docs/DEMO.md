@@ -20,6 +20,17 @@ The reviewable demo has two parts:
                                      Wallet detection ──eth_call──► public Robinhood Chain RPC (Multicall3, read-only)
 ```
 
+## Modes
+
+| Mode | What it does | Transactions |
+|---|---|---|
+| **Simulation** (default) | V2 contracts in the browser, real HOOKR/TORCH/WIF code | Simulated, demo wallet |
+| **Real wallet, read-only** (Explore page) | Detects Robinhood Chain mainnet holdings | None |
+| **Testnet** (tab appears once a deployment manifest is published) | The visitor's own wallet on Robinhood Chain testnet against the deployed contracts and TEST tokens | Real testnet transactions; wallet estimates gas |
+
+Switching modes always disconnects the wallet. Testnet mode refuses a manifest or RPC on chain 4663; its signer is
+bound to the manifest's chain id, and any wallet account or network change disconnects it.
+
 ## 1. The snapshot (`public/demo/robinhood-snapshot.json`)
 
 `npm run demo:snapshot` (`scripts/build-browser-snapshot.mjs`) is read-only. It pins the latest mainnet block,

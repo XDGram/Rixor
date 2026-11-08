@@ -4,15 +4,18 @@ import { Empty } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDate, fmtPoints, fmtToken, shortAddr, TIERS } from '../model'
 import type { ActivityItem } from '../useProtocol'
+import { ENV } from '../envtext'
 
 function describe(ctx: Ctx, a: ActivityItem): { title: string; detail: string; amount?: string; icon: 'lock' | 'arrowUp' | 'trophy' | 'coins' | 'check' | 'flame' | 'plus' } {
   const who = ctx.label(a.actor)
-  const sym = ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === a.token?.toLowerCase())?.symbol ?? ''
+  const tok = ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === a.token?.toLowerCase())
+  const sym = tok?.symbol ?? ''
+  const dec = tok?.decimals ?? 18
   const ch = a.challengeId !== undefined ? ctx.snapshot.challenges.find((c) => c.id === a.challengeId) : undefined
   const name = ch ? `“${ch.title}”` : `challenge #${a.challengeId}`
   switch (a.kind) {
-    case 'Locked': return { title: `${who} locked ${sym}`, detail: `${TIERS[a.tier ?? 0].name} · position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} ${sym}`, icon: 'lock' }
-    case 'Exited': return { title: `${who} exited`, detail: a.fee && a.fee > 0n ? `fee ${fmtToken(a.fee, 18, { compact: true })} ${sym} burned` : `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} ${sym}`, icon: 'arrowUp' }
+    case 'Locked': return { title: `${who} locked ${sym}`, detail: `${TIERS[a.tier ?? 0].name} · position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, dec, { compact: true })} ${sym}`, icon: 'lock' }
+    case 'Exited': return { title: `${who} exited`, detail: a.fee && a.fee > 0n ? `fee ${fmtToken(a.fee, dec, { compact: true })} ${sym} burned` : `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, dec, { compact: true })} ${sym}`, icon: 'arrowUp' }
     case 'StreamFunded': return { title: `${who} funded a ${sym} reward stream`, detail: 'Prefunded WIF, shared by lockers', amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'coins' }
     case 'RewardClaimed': return { title: `${who} claimed stream rewards`, detail: `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'trophy' }
     case 'StreamRefunded': return { title: `Stream refund paid to ${who === 'You' ? 'you' : who}`, detail: 'Unallocated or unstreamed WIF', amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'coins' }
@@ -34,7 +37,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
     <div className="view">
       <section className="card">
         <header className="panel-head">
-          <div><small className="kicker">Contract events · browser simulation</small><h2>{mine ? 'Your transactions' : 'Everything happening'}</h2></div>
+          <div><small className="kicker">Contract events · {ENV.whereShort}</small><h2>{mine ? 'Your transactions' : 'Everything happening'}</h2></div>
           <div className="seg">
             <button type="button" className={!mine ? 'is-active' : ''} onClick={() => setMine(false)}>All</button>
             <button type="button" className={mine ? 'is-active' : ''} onClick={() => setMine(true)} disabled={!ctx.wallet}>Mine</button>
@@ -60,7 +63,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
             })}
           </ul>
         )}
-        <p className="fine-print">Read from RixorLocker, RixorRewards and RixorChallenges events emitted inside this browser simulation. These are not Robinhood Chain transactions.</p>
+        <p className="fine-print">{ENV.events}</p>
       </section>
     </div>
   )

@@ -40,19 +40,23 @@ export async function requestAccount(w: WalletOption): Promise<{ address: string
   return { address: accounts[0], chainId: Number(chainHex) }
 }
 
-/** Switches the wallet to Robinhood Chain, adding the network first if the wallet does not know it. */
-export async function switchToRobinhood(w: WalletOption) {
+/** Switches the wallet to `chain`, adding the network first if the wallet does not know it. */
+export async function switchToChain(w: WalletOption, chain: { chainId: number; name: string; rpc: string }) {
+  const hex = '0x' + chain.chainId.toString(16)
   try {
-    await w.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: ROBINHOOD_CHAIN.hexChainId }] })
+    await w.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] })
   } catch (e) {
     const code = (e as { code?: number })?.code
     if (code !== 4902 && code !== -32603) throw e
     await w.provider.request({
       method: 'wallet_addEthereumChain',
-      params: [{ chainId: ROBINHOOD_CHAIN.hexChainId, chainName: ROBINHOOD_CHAIN.name, rpcUrls: [ROBINHOOD_CHAIN.rpc], nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 } }],
+      params: [{ chainId: hex, chainName: chain.name, rpcUrls: [chain.rpc], nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 } }],
     })
   }
 }
+
+export const switchToRobinhood = (w: WalletOption) =>
+  switchToChain(w, { chainId: ROBINHOOD_CHAIN.chainId, name: ROBINHOOD_CHAIN.name, rpc: ROBINHOOD_CHAIN.rpc })
 
 export type Holding = ListedToken & { balance: bigint; group: 'supported' | 'under_review' | 'unsupported' | 'reward' }
 export type Holdings = { address: string; block: number; eth: bigint; tokens: Holding[]; supportedSource: string }
@@ -83,7 +87,9 @@ export async function detectHoldings(address: string, lockerAddress?: string): P
 
   let supported = new Set<string>()
   let supportedSource = 'No Rixor Locker is deployed on Robinhood Chain yet, so no token is supported there.'
-  if (lockerAddress) {
+  if (lockerAddress && (await rpc.getCode(lockerAddress)) === '0x') {
+    supportedSource = `The configured Locker ${lockerAddress} has no code on Robinhood Chain, so no token is shown as supported.`
+  } else if (lockerAddress) {
     const locker = new Contract(lockerAddress, LOCKER, rpc)
     const listed = (await locker.listedTokens()) as string[]
     const enabled = await Promise.all(listed.map((a) => locker.locksEnabled(a) as Promise<boolean>))

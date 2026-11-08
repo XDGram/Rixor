@@ -21,8 +21,9 @@ interface ISafeView {
 /// Guards (the script reverts before broadcasting anything if one fails):
 ///   - chain must be a local fork (31337), Robinhood Chain testnet (46630) or, only with an explicit written
 ///     confirmation string in RIXOR_CONFIRM_MAINNET, Robinhood Chain mainnet (4663);
-///   - owner and guardian must be deployed contracts, must differ, and on a real chain must be multisigs with a
-///     threshold of at least 2;
+///   - owner and guardian must be genuine Safe v1.5.0/v1.4.1 proxies (not EOAs or EIP-7702-delegated EOAs) with
+///     at least 3 signers and threshold >= 2, must differ, must not share every signer, and must not include the
+///     deployer as a signer;
 ///   - the reward token must be a contract and must not appear in the listings.
 /// The script sets no gas limits: every transaction uses the node's eth_estimateGas.
 contract DeployRixorV2 is Script {
@@ -81,14 +82,43 @@ contract DeployRixorV2 is Script {
         }
     }
 
+    // Safe singletons verified on Robinhood Chain mainnet and testnet (identical code on both, Nov 2026).
+    address internal constant SAFE_L2_150 = 0xEdd160fEBBD92E350D4D398fb636302fccd67C7e;
+    address internal constant SAFE_L2_141 = 0x29fcB43b46531BcA003ddC8FCB67FFE91900C762;
+
+    /// @dev Owner and guardian must be genuine Safe proxies (storage slot 0 = a known Safe singleton) with at least
+    ///      3 signers and a threshold of at least 2, must differ, must not share every signer, and must not be
+    ///      controlled by the deployer. Applies on every chain, including the local fork dry run.
     function _guardRoles(address owner, address guardian) internal view {
         require(_isContract(owner), "owner must be a deployed Safe (contract, not an EOA or EIP-7702-delegated EOA)");
         require(_isContract(guardian), "guardian must be a deployed Safe (contract, not an EOA or EIP-7702-delegated EOA)");
         require(owner != guardian, "owner and guardian must be different Safes");
-        if (block.chainid != LOCAL) {
-            require(ISafeView(owner).getThreshold() >= 2, "owner Safe threshold must be at least 2");
-            require(ISafeView(guardian).getThreshold() >= 2, "guardian Safe threshold must be at least 2");
+        address[] memory ownerSigners = _checkSafe(owner, "owner");
+        address[] memory guardianSigners = _checkSafe(guardian, "guardian");
+        bool independent;
+        for (uint256 i = 0; i < guardianSigners.length; i++) {
+            if (!_contains(ownerSigners, guardianSigners[i])) independent = true;
         }
+        require(independent, "at least one guardian signer must not be an owner signer");
+    }
+
+    function _checkSafe(address safe, string memory role) internal view returns (address[] memory signers) {
+        address singleton = address(uint160(uint256(vm.load(safe, bytes32(0)))));
+        require(singleton == SAFE_L2_150 || singleton == SAFE_L2_141, string.concat(role, " is not a known Safe v1.5.0/v1.4.1 proxy"));
+        signers = ISafeView(safe).getOwners();
+        uint256 threshold = ISafeView(safe).getThreshold();
+        require(signers.length >= 3, string.concat(role, " Safe needs at least 3 signers"));
+        require(threshold >= 2 && threshold <= signers.length, string.concat(role, " Safe threshold must be at least 2"));
+        // The deployer (the broadcasting account) must not be able to act as a Safe signer.
+        require(!_contains(signers, msg.sender) && !_contains(signers, tx.origin), string.concat(role, " Safe must not include the deployer as a signer"));
+        console2.log(string.concat(role, " Safe: signers / threshold"), signers.length, threshold);
+    }
+
+    function _contains(address[] memory list, address a) internal pure returns (bool) {
+        for (uint256 i = 0; i < list.length; i++) {
+            if (list[i] == a) return true;
+        }
+        return false;
     }
 
     function _isContract(address a) internal view returns (bool) {

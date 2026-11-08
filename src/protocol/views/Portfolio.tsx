@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Empty, TxNotice } from '../components'
 import type { Ctx } from '../ctx'
+import { ENV } from '../envtext'
 import { fmtDate, fmtDuration, fmtToken, phaseOf, TIERS, type Position } from '../model'
 
 function PositionItem({ ctx, p }: { ctx: Ctx; p: Position }) {
@@ -91,7 +92,7 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
   if (!wallet) {
     return (
       <div className="view">
-        <Empty title="Connect the demo wallet" action={<button type="button" className="btn btn--lime" onClick={ctx.openWallet}>Connect</button>}>
+        <Empty title={`Connect the ${ENV.wallet}`} action={<button type="button" className="btn btn--lime" onClick={ctx.openWallet}>Connect</button>}>
           Positions, challenge entries and rewards appear here.
         </Empty>
       </div>
@@ -113,14 +114,14 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
   return (
     <div className="view">
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Demo wallet · simulated balances</small><h2>Your portfolio</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">{ENV.wallet} · {ENV.whereShort}</small><h2>Your portfolio</h2></div></header>
         <div className="stat-grid">
-          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>Demo {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>not a real balance</span></div>)}
+          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>{ENV.bal} {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>{ENV.bal === 'TEST' ? 'valueless TEST token' : 'not a real balance'}</span></div>)}
           <div className="stat"><small>WIF rewards claimable</small><strong>{fmtToken(rewardTotal, 18, { compact: true })}</strong><span>from reward streams</span></div>
-          <div className="stat"><small>Demo WIF</small><strong>{fmtToken(snapshot.wif.balance, 18, { compact: true })}</strong><span>for sponsoring only</span></div>
+          <div className="stat"><small>{ENV.bal} WIF</small><strong>{fmtToken(snapshot.wif.balance, 18, { compact: true })}</strong><span>for sponsoring only</span></div>
           <div className="stat"><small>Open positions</small><strong>{open.length}</strong><span>{closed.length} closed</span></div>
           <div className="stat"><small>Challenges joined</small><strong>{snapshot.challenges.filter((c) => c.me.entry).length}</strong><span>{snapshot.challenges.filter((c) => c.me.contribution > 0n).length} sponsored</span></div>
-          <div className="stat"><small>Challenge prizes claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>demo WIF</span></div>
+          <div className="stat"><small>Challenge prizes claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>{ENV.bal} WIF</span></div>
         </div>
         {rewardTotal > 0n && (
           <div className="action-row">

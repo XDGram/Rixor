@@ -27,3 +27,5 @@ demo/fork-backend/data/
 
 # Deployment manifests from local fork dry runs (real deployments are recorded deliberately)
 deployments/31337.json
+deployments/31337-testnet-config.json
+public/testnet/

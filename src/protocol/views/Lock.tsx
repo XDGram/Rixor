@@ -4,6 +4,7 @@ import { TxNotice } from '../components'
 import type { Ctx } from '../ctx'
 import { estimateDaily, fmtDate, fmtToken, MAX_POSITION_UNITS, MAX_SCORED_UNITS, parseAmount, pointsFor, RISK_CLASS, TIERS, fmtPoints, tierAllowed, weightOf } from '../model'
 import { listEntry } from '../tokenlist'
+import { ENV } from '../envtext'
 
 const TERMS = [30, 60, 90]
 
@@ -78,7 +79,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
           )}
         </header>
 
-        <div className="notice"><strong>Simulation listing · candidate token</strong><span>{token.symbol} is listed in this browser simulation's Locker for testing. {listInfo?.note ?? ''} No real {token.symbol} is used.</span></div>
+        <div className="notice"><strong>{ENV.listingTitle}</strong><span>{ENV.listingBody(token.symbol)} {listInfo?.note ?? ''}</span></div>
 
         <div className="term-grid tier-grid" role="radiogroup" aria-label="Tier">
           {TIERS.map((t) => {
@@ -96,7 +97,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
         <div className="amount-field">
           <div className="amount-field-head">
             <label htmlFor="lock-amount">Amount</label>
-            <span className={problem && amount !== null ? 'is-error' : ''}>{wallet ? `${fmtToken(token.balance, token.decimals)} demo ${token.symbol} in your demo wallet` : 'Connect the demo wallet'}</span>
+            <span className={problem && amount !== null ? 'is-error' : ''}>{wallet ? `${fmtToken(token.balance, token.decimals)} ${ENV.bal} ${token.symbol} in your ${ENV.wallet}` : `Connect the ${ENV.wallet}`}</span>
           </div>
           <div className={`amount-input ${problem && amount !== null ? 'is-error' : ''}`}>
             <input id="lock-amount" inputMode="decimal" autoComplete="off" placeholder="0" value={amountText} onChange={(e) => setAmountText(e.target.value.replace(/[^0-9.]/g, ''))} />
@@ -138,9 +139,9 @@ export function LockView({ ctx }: { ctx: Ctx }) {
             {busy && tx.tx?.key === 'lock' ? 'Working…' : snapshot.paused ? 'Locks paused' : `Lock ${token.symbol}`}
           </button>
         ) : (
-          <button type="button" className="btn btn--lime btn--block btn--lg" onClick={ctx.openWallet}>Connect demo wallet</button>
+          <button type="button" className="btn btn--lime btn--block btn--lg" onClick={ctx.openWallet}>Connect {ENV.wallet}</button>
         )}
-        {wallet && token.allowanceLocker < (amount ?? 0n) && <p className="fine-print">Two simulated transactions: approve, then lock.</p>}
+        {wallet && token.allowanceLocker < (amount ?? 0n) && <p className="fine-print">Two transactions {ENV.where}: approve, then lock.</p>}
       </section>
     </div>
   )
@@ -168,20 +169,20 @@ export function TokenView({ ctx, address }: { ctx: Ctx; address: string }) {
     <div className="view">
       <section className="card">
         <header className="panel-head">
-          <div><small className="kicker">Token community · simulation listing</small><h2>{token.symbol} <ClassTag riskClass={token.riskClass} /></h2></div>
+          <div><small className="kicker">Token community · {ENV.whereShort}</small><h2>{token.symbol} <ClassTag riskClass={token.riskClass} /></h2></div>
           <button type="button" className="btn btn--lime btn--sm" disabled={token.allowedMask === 0} onClick={() => { window.location.hash = `#/lock?token=${token.address}` }}>Lock {token.symbol}</button>
         </header>
         {token.releasedAt !== 0 && <div className="notice notice--error"><strong>Released {fmtDate(token.releasedAt)}</strong><span>Every {token.symbol} position can exit now without a fee. New locks are closed and reward accrual stopped at release.</span></div>}
         <div className="stat-grid">
           <div className="stat"><small>Total locked</small><strong>{fmtToken(token.totalLocked, token.decimals, { compact: true })}</strong><span>{token.symbol}</span></div>
           <div className="stat"><small>WIF streaming now</small><strong>{fmtToken(token.rateNow * 86_400n, 18, { compact: true })}</strong><span>WIF per day</span></div>
-          <div className="stat"><small>Cap</small><strong>{fmtToken(token.cap, token.decimals, { compact: true })}</strong><span>provisional demo value</span></div>
-          <div className="stat"><small>Unit size</small><strong>{fmtToken(token.unit, token.decimals, { compact: true })}</strong><span>provisional demo value</span></div>
+          <div className="stat"><small>Cap</small><strong>{fmtToken(token.cap, token.decimals, { compact: true })}</strong><span>{ENV.params}</span></div>
+          <div className="stat"><small>Unit size</small><strong>{fmtToken(token.unit, token.decimals, { compact: true })}</strong><span>{ENV.params}</span></div>
         </div>
         <dl className="rows">
           <div><dt>Contract</dt><dd className="mono">{token.address}</dd></div>
           <div><dt>Risk class</dt><dd>{cls?.label}: {cls?.tiers}, terms up to {cls?.maxTermDays} days</dd></div>
-          <div><dt>Listing status</dt><dd>{listInfo?.note ?? 'Listed in this simulation only'}</dd></div>
+          <div><dt>Listing status</dt><dd>{listInfo?.note ?? ENV.listingTitle}</dd></div>
           <div><dt>Challenges accepting {token.symbol}</dt><dd>{accepting.length}</dd></div>
         </dl>
         <p className="fine-print">{cls?.why} Risk classes limit what you can commit to; they never limit withdrawing your own tokens.</p>
@@ -199,7 +200,7 @@ export function TokenView({ ctx, address }: { ctx: Ctx; address: string }) {
             ))}
           </ol>
         )}
-        <p className="fine-print">Computed from on-chain Locked and Exited events on the demo chain.</p>
+        <p className="fine-print">Computed from on-chain Locked and Exited events on the {ENV.chain}.</p>
       </section>
     </div>
   )
@@ -213,7 +214,7 @@ export function StreamsCard({ ctx, tokenAddress }: { ctx: Ctx; tokenAddress: str
   const amount = parseAmount(amountText)
   const wif = ctx.snapshot.wif
   const min = 10_000n * 10n ** 18n
-  const problem = amount === null ? null : amount < min ? 'The minimum stream is 10,000 WIF.' : amount > wif.balance ? 'More demo WIF than this wallet holds.' : null
+  const problem = amount === null ? null : amount < min ? 'The minimum stream is 10,000 WIF.' : amount > wif.balance ? `More ${ENV.bal} WIF than this wallet holds.` : null
   const blocked = ctx.snapshot.emergencyAt !== 0 || token.releasedAt !== 0
   const fund = async () => {
     if (!ctx.write || !amount) return
@@ -260,7 +261,7 @@ export function StreamsCard({ ctx, tokenAddress }: { ctx: Ctx; tokenAddress: str
           </div>
           <div className="chip-row">{[7, 14, 30, 60, 90].map((d) => <button key={d} type="button" className={`chip ${days === d ? 'is-active' : ''}`} onClick={() => setDays(d)}>{d} days</button>)}</div>
           {problem && <div className="field-error">{problem}</div>}
-          <p className="fine-print">The stream starts at the next UTC midnight and pays {token.symbol} lockers by weight. Time with nobody locked, and anything left after a release or emergency, returns to you. You hold {fmtToken(wif.balance, 18, { compact: true })} demo WIF.</p>
+          <p className="fine-print">The stream starts at the next UTC midnight and pays {token.symbol} lockers by weight. Time with nobody locked, and anything left after a release or emergency, returns to you. You hold {fmtToken(wif.balance, 18, { compact: true })} {ENV.bal} WIF.</p>
           <button type="button" className="btn btn--ghost btn--block" disabled={!amount || Boolean(problem) || ctx.tx.busy || !ctx.write} onClick={() => void fund()}>Fund stream</button>
         </div>
       )}

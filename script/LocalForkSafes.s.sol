@@ -31,15 +31,18 @@ contract LocalForkSafes is Script {
     address internal constant FACTORY = 0x14F2982D601c9458F93bd70B218933A6f8165e7b;
     address internal constant FALLBACK = 0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4;
 
-    function run() external returns (address ownerSafe, address guardianSafe) {
+    function run() external returns (address ownerSafe, address guardianSafe, address sharedSafe) {
         require(block.chainid == 31337, "LocalForkSafes runs only on a local fork (chain id 31337)");
         require(SINGLETON_L2.code.length > 0 && FACTORY.code.length > 0, "fork has no Safe v1.5.0 deployment");
         vm.startBroadcast();
         ownerSafe = _safe(1, [uint256(0xA11CE), 0xB0B, 0xCA401]);
         guardianSafe = _safe(2, [uint256(0x6A1), 0x6A2, 0x6A3]);
+        // Negative control for the deploy script: same signers as the owner Safe (must be rejected as guardian).
+        sharedSafe = _safe(3, [uint256(0xA11CE), 0xB0B, 0xCA401]);
         vm.stopBroadcast();
         console2.log("LOCAL owner Safe", ownerSafe);
         console2.log("LOCAL guardian Safe", guardianSafe);
+        console2.log("LOCAL shared-signer Safe", sharedSafe);
     }
 
     function _safe(uint256 salt, uint256[3] memory keys) internal returns (address) {

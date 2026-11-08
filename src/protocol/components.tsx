@@ -3,6 +3,7 @@ import type { ContractTransactionResponse } from 'ethers'
 import { icon } from '../ui'
 import { describeError } from './chain'
 import { shortAddr } from './model'
+import { ENV } from './envtext'
 
 // ------------------------------------------------------------------ transactions
 
@@ -57,7 +58,7 @@ export function TxNotice({ tx, for: key }: { tx: TxState | null; for: string }) 
     return (
       <div className="receipt">
         <span className="receipt-check">{icon('check', 22)}</span>
-        <span className="receipt-copy"><small>Confirmed in the browser simulation</small><strong>{tx.step}</strong></span>
+        <span className="receipt-copy"><small>Confirmed {ENV.where}</small><strong>{tx.step}</strong></span>
         {tx.hash && <span className="receipt-link">{shortAddr(tx.hash)}</span>}
       </div>
     )
@@ -66,7 +67,7 @@ export function TxNotice({ tx, for: key }: { tx: TxState | null; for: string }) 
     <div className="tx-progress" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
       <div>
-        <small>{tx.status === 'awaiting-wallet' ? 'Signing' : 'Executing in the browser simulation'}</small>
+        <small>{tx.status === 'awaiting-wallet' ? 'Signing' : `Executing ${ENV.where}`}</small>
         <strong>{tx.step}</strong>
       </div>
     </div>

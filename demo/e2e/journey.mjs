@@ -82,6 +82,8 @@ try {
     await page.locator('.demo-strip', { hasText: 'Not live Robinhood Chain' }).waitFor({ timeout: 120_000 })
     await page.locator('.challenge-link').first().waitFor({ timeout: 60_000 })
     metrics.firstVisitBootMs = Date.now() - t0
+    // No testnet deployment is published in this build: the Testnet tab must be disabled, not silently empty.
+    if (!(await page.locator('.demo-strip .seg button', { hasText: 'Testnet' }).isDisabled())) throw new Error('Testnet tab enabled without a deployment')
     await shot('01-explore')
   })
 

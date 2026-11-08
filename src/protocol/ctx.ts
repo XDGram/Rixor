@@ -57,6 +57,7 @@ export function makeLabeler(manifest: Manifest, me: string | null) {
   known.set(manifest.contracts.ownerSafe.toLowerCase(), 'Demo owner Safe')
   known.set(manifest.contracts.guardianSafe.toLowerCase(), 'Demo guardian Safe')
   if (manifest.contracts.rewards) known.set(manifest.contracts.rewards.toLowerCase(), 'Rixor Rewards')
+  known.delete('0x0000000000000000000000000000000000000000') // unused demo-account fields (testnet mode)
   return (address: string) => {
     const a = address.toLowerCase()
     if (me && a === me.toLowerCase()) return 'You'

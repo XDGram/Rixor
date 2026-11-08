@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { contractsFor } from '../chain'
 import { TxNotice } from '../components'
 import type { Ctx } from '../ctx'
+import { ENV } from '../envtext'
 import { fmtDate, fmtDuration, fmtPoints, fmtToken, MAX_DURATION, MAX_POOL, MIN_POOL, parseAmount, TIERS } from '../model'
 
 const H = 3600
@@ -43,7 +44,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
     if (pool === null) out.push('Enter a pool amount.')
     else if (pool < MIN_POOL) out.push('The minimum pool is 100,000 WIF.')
     else if (pool > MAX_POOL) out.push('The maximum pool is 10,000,000 WIF.')
-    else if (wallet && pool > wif.balance) out.push('That is more demo WIF than this wallet holds.')
+    else if (wallet && pool > wif.balance) out.push(`That is more ${ENV.bal} WIF than this wallet holds.`)
     return out
   }, [title, description, maxP, joinWindow, hold, pool, wallet, wif, picked]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -70,7 +71,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
   }
 
   if (!wallet) {
-    return <div className="view"><section className="card"><header className="panel-head"><div><small className="kicker">New challenge</small><h2>Create a challenge</h2></div></header><button type="button" className="btn btn--lime btn--block" onClick={ctx.openWallet}>Connect demo wallet</button></section></div>
+    return <div className="view"><section className="card"><header className="panel-head"><div><small className="kicker">New challenge</small><h2>Create a challenge</h2></div></header><button type="button" className="btn btn--lime btn--block" onClick={ctx.openWallet}>Connect {ENV.wallet}</button></section></div>
   }
 
   return (
@@ -109,7 +110,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
         <label className="field"><span>Maximum participants</span><input inputMode="numeric" value={maxParticipants} onChange={(e) => setMaxParticipants(e.target.value.replace(/[^0-9]/g, ''))} /></label>
 
         <div className="amount-field">
-          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif.balance)} demo WIF available</span></div>
+          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif.balance)} {ENV.bal} WIF available</span></div>
           <div className="amount-input"><input id="pool" inputMode="decimal" value={poolText} onChange={(e) => setPoolText(e.target.value.replace(/[^0-9.]/g, ''))} /><span>WIF</span></div>
         </div>
 

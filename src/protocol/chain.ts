@@ -1,4 +1,4 @@
-import { Contract, Interface, NonceManager, Wallet, type JsonRpcApiProvider, type Signer } from 'ethers'
+import { BrowserProvider, Contract, Interface, NonceManager, Wallet, type Eip1193Provider, type JsonRpcApiProvider, type Signer } from 'ethers'
 import lockerAbi from './abi/RixorLocker.json'
 import challengesAbi from './abi/RixorChallenges.json'
 import rewardsAbi from './abi/RixorRewards.json'
@@ -31,7 +31,7 @@ export function contractsFor(manifest: Manifest, runner: JsonRpcApiProvider | Si
 
 // ------------------------------------------------------------------ wallets
 
-export type WalletKind = 'demo'
+export type WalletKind = 'demo' | 'browser'
 export type ConnectedWallet = { kind: WalletKind; address: string; signer: Signer; resetNonce?: () => void }
 
 /**
@@ -43,6 +43,20 @@ export function demoWalletFrom(key: string, provider: JsonRpcApiProvider): Conne
   const signer = new NonceManager(wallet)
   return { kind: 'demo', address: wallet.address, signer, resetNonce: () => signer.reset() }
 }
+
+/**
+ * The visitor's own browser wallet, for testnet mode. Bound to `chainId`: ethers refuses to send if the wallet is on
+ * another network, so a transaction can never land on the wrong chain. The wallet does the signing and the gas
+ * estimation (no gas limits are set anywhere in this app).
+ */
+export async function browserWalletFrom(eip1193: Eip1193Provider, address: string, chainId: number): Promise<ConnectedWallet> {
+  const provider = new BrowserProvider(eip1193, chainId)
+  const signer = await provider.getSigner(address)
+  return { kind: 'browser', address: await signer.getAddress(), signer }
+}
+
+/** TEST tokens on testnet expose a public, rate-limited faucet. */
+export const TEST_FAUCET_ABI = ['function faucet() returns (uint256)', 'function lastFaucet(address) view returns (uint256)']
 
 // ------------------------------------------------------------------ errors
 

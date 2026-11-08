@@ -4,6 +4,7 @@ import { Empty } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDuration, fmtPoints, fmtToken, pct, phaseOf, PHASE_LABEL, RISK_CLASS, TIERS, type Challenge } from '../model'
 import { HoldingsCard } from './Holdings'
+import { ENV, MODE } from '../envtext'
 
 type Filter = 'live' | 'ended' | 'mine'
 
@@ -81,7 +82,7 @@ export function Explore({ ctx }: { ctx: Ctx }) {
       <HoldingsCard ctx={ctx} />
 
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Token communities · browser simulation</small><h2>Tokens you can lock here</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">Token communities · {ENV.whereShort}</small><h2>Tokens you can lock here</h2></div></header>
         <ul className="token-list">
           {snapshot.tokens.map((t) => (
             <li key={t.address}>
@@ -94,7 +95,7 @@ export function Explore({ ctx }: { ctx: Ctx }) {
           ))}
         </ul>
         <p className="fine-print">
-          HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing.
+          {MODE === 'testnet' ? 'These are valueless TEST tokens deployed for the testnet demo. They represent no real asset.' : 'HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing.'}
           On Robinhood Chain, a token becomes supported only after exact-address vetting, approval and a 48-hour on-chain timelock.
         </p>
       </section>

@@ -40,23 +40,37 @@ listed. No script sets a gas limit: every transaction uses the node's `eth_estim
 
 ## 3. Testnet (Robinhood Chain testnet, chain id 46630)
 
-1. 🔒 Authorise testnet deployment.
-2. 🔒 Choose the deployer: a **fresh testnet-only** key that the project owner generates and holds (in a hardware
-   wallet or `cast wallet` keystore). It never holds a role and is never shared with anyone, including Claude.
-   Fund it from the testnet faucet.
-3. 🔒 Create two Safes on testnet (owner, guardian), each at least 2-of-3, with testnet-only signers.
-4. Deploy clearly named TEST tokens (for example "Rixor Test Meme A (TEST)") and a TEST reward token. Never reuse
-   real token names. Fill `deploy/config/testnet.template.json` → `deploy/config/testnet.json`.
-5. Deploy:
-   ```bash
-   RIXOR_CONFIG=deploy/config/testnet.json RIXOR_OWNER_SAFE=0x… RIXOR_GUARDIAN_SAFE=0x… \
-   node scripts/forge.mjs script script/DeployRixorV2.s.sol --rpc-url https://rpc.testnet.chain.robinhood.com \
-     --broadcast --ledger            # or --keystore <path>; never a raw key on the command line
-   RIXOR_DEPLOYMENT=deployments/46630.json node scripts/forge.mjs script script/VerifyRixorV2.s.sol \
-     --rpc-url https://rpc.testnet.chain.robinhood.com
-   ```
-6. Verify all three contracts on Sourcify with §1 settings.
-7. Point a testnet build of the frontend at `deployments/46630.json` and run the journey with real wallets.
+Rehearsed end to end on a local chain: `npm run rehearse:testnet` (9 checks) and the testnet-mode UI journey
+(`demo/e2e/testnet-journey.mjs`, 8 steps). Every 🔒 step waits for the project owner's written approval.
+
+**Prepared defaults** (`script/DeployTestnetTokens.s.sol`; reviewable before anything is sent):
+
+| Item | Value |
+|---|---|
+| tMEMEA "Rixor Test Meme A (TEST)" | 18 decimals, 1,000,000,000 supply, faucet 100,000/day, **Class A**, unit 1,000, cap 20,000,000 (2%) |
+| tMEMEB "Rixor Test Meme B (TEST)" | **6 decimals**, 1,000,000,000 supply, faucet 100,000/day, **Class B**, unit 1,000, cap 10,000,000 (1%) |
+| tWIF "Rixor Test Reward (TEST)" | 18 decimals, 1,000,000,000 supply, faucet 250,000/day; reward token only |
+| Challenge minimum hold | 3,600 s (contract minimum; production 86,400 s) |
+| Lock terms | Unchanged production rules: Committed/Diamond 30–90 days (Class B ≤ 60); Flexible any time |
+| TEST reward funding | 140,000 tWIF / 14 days to tMEMEA, 70,000 tWIF / 14 days to tMEMEB (`SeedTestnetRewards`; refuses non-TEST reward tokens) |
+
+TEST tokens refuse to deploy on mainnet, have no owner, and have public rate-limited faucets (acceptable only because
+they are valueless; a real token with a mint would fail vetting).
+
+**Sequence** (signer: the owner's testnet-only deployer via `--ledger` or `--keystore`; never a raw key):
+
+1. 🔒 Approve testnet deployment and these defaults.
+2. 🔒 The owner creates the deployer key and funds it from the testnet faucet.
+3. 🔒 Create the owner and guardian Safes (Safe v1.5.0, ≥ 3 signers, threshold ≥ 2, at least one guardian signer not
+   an owner signer, the deployer not a signer). Note: Safe{Wallet}'s web app disables MetaMask, Ledger, WalletConnect
+   and most other connectors on Robinhood testnet, so creation and operation may need another Safe client (decision).
+4. `DeployTestnetTokens` → writes `deployments/46630-testnet-config.json`. Review it.
+5. `DeployRixorV2` with that config and the two Safes (its guards reject anything that is not a genuine Safe proxy
+   meeting the rules above) → `deployments/46630.json`.
+6. `VerifyRixorV2` (read-only), then Sourcify verification of the three Rixor contracts and the TEST tokens.
+7. `SeedTestnetRewards` (deployer funds the two TEST streams).
+8. Publish `deployments/46630.json` as `public/testnet/deployment.json` (or set `VITE_RIXOR_TESTNET_MANIFEST`) in a
+   preview build; the app's **Testnet** tab activates. Run the journey with a real wallet.
 
 ## 4. Mainnet (chain id 4663), after an independent review
 

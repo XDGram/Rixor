@@ -67,6 +67,8 @@ try {
   // anvil's default account is EIP-7702-delegated on Robinhood mainnet (23 bytes of code): it must still be refused.
   check('guard: EIP-7702-delegated EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: deployer }).status !== 0)
   check('guard: plain EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: '0x00000000000000000000000000000000000Be111' }).status !== 0)
+  check('guard: non-Safe contract owner rejected', refuse({ RIXOR_OWNER_SAFE: WIF }).status !== 0)
+  check('guard: guardian sharing every owner signer rejected', refuse({ RIXOR_GUARDIAN_SAFE: logged(safesOut, 'LOCAL shared-signer Safe') }).status !== 0)
   check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
 
   // ------------------------------------------------------------------ smoke journey (impersonated holders)
