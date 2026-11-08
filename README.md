@@ -44,6 +44,10 @@ The current build supports **Sepolia** and **Robinhood Chain Testnet**. It is a 
 
 ![Rixor security section](docs/screenshots/security.png)
 
+### Mobile
+
+<img src="docs/screenshots/mobile-home.png" alt="Rixor on mobile" width="320" />
+
 ## Smart-contract behavior
 
 The current Solidity contract is `contracts/RixorSavings.sol`.

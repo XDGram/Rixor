@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
 import { Interface, decodeBytes32String, encodeBytes32String, formatEther, formatUnits } from 'ethers'
 
@@ -111,24 +112,15 @@ export default function App() {
   const rixorInterface = useMemo(() => new Interface(rixorSavingsArtifact.abi), [])
   const deployedSepoliaAddress = '0x1B644D969D0b755770033AC332BaCCeFBdbc18bA'
   const deployedRobinhoodTestnetAddress = '0xeFddb13d2d3a88E65C0e935603eA26a849f6239b'
-  const [lightMode, setLightMode] = useState(() => window.localStorage.getItem('rixor:theme') === 'light')
-  const [amount, setAmount] = useState('1000')
-  const [plan, setPlan] = useState<'flexible' | 'locked'>('flexible')
-  const [openHowCard, setOpenHowCard] = useState<string | null>(null)
-  const [howInView, setHowInView] = useState(false)
-  const [plansInView, setPlansInView] = useState(false)
-  const [securityInView, setSecurityInView] = useState(false)
-  const [activeSection, setActiveSection] = useState<'save' | 'how' | 'plans' | 'security'>('save')
+  const [lightMode, setLightMode] = useState(() => window.localStorage.getItem('rixor:theme-v2') !== 'dark')
   const [navCompact, setNavCompact] = useState(false)
   const [planTerm, setPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365'>('90')
-  const [planAmount, setPlanAmount] = useState(2500)
   const [walletModalOpen, setWalletModalOpen] = useState(false)
   const [walletConnecting, setWalletConnecting] = useState<string | null>(null)
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const [dashboardView, setDashboardView] = useState(true)
   const [dashboardNavTab, setDashboardNavTab] = useState<'home' | 'diamond'>('home')
-  const [dashboardNavTransitioning, setDashboardNavTransitioning] = useState(false)
   const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
   const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
@@ -186,16 +178,7 @@ export default function App() {
   const [planExtendTxHash, setPlanExtendTxHash] = useState('')
   const [planExtendTxError, setPlanExtendTxError] = useState('')
   const [ethUsdPrice, setEthUsdPrice] = useState<number | null>(null)
-  const savingsPanelRef = useRef<HTMLElement>(null)
-  const howSectionRef = useRef<HTMLElement>(null)
-  const plansSectionRef = useRef<HTMLElement>(null)
-  const securitySectionRef = useRef<HTMLElement>(null)
   const reconnectAttemptedRef = useRef(false)
-  const apy = plan === 'flexible' ? 3.8 : 6.8
-  const projected = useMemo(() => {
-    const parsed = Number(amount.replace(/,/g, '')) || 0
-    return (parsed * apy) / 100
-  }, [amount, apy])
 
   const shortAddress = (address: string) => {
     if (address.length <= 12) return address
@@ -222,6 +205,7 @@ export default function App() {
       setWalletModalOpen(false)
       if (pendingWalletAction === 'start-plan') {
         setStartPlanStep('setup')
+        setStartPlanTxStatus('idle')
         if (pendingPlanTerm) setStartPlanTerm(pendingPlanTerm)
         setStartPlanAmount('')
         setStartPlanOpen(true)
@@ -272,17 +256,8 @@ export default function App() {
   }
 
   const switchDashboardSection = (next: 'home' | 'diamond') => {
-    if (dashboardNavTransitioning) return
-
-    setDashboardNavTransitioning(true)
-    window.setTimeout(() => {
-      setDashboardNavTab(next)
-      window.scrollTo({ top: 0, behavior: 'auto' })
-
-      window.requestAnimationFrame(() => {
-        window.setTimeout(() => setDashboardNavTransitioning(false), 180)
-      })
-    }, 170)
+    setDashboardNavTab(next)
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const evmNetworks = [
@@ -320,19 +295,18 @@ export default function App() {
       <svg viewBox="0 0 32 52" role="presentation">
         <path d="M16 0 0 26.5 16 36 32 26.5 16 0Z" fill="currentColor" opacity=".92" />
         <path d="M16 38.8 0 29.6 16 52 32 29.6 16 38.8Z" fill="currentColor" opacity=".58" />
-        <path d="M16 5.8v24.1l11.5-4.3L16 5.8Z" fill="rgba(255,255,255,.22)" />
       </svg>
     </span>
   )
 
-  const renderRixorBrand = (compact = false) => (
-    <span className={`rixor-brand-lockup ${compact ? 'is-compact' : ''}`} aria-label="Rixor">
-      <svg className="rixor-brand-mark" viewBox="0 0 36 36" role="presentation" aria-hidden="true">
+  const renderRixorBrand = () => (
+    <span className="brand" aria-label="Rixor">
+      <svg className="brand-mark" viewBox="0 0 36 36" role="presentation" aria-hidden="true">
         <path d="M4 5h14.2c7.5 0 12.8 4.7 12.8 11.2 0 4.1-2 7.6-5.5 9.6l-4.7-5.1c2.1-.9 3.4-2.4 3.4-4.5 0-2.8-2.2-4.7-5.5-4.7H9.8L4 5Z" />
         <path d="M4 31V21.1l12.7-9.2 5.1 5.4L4 31Z" />
         <path d="M15.6 22.6l5.3-4 10.2 12.4h-8.6l-6.9-8.4Z" />
       </svg>
-      <span className="rixor-brand-word">RIXOR</span>
+      <span className="brand-word">Rixor</span>
     </span>
   )
   const deploymentAdminAddress = '0x844c0e2b7e282156f3b5d006ad40dba3b28e5867'
@@ -1401,8 +1375,24 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem('rixor:theme', lightMode ? 'light' : 'dark')
+    window.localStorage.setItem('rixor:theme-v2', lightMode ? 'light' : 'dark')
   }, [lightMode])
+
+  useEffect(() => {
+    const sheetOpen = walletModalOpen || addMoneyOpen
+    document.body.classList.toggle('no-scroll', sheetOpen)
+    if (!sheetOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setWalletModalOpen(false)
+      setAddMoneyOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.classList.remove('no-scroll')
+    }
+  }, [walletModalOpen, addMoneyOpen])
 
   useEffect(() => {
     window.localStorage.removeItem('rixor:testnet-contracts')
@@ -1429,29 +1419,6 @@ export default function App() {
       window.clearInterval(interval)
     }
   }, [])
-
-  useEffect(() => {
-    if (!walletSession || !dashboardView) return
-
-    const updateAmbientChainPosition = () => {
-      const scrollY = window.scrollY
-      const viewportHeight = Math.max(window.innerHeight, 1)
-      const sectionProgress = scrollY / viewportHeight
-      document.documentElement.style.setProperty('--chain-parallax-y', `${Math.min(sectionProgress * 24, 110)}px`)
-      document.documentElement.style.setProperty('--chain-parallax-rotate', `${Math.max(-3, Math.min(3, sectionProgress * 0.55 - 1.5))}deg`)
-    }
-
-    updateAmbientChainPosition()
-    window.addEventListener('scroll', updateAmbientChainPosition, { passive: true })
-    window.addEventListener('resize', updateAmbientChainPosition)
-
-    return () => {
-      window.removeEventListener('scroll', updateAmbientChainPosition)
-      window.removeEventListener('resize', updateAmbientChainPosition)
-      document.documentElement.style.removeProperty('--chain-parallax-y')
-      document.documentElement.style.removeProperty('--chain-parallax-rotate')
-    }
-  }, [walletSession, dashboardView])
 
   useEffect(() => {
     if (walletSession || reconnectAttemptedRef.current || detectedWallets.length === 0) return
@@ -1490,17 +1457,6 @@ export default function App() {
     })()
   }, [detectedWallets, walletSession])
 
-  const focusSavingsPanel = () => {
-    savingsPanelRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    })
-
-    window.setTimeout(() => {
-      savingsPanelRef.current?.focus({ preventScroll: true })
-    }, 550)
-  }
-
   const openWalletFor = (
     action: 'dashboard' | 'start-plan' = 'dashboard',
     term?: 'flexible' | '30' | '90' | '180' | '365',
@@ -1509,6 +1465,7 @@ export default function App() {
       setDashboardView(true)
       if (action === 'start-plan') {
         setStartPlanStep('setup')
+        setStartPlanTxStatus('idle')
         if (term) setStartPlanTerm(term)
         setStartPlanAmount('')
         setStartPlanGoal('emergency')
@@ -1524,25 +1481,8 @@ export default function App() {
     setWalletModalOpen(true)
   }
 
-  const scrollToHowItWorks = () => {
-    document.getElementById('how-it-works')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    })
-  }
-
-  const scrollToPlans = () => {
-    document.getElementById('plans')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    })
-  }
-
-  const scrollToSecurity = () => {
-    document.getElementById('security')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    })
+  const scrollToSection = (sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const openPublicSection = (sectionId: 'home' | 'how-it-works' | 'plans' | 'security') => {
@@ -1552,102 +1492,15 @@ export default function App() {
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
-      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      scrollToSection(sectionId)
     }, 60)
   }
 
-  const toggleHowCard = (card: string) => {
-    setOpenHowCard((current) => current === card ? null : card)
-  }
-
   useEffect(() => {
-    const section = howSectionRef.current
-    if (!section) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setHowInView(entry.isIntersecting)
-      },
-      {
-        threshold: 0.16,
-        rootMargin: '0px 0px -8% 0px',
-      },
-    )
-
-    observer.observe(section)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const section = plansSectionRef.current
-    if (!section) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setPlansInView(entry.isIntersecting)
-      },
-      {
-        threshold: 0.18,
-        rootMargin: '0px 0px -10% 0px',
-      },
-    )
-
-    observer.observe(section)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const section = securitySectionRef.current
-    if (!section) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setSecurityInView(entry.isIntersecting)
-      },
-      {
-        threshold: 0.2,
-        rootMargin: '0px 0px -12% 0px',
-      },
-    )
-
-    observer.observe(section)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const updateNavState = () => {
-      setNavCompact(window.scrollY > 90)
-
-      const sections = [
-        { id: 'save', element: document.getElementById('save') },
-        { id: 'how', element: document.getElementById('how-it-works') },
-        { id: 'plans', element: document.getElementById('plans') },
-        { id: 'security', element: document.getElementById('security') },
-      ] as const
-
-      const probe = window.innerHeight * 0.34
-      let current: 'save' | 'how' | 'plans' | 'security' = 'save'
-
-      for (const section of sections) {
-        if (!section.element) continue
-        const rect = section.element.getBoundingClientRect()
-        if (rect.top <= probe && rect.bottom > probe) {
-          current = section.id
-          break
-        }
-      }
-
-      setActiveSection(current)
-    }
-
+    const updateNavState = () => setNavCompact(window.scrollY > 12)
     updateNavState()
     window.addEventListener('scroll', updateNavState, { passive: true })
-    window.addEventListener('resize', updateNavState)
-
-    return () => {
-      window.removeEventListener('scroll', updateNavState)
-      window.removeEventListener('resize', updateNavState)
-    }
+    return () => window.removeEventListener('scroll', updateNavState)
   }, [])
 
   const planOptions = [
@@ -1659,10 +1512,6 @@ export default function App() {
   ] as const
 
   const selectedPlan = planOptions.find((option) => option.id === planTerm) ?? planOptions[2]
-  const selectedPlanIndex = planOptions.findIndex((option) => option.id === planTerm)
-  const planEarnings = planTerm === 'flexible'
-    ? (planAmount * selectedPlan.apy) / 100
-    : (planAmount * selectedPlan.apy * selectedPlan.days) / 36500
   const maturityDate = useMemo(() => {
     if (planTerm === 'flexible') return 'Anytime'
     const date = new Date()
@@ -1679,9 +1528,6 @@ export default function App() {
   const startPlanAvailableBalance = Number(contractAvailableBalance)
   const startPlanInsufficient = startPlanParsed > startPlanAvailableBalance && startPlanParsed > 0
   const startPlanValid = startPlanParsed > 0 && startPlanParsed <= startPlanAvailableBalance
-  const startPlanProjected = startPlanTerm === 'flexible'
-    ? (startPlanParsed * startPlanSelected.apy) / 100
-    : (startPlanParsed * startPlanSelected.apy * startPlanSelected.days) / 36500
   const startPlanMaturity = useMemo(() => {
     if (startPlanTerm === 'flexible') return 'Anytime'
     const date = new Date()
@@ -1693,7 +1539,14 @@ export default function App() {
     })
   }, [startPlanTerm, startPlanSelected.days])
 
+  const resetStartPlanTx = () => {
+    setStartPlanTxStatus('idle')
+    setStartPlanTxHash('')
+    setStartPlanTxError('')
+  }
+
   const openStartPlan = () => {
+    resetStartPlanTx()
     setStartPlanStep('setup')
     setStartPlanTerm('90')
     setStartPlanAmount('')
@@ -1706,6 +1559,9 @@ export default function App() {
     setSelectedPlanId(null)
     setWithdrawStep('setup')
     setWithdrawAmount('')
+    setWithdrawTxStatus('idle')
+    setWithdrawTxHash('')
+    setWithdrawTxError('')
     setWithdrawOpen(true)
   }
 
@@ -1752,2333 +1608,1459 @@ export default function App() {
 
   const selectedGoal = savingsGoals.find((goal) => goal.id === startPlanGoal) ?? savingsGoals[0]
 
-  const actionArrow = (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 74 74"
-      height="34"
-      width="34"
-      aria-hidden="true"
-    >
-      <circle strokeWidth="3" stroke="currentColor" r="35.5" cy="37" cx="37" />
-      <path
-        fill="currentColor"
-        d="M25 35.5C24.1716 35.5 23.5 36.1716 23.5 37C23.5 37.8284 24.1716 38.5 25 38.5V35.5ZM49.0607 38.0607C49.6464 37.4749 49.6464 36.5251 49.0607 35.9393L39.5147 26.3934C38.9289 25.8076 37.9792 25.8076 37.3934 26.3934C36.8076 26.9792 36.8076 27.9289 37.3934 28.5147L45.8787 37L37.3934 45.4853C36.8076 46.0711 36.8076 47.0208 37.3934 47.6066C37.9792 48.1924 38.9289 48.1924 39.5147 47.6066L49.0607 38.0607ZM25 38.5L48 38.5V35.5L25 35.5V38.5Z"
-      />
+  const iconPaths = {
+    arrowRight: 'M5 12h14M13 6l6 6-6 6',
+    arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
+    arrowUpRight: 'M7 17 17 7M8 7h9v9',
+    arrowDown: 'M12 5v14M6 13l6 6 6-6',
+    arrowUp: 'M12 19V5M6 11l6-6 6 6',
+    plus: 'M12 5v14M5 12h14',
+    close: 'M6 6l12 12M18 6 6 18',
+    check: 'M5 12.5l4.5 4.5L19 7',
+    info: 'M12 11v5M12 8v.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+    refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',
+    sun: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+    moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z',
+    home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9.5Z',
+    diamond: 'M6 4h12l3 5-9 11L3 9l3-5ZM3 9h18M10 4 8 9l4 11 4-11-2-5',
+    lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5V11Z',
+    clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  } as const
+
+  const icon = (name: keyof typeof iconPaths, size = 18) => (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={iconPaths[name]} />
+    </svg>
+  )
+
+  const fmtEth = (value: number, digits = 4) => (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+  const fmtUsd = (value: number) => value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+  const explorerTx = (hash: string) => (hash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${hash}` : undefined)
+  const isBusy = (status: string) => status === 'awaiting-wallet' || status === 'pending'
+  const termShort = ['Flex', '30D', '90D', '180D', '1Y']
+  const savedInPlans = activePlans.reduce((total, item) => total + item.principalAmount, 0)
+  const sepoliaContractUrl = `https://sepolia.etherscan.io/address/${deployedSepoliaAddress}`
+  const robinhoodContractUrl = `https://explorer.testnet.chain.robinhood.com/address/${deployedRobinhoodTestnetAddress}`
+
+  const renderTxProgress = (status: string, approveTitle: string, pendingTitle: string, detail: string) => (
+    isBusy(status) ? (
+      <div className="tx-progress" role="status" aria-live="polite">
+        <span className="spinner" aria-hidden="true" />
+        <div>
+          <small>{status === 'awaiting-wallet' ? 'Waiting for your wallet' : 'Confirming onchain'}</small>
+          <strong>{status === 'awaiting-wallet' ? approveTitle : pendingTitle}</strong>
+          <span>{detail}</span>
+        </div>
+      </div>
+    ) : null
+  )
+
+  const renderTxError = (title: string, message: string) => (
+    <div className="notice notice--error" role="alert">
+      <strong>{title}</strong>
+      <span>{message || 'The transaction did not complete.'}</span>
+    </div>
+  )
+
+  const renderReceipt = (hash: string, kicker: string, title: string, detail: ReactNode, loss = false) => (
+    <a className="receipt" href={explorerTx(hash)} target="_blank" rel="noreferrer">
+      <span className="receipt-check">{icon('check', 22)}</span>
+      <span className="receipt-copy">
+        <small>{kicker}</small>
+        <strong>{title}</strong>
+        <span className={loss ? 'is-loss' : ''}>{detail}</span>
+      </span>
+      <span className="receipt-link">Receipt {icon('arrowUpRight', 14)}</span>
+    </a>
+  )
+
+  const renderRows = (rows: Array<[string, ReactNode, string?]>) => (
+    <dl className="rows">
+      {rows.map(([label, value, className]) => (
+        <div key={label} className={className}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+
+  const renderAmountField = (options: {
+    id: string
+    label: string
+    value: string
+    onChange: (value: string) => void
+    balance: number
+    balanceLabel: string
+    insufficient: boolean
+    insufficientCopy: ReactNode
+    onMax?: () => void
+    maxLabel?: string
+  }) => (
+    <div className="amount-field">
+      <div className="amount-field-head">
+        <label htmlFor={options.id}>{options.label}</label>
+        <span className={options.insufficient ? 'is-error' : ''}>{options.balanceLabel}</span>
+      </div>
+      <div className={`amount-input ${options.insufficient ? 'is-error' : ''}`}>
+        <input
+          id={options.id}
+          inputMode="decimal"
+          autoComplete="off"
+          value={options.value}
+          onChange={(event) => options.onChange(event.target.value.replace(/[^0-9.]/g, ''))}
+          placeholder="0.00"
+        />
+        <span>ETH</span>
+      </div>
+      <div className="chip-row" aria-label="Quick amounts">
+        {[25, 50, 75].map((percent) => (
+          <button
+            key={percent}
+            type="button"
+            className="chip"
+            disabled={options.balance <= 0}
+            onClick={() => options.onChange(((options.balance * percent) / 100).toFixed(4))}
+          >
+            {percent}%
+          </button>
+        ))}
+        <button
+          type="button"
+          className="chip"
+          disabled={options.balance <= 0}
+          onClick={() => (options.onMax ? options.onMax() : options.onChange(String(options.balance)))}
+        >
+          {options.maxLabel ?? 'Max'}
+        </button>
+      </div>
+      {options.insufficient && <div className="field-error">{options.insufficientCopy}</div>}
+    </div>
+  )
+
+  const renderNetPill = () => walletSession && (
+    <span className="net-pill">
+      {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
+      <span className="net-pill-name">{currentEvmNetwork?.shortName ?? 'Testnet'}</span>
+      <b>{shortAddress(walletSession.address)}</b>
+    </span>
+  )
+
+  const renderFlowBar = (onBack: () => void) => (
+    <header className={`flow-bar ${navCompact ? 'is-scrolled' : ''}`}>
+      <div className="container flow-bar-inner">
+        <button type="button" className="back-btn" onClick={onBack} aria-label="Back to dashboard">
+          {icon('arrowLeft')}
+          <span>Dashboard</span>
+        </button>
+        <span className="flow-bar-brand">{renderRixorBrand()}</span>
+        {renderNetPill()}
+      </div>
+    </header>
+  )
+
+  const renderSheet = (options: { id: string; kicker: string; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) => (
+    <div className="sheet-backdrop" role="presentation" onMouseDown={options.onClose}>
+      <section
+        className={`sheet ${options.wide ? 'sheet--wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={options.id}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="sheet-handle" aria-hidden="true" />
+        <header className="sheet-head">
+          <div>
+            <small className="kicker">{options.kicker}</small>
+            <h2 id={options.id}>{options.title}</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={options.onClose} aria-label="Close">
+            {icon('close')}
+          </button>
+        </header>
+        {options.children}
+      </section>
+    </div>
+  )
+
+  const renderWalletSheet = () => {
+    if (!walletModalOpen) return null
+
+    if (walletSession) {
+      return renderSheet({
+        id: 'wallet-sheet-title',
+        kicker: 'Your wallet',
+        title: 'Connected',
+        onClose: () => setWalletModalOpen(false),
+        children: (
+          <>
+            <div className="wallet-identity">
+              {walletSession.kind === 'evm' && currentEvmNetwork ? renderChainIcon(currentEvmNetwork.id) : <span className="dot-live" />}
+              <div>
+                <small>{walletSession.name}</small>
+                <strong>{shortAddress(walletSession.address)}</strong>
+                {walletSession.kind === 'evm' && <span>{nativeBalance} ETH in wallet</span>}
+              </div>
+            </div>
+            {walletSession.kind === 'evm' && (
+              <div className="sheet-section">
+                <small className="kicker">Network</small>
+                <div className="net-switch net-switch--block">
+                  {evmNetworks.map((network) => (
+                    <button
+                      key={network.id}
+                      type="button"
+                      className={evmChainId === network.id ? 'is-active' : ''}
+                      onClick={() => switchEvmNetwork(network.id)}
+                      disabled={networkSwitching !== null}
+                    >
+                      {renderChainIcon(network.id)}
+                      <span>{networkSwitching === network.id ? 'Switching…' : network.shortName}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="sheet-actions">
+              <button type="button" className="btn btn--ghost" onClick={() => openPublicSection('home')}>About Rixor</button>
+              <button type="button" className="btn btn--dark" onClick={disconnectWallet}>Disconnect</button>
+            </div>
+          </>
+        ),
+      })
+    }
+
+    return renderSheet({
+      id: 'wallet-sheet-title',
+      kicker: 'Rixor access',
+      title: 'Connect a wallet',
+      onClose: () => setWalletModalOpen(false),
+      children: (
+        <>
+          <p className="sheet-copy">
+            Your wallet is your Rixor account. Connecting shares your public address only. No funds move until you approve a transaction.
+          </p>
+          <div className="wallet-list">
+            {detectedWallets.map((wallet) => (
+              <button
+                key={wallet.id}
+                type="button"
+                className="wallet-option"
+                onClick={() => connectEvmWallet(wallet)}
+                disabled={walletConnecting !== null}
+              >
+                <span className="wallet-option-mark" aria-hidden="true">
+                  <svg viewBox="0 0 256 417" role="presentation">
+                    <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".7" />
+                    <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
+                    <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".7" />
+                    <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
+                  </svg>
+                </span>
+                <span className="wallet-option-copy">
+                  <strong>{wallet.name}</strong>
+                  <small>EVM wallet detected</small>
+                </span>
+                <em>{walletConnecting === wallet.id ? 'Connecting…' : 'Connect'}</em>
+              </button>
+            ))}
+            {detectedWallets.length === 0 && (
+              <div className="empty">
+                <strong>No wallet found in this browser.</strong>
+                <span>Install an EVM wallet such as MetaMask, Coinbase Wallet, Rabby or Zerion, or open Rixor inside your wallet's built-in browser.</span>
+              </div>
+            )}
+          </div>
+          {walletError && renderTxError('Could not connect', walletError)}
+          <p className="sheet-foot">{icon('lock', 14)} Rixor never asks for your seed phrase or private key.</p>
+        </>
+      ),
+    })
+  }
+
+  const renderAddMoneySheet = () => {
+    if (!addMoneyOpen || !walletSession) return null
+    const amountValue = Number(addMoneyAmount || 0)
+    const walletAfter = Math.max(0, Number(nativeBalance) - amountValue)
+
+    return renderSheet({
+      id: 'add-money-title',
+      kicker: 'Testnet funding',
+      title: addMoneyStep === 'amount' ? 'Add money' : 'Review deposit',
+      onClose: () => setAddMoneyOpen(false),
+      children: walletSession.kind !== 'evm' ? (
+        <div className="empty">
+          <strong>EVM wallet required.</strong>
+          <span>Deposits run on Sepolia and Robinhood Chain Testnet.</span>
+        </div>
+      ) : addMoneyStep === 'amount' ? (
+        <>
+          <div className="source-card">
+            {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
+            <div>
+              <small>From your wallet on</small>
+              <strong>{currentEvmNetwork?.shortName ?? 'Unsupported network'}</strong>
+            </div>
+            <span className="source-card-balance">{nativeBalance} ETH</span>
+          </div>
+
+          {renderAmountField({
+            id: 'add-money-amount',
+            label: 'Amount',
+            value: addMoneyAmount,
+            onChange: setAddMoneyAmount,
+            balance: Number(nativeBalance),
+            balanceLabel: `${nativeBalance} ETH available`,
+            insufficient: addMoneyInsufficient,
+            insufficientCopy: 'That is more than this wallet holds. Top up the wallet first.',
+            onMax: () => void setGasSafeDepositMax(),
+            maxLabel: 'Max (keep gas)',
+          })}
+
+          {renderRows([
+            ['Asset', 'Testnet ETH'],
+            ['Wallet after deposit', `${fmtEth(walletAfter)} ETH`],
+            ['Lands in', 'Your Rixor available balance'],
+          ])}
+
+          {!currentEvmNetwork && <div className="notice">Switch to Sepolia or Robinhood Testnet before continuing.</div>}
+
+          <button
+            type="button"
+            className="btn btn--dark btn--block btn--lg"
+            disabled={!currentEvmNetwork || !addMoneyValid}
+            onClick={() => setAddMoneyStep('review')}
+          >
+            Review deposit {icon('arrowRight')}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="review-figure">
+            <small>You deposit</small>
+            <strong>{fmtEth(amountValue)} <em>ETH</em></strong>
+            {ethUsdPrice && <span>≈ {fmtUsd(amountValue * ethUsdPrice)}</span>}
+          </div>
+
+          {renderRows([
+            ['Network', <span className="inline-chain">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Unknown'}</span>],
+            ['From', shortAddress(walletSession.address)],
+            ['Wallet after', `${fmtEth(walletAfter)} ETH`],
+            ['Contract', currentRixorContractAddress ? shortAddress(currentRixorContractAddress) : 'Not deployed here'],
+          ])}
+
+          <p className="fine-print">
+            {currentRixorContractAddress
+              ? 'Your wallet will ask you to approve one testnet transaction.'
+              : 'Rixor is not deployed on this network. No funds will be sent to a placeholder address.'}
+          </p>
+
+          {renderTxProgress(addMoneyTxStatus, 'Approve the deposit in your wallet', 'Adding money to Rixor…', `${fmtEth(amountValue)} ETH · ${currentEvmNetwork?.shortName ?? 'Testnet'}`)}
+          {addMoneyTxStatus === 'failed' && renderTxError('Deposit failed', addMoneyTxError)}
+          {addMoneyTxStatus === 'confirmed' && (
+            <>
+              {renderReceipt(addMoneyTxHash, 'Deposit confirmed', `${fmtEth(amountValue)} ETH added`, 'Now in your Rixor available balance')}
+              <button type="button" className="btn btn--dark btn--block btn--lg" onClick={() => setAddMoneyOpen(false)}>Done</button>
+            </>
+          )}
+
+          {!isBusy(addMoneyTxStatus) && addMoneyTxStatus !== 'confirmed' && (
+            <div className="btn-pair">
+              <button type="button" className="btn btn--ghost btn--lg" onClick={() => setAddMoneyStep('amount')}>Back</button>
+              <button type="button" className="btn btn--lime btn--lg" disabled={!currentRixorContractAddress} onClick={depositToRixor}>
+                Confirm deposit
+              </button>
+            </div>
+          )}
+        </>
+      ),
+    })
+  }
+
+  const renderOutlineNumeral = (text: string, label: string) => (
+    <svg className="outline-numeral" viewBox="0 0 560 320" role="img" aria-label={label}>
+      {Array.from({ length: 22 }, (_, index) => 22 - index).map((depth) => (
+        <text key={depth} x={70 - depth * 1.7} y={250 + depth * 1.7} className={depth === 22 ? 'num-back' : 'num-mid'}>{text}</text>
+      ))}
+      <text x="70" y="250" className="num-front">{text}</text>
     </svg>
   )
 
   if (walletSession && selectedActivePlan) {
+    const quote = selectedPlanExitQuote
+    const progress = Math.min(100, Math.max(0, selectedActivePlan.progress))
+    const extendLabel = planOptions.find((option) => option.id === planExtendTerm)?.label ?? ''
+
     return (
-      <main className={`carbon-stage plan-detail-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
-        <div className="carbon-layer carbon-base" aria-hidden="true" />
-        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
-        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
-        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+      <main className={`app flow ${lightMode ? 'theme-light' : 'theme-dark'}`}>
+        {renderFlowBar(() => setSelectedPlanId(null))}
 
-        <header className="plan-detail-topbar">
-          <button type="button" className="plan-detail-back" onClick={() => setSelectedPlanId(null)}>
-            <span>←</span>
-            Back to dashboard
-          </button>
-          <span className="plan-detail-brand">{renderRixorBrand(true)}</span>
-          <div className="plan-detail-network">
-            <div className="chain-inline-label">
-              {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
-              <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
-            </div>
-            <strong>{shortAddress(walletSession.address)}</strong>
-          </div>
-        </header>
-
-        <section className="plan-detail-shell">
-          <div className="plan-detail-hero">
-            <span>{selectedActivePlan.status === 'matured' ? 'MATURED PLAN' : 'ACTIVE PLAN'}</span>
+        <div className="container flow-body">
+          <section className="flow-hero">
+            <p className="eyebrow">{selectedActivePlan.status === 'matured' ? 'Matured plan' : 'Active plan'} · #{selectedActivePlan.id}</p>
             <h1>{selectedActivePlan.goal}</h1>
-            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.apy}% rate · rewards in $RIXOR</p>
-          </div>
+            <p>{selectedActivePlan.termLabel} · {selectedActivePlan.accessLabel}</p>
+          </section>
 
-          <div className="plan-detail-grid">
-            <article className="plan-detail-primary">
-              <span>PRINCIPAL</span>
-              <strong>{selectedActivePlan.principalAmount.toFixed(4)} <em>{selectedActivePlan.principalAsset}</em></strong>
+          <div className="flow-grid">
+            <div className="flow-main">
+              <section className="card principal-card">
+                <small className="label">Principal</small>
+                <p className="figure">{fmtEth(selectedActivePlan.principalAmount)} <em>{selectedActivePlan.principalAsset}</em></p>
+                {ethUsdPrice && <span className="figure-sub">≈ {fmtUsd(selectedActivePlan.principalAmount * ethUsdPrice)}</span>}
 
-              <div className="plan-detail-progress-head">
-                <div>
-                  <small>PLAN PROGRESS</small>
-                  <strong>{Math.round(selectedActivePlan.progress)}%</strong>
+                <div className="progress-block">
+                  <div className="progress-head">
+                    <span>{Math.round(progress)}% of term complete</span>
+                    <span>{selectedActivePlan.maturesAt ? `Matures ${formatPlanDate(selectedActivePlan.maturesAt)}` : selectedActivePlan.accessLabel}</span>
+                  </div>
+                  <div className="progress"><i style={{ width: `${progress}%` }} /></div>
                 </div>
-                <div>
-                  <small>{selectedActivePlan.maturesAt ? 'MATURITY' : 'ACCESS'}</small>
-                  <strong>{selectedActivePlan.maturesAt ? formatPlanDate(selectedActivePlan.maturesAt) : selectedActivePlan.accessLabel}</strong>
-                </div>
+              </section>
+
+              <div className="action-tiles">
+                <button
+                  type="button"
+                  className={planWithdrawReviewOpen ? 'is-active' : ''}
+                  onClick={() => {
+                    setPlanWithdrawTxStatus('idle')
+                    setPlanWithdrawTxHash('')
+                    setPlanWithdrawTxError('')
+                    setPlanWithdrawReviewOpen(true)
+                    setPlanTopUpOpen(false)
+                    setPlanExtendOpen(false)
+                  }}
+                >
+                  {icon('arrowUp')}
+                  <strong>Withdraw</strong>
+                  <small>See the exact exit cost first.</small>
+                </button>
+                <button
+                  type="button"
+                  className={planTopUpOpen ? 'is-active' : ''}
+                  onClick={() => {
+                    setPlanTopUpOpen(true)
+                    setPlanExtendOpen(false)
+                    setPlanWithdrawReviewOpen(false)
+                    setPlanTopUpAmount('')
+                    setPlanTopUpTxStatus('idle')
+                    setPlanTopUpTxHash('')
+                    setPlanTopUpTxError('')
+                  }}
+                >
+                  {icon('plus')}
+                  <strong>Add more</strong>
+                  <small>From your available balance.</small>
+                </button>
+                <button
+                  type="button"
+                  className={planExtendOpen ? 'is-active' : ''}
+                  disabled={extensionOptions.length === 0}
+                  onClick={() => {
+                    const nextOption = extensionOptions[0]
+                    if (!nextOption || nextOption.id === 'flexible') return
+                    setPlanExtendTerm(nextOption.id)
+                    setPlanExtendOpen(true)
+                    setPlanTopUpOpen(false)
+                    setPlanWithdrawReviewOpen(false)
+                    setPlanExtendTxStatus('idle')
+                    setPlanExtendTxHash('')
+                    setPlanExtendTxError('')
+                  }}
+                >
+                  {icon('clock')}
+                  <strong>Extend</strong>
+                  <small>{extensionOptions.length ? 'Restart on a longer lock.' : 'Already on the longest term.'}</small>
+                </button>
               </div>
 
-              <div className="plan-detail-progress-track">
-                <span style={{ width: `${Math.min(100, Math.max(0, selectedActivePlan.progress))}%` }} />
-              </div>
-            </article>
+              {planTopUpOpen && (
+                <section className="card action-panel">
+                  <header className="panel-head">
+                    <div><small className="kicker">Add more</small><h2>Increase this plan</h2></div>
+                    <button type="button" className="icon-btn" onClick={() => setPlanTopUpOpen(false)} aria-label="Close">{icon('close')}</button>
+                  </header>
+                  {renderAmountField({
+                    id: 'plan-top-up',
+                    label: 'Amount to add',
+                    value: planTopUpAmount,
+                    onChange: setPlanTopUpAmount,
+                    balance: rixorAvailableBalance,
+                    balanceLabel: `${contractAvailableBalance} ETH available in Rixor`,
+                    insufficient: planTopUpParsed > rixorAvailableBalance,
+                    insufficientCopy: 'More than your available Rixor balance. Add money first.',
+                    onMax: () => setPlanTopUpAmount(contractAvailableBalance),
+                  })}
+                  {renderTxProgress(planTopUpTxStatus, 'Approve the top-up', 'Adding to your plan…', `${fmtEth(planTopUpParsed)} ETH · Plan #${selectedActivePlan.id}`)}
+                  {planTopUpTxStatus === 'failed' && renderTxError('Top-up failed', planTopUpTxError)}
+                  {planTopUpTxStatus === 'confirmed'
+                    ? renderReceipt(planTopUpTxHash, 'Top-up confirmed', `${fmtEth(planTopUpParsed)} ETH added`, 'Your plan principal is updated')
+                    : !isBusy(planTopUpTxStatus) && (
+                      <button type="button" className="btn btn--dark btn--block btn--lg" disabled={!planTopUpValid} onClick={topUpSelectedPlan}>Add to plan</button>
+                    )}
+                </section>
+              )}
 
-            <aside className="plan-detail-summary">
-              <div><small>STARTED</small><strong>{formatPlanDate(selectedActivePlan.startedAt)}</strong></div>
-              <div><small>TERM</small><strong>{selectedActivePlan.termLabel}</strong></div>
-              <div><small>ACCESS</small><strong>{selectedActivePlan.accessLabel}</strong></div>
-              <div><small>RATE</small><strong>{selectedActivePlan.apy}%</strong></div>
-              <div><small>REWARD ASSET</small><strong>$RIXOR</strong></div>
-              <div><small>ACCRUED REWARD</small><strong>{selectedActivePlan.accruedReward.toFixed(4)} RIXOR</strong></div>
+              {planExtendOpen && (
+                <section className="card action-panel">
+                  <header className="panel-head">
+                    <div><small className="kicker">Extend</small><h2>Choose a longer lock</h2></div>
+                    <button type="button" className="icon-btn" onClick={() => setPlanExtendOpen(false)} aria-label="Close">{icon('close')}</button>
+                  </header>
+                  <div className="term-grid term-grid--compact">
+                    {extensionOptions.map((option) => option.id !== 'flexible' && (
+                      <button key={option.id} type="button" className={`term ${planExtendTerm === option.id ? 'is-active' : ''}`} onClick={() => setPlanExtendTerm(option.id)}>
+                        <strong>{option.label}</strong>
+                        <small>Up to {option.earlyExitMax}% exit fee</small>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="fine-print">The new lock starts when the extension confirms, so the early-exit fee resets to the new term's maximum.</p>
+                  {renderTxProgress(planExtendTxStatus, 'Approve the extension', 'Extending your plan…', `New term · ${extendLabel}`)}
+                  {planExtendTxStatus === 'failed' && renderTxError('Extension failed', planExtendTxError)}
+                  {planExtendTxStatus === 'confirmed'
+                    ? renderReceipt(planExtendTxHash, 'Extension confirmed', `Now a ${extendLabel} plan`, 'The new lock started at confirmation')
+                    : !isBusy(planExtendTxStatus) && (
+                      <button type="button" className="btn btn--dark btn--block btn--lg" onClick={extendSelectedPlan}>Extend to {extendLabel}</button>
+                    )}
+                </section>
+              )}
+
+              {planWithdrawReviewOpen && quote && (
+                <section className="card action-panel exit-panel">
+                  <header className="panel-head">
+                    <div><small className="kicker">Exit plan</small><h2>Withdraw this plan?</h2></div>
+                    {planWithdrawTxStatus !== 'confirmed' && (
+                      <button type="button" className="icon-btn" onClick={() => setPlanWithdrawReviewOpen(false)} aria-label="Close">{icon('close')}</button>
+                    )}
+                  </header>
+
+                  <div className="review-figure review-figure--left">
+                    <small>You receive</small>
+                    <strong>{fmtEth(quote.amountReturned, 6)} <em>ETH</em></strong>
+                    <span>Sent to {shortAddress(walletSession.address)}</span>
+                  </div>
+
+                  {renderRows([
+                    ['Principal', `${fmtEth(selectedActivePlan.principalAmount, 6)} ETH`],
+                    ['Exit type', quote.earlyExit ? 'Early withdrawal' : 'Standard withdrawal'],
+                    ['Early-exit fee', quote.earlyExit ? `${(quote.feeBps / 100).toFixed(2)}% · ${fmtEth(quote.feeAmount, 6)} ETH` : '0%', quote.earlyExit ? 'is-loss' : ''],
+                    ['Loss in USD', quote.earlyExit ? (selectedPlanFeeUsd !== null ? `−${fmtUsd(selectedPlanFeeUsd)}` : 'Loading price…') : '$0.00', quote.earlyExit ? 'is-loss' : ''],
+                    ['Network', currentEvmNetwork?.shortName ?? 'Unknown'],
+                  ])}
+
+                  {quote.earlyExit && (
+                    <div className="notice notice--warn">
+                      <strong>This fee keeps falling.</strong>
+                      <span>It declines every second and reaches 0% on {formatPlanDate(selectedActivePlan.maturesAt)}.</span>
+                    </div>
+                  )}
+
+                  {renderTxProgress(planWithdrawTxStatus, 'Approve the plan withdrawal', 'Closing plan onchain…', `${fmtEth(quote.amountReturned)} ETH expected · Plan #${selectedActivePlan.id}`)}
+                  {planWithdrawTxStatus === 'failed' && renderTxError('Withdrawal failed', planWithdrawTxError)}
+
+                  {planWithdrawTxStatus === 'confirmed' && (
+                    <>
+                      {renderReceipt(
+                        planWithdrawTxHash,
+                        'Plan withdrawn',
+                        `${fmtEth(quote.amountReturned, 6)} ETH returned`,
+                        quote.earlyExit
+                          ? `−${fmtEth(quote.feeAmount, 6)} ETH${selectedPlanFeeUsd !== null ? ` · −${fmtUsd(selectedPlanFeeUsd)}` : ''} early-exit fee`
+                          : 'No early-exit fee · moved to history',
+                        quote.earlyExit,
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn--dark btn--block btn--lg"
+                        onClick={async () => {
+                          await refreshOnchainPlans()
+                          setPlanWithdrawReviewOpen(false)
+                          setSelectedPlanId(null)
+                        }}
+                      >
+                        Back to dashboard
+                      </button>
+                    </>
+                  )}
+
+                  {!isBusy(planWithdrawTxStatus) && planWithdrawTxStatus !== 'confirmed' && (
+                    <div className="btn-pair">
+                      <button type="button" className="btn btn--ghost btn--lg" onClick={() => setPlanWithdrawReviewOpen(false)}>Keep plan</button>
+                      <button type="button" className={`btn btn--lg ${quote.earlyExit ? 'btn--danger' : 'btn--lime'}`} onClick={withdrawSelectedPlanFromRixor}>Confirm withdrawal</button>
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
+
+            <aside className="flow-side">
+              <section className="card">
+                <small className="kicker">Plan details</small>
+                {renderRows([
+                  ['Started', formatPlanDate(selectedActivePlan.startedAt)],
+                  ['Term', selectedActivePlan.termLabel],
+                  ['Access', selectedActivePlan.accessLabel],
+                  ['Exit fee today', quote?.earlyExit ? `${(quote.feeBps / 100).toFixed(2)}%` : '0%'],
+                  ['Illustrative rate', `${selectedActivePlan.apy}%`],
+                  ['Rewards', '$RIXOR · not live yet'],
+                ])}
+              </section>
+              <p className="fine-print">
+                Everything on this page is read from the Rixor contract and its events for {shortAddress(walletSession.address)}. Rates are illustrative; the testnet contract does not pay rewards.
+              </p>
             </aside>
           </div>
-
-          <div className="plan-detail-actions-grid">
-            <button
-              type="button"
-              onClick={() => {
-                setPlanWithdrawTxStatus('idle')
-                setPlanWithdrawTxHash('')
-                setPlanWithdrawTxError('')
-                setPlanWithdrawReviewOpen(true)
-              }}
-            >
-              <span>Withdraw</span>
-              <small>Review the effect before exiting this plan.</small>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPlanTopUpOpen(true)
-                setPlanExtendOpen(false)
-                setPlanTopUpAmount('')
-                setPlanTopUpTxStatus('idle')
-                setPlanTopUpTxHash('')
-                setPlanTopUpTxError('')
-              }}
-            >
-              <span>Add more</span>
-              <small>Add from your available Rixor balance into this plan.</small>
-            </button>
-            <button
-              type="button"
-              disabled={extensionOptions.length === 0}
-              onClick={() => {
-                const nextOption = extensionOptions[0]
-                if (!nextOption || nextOption.id === 'flexible') return
-                setPlanExtendTerm(nextOption.id)
-                setPlanExtendOpen(true)
-                setPlanTopUpOpen(false)
-                setPlanExtendTxStatus('idle')
-                setPlanExtendTxHash('')
-                setPlanExtendTxError('')
-              }}
-            >
-              <span>Extend plan</span>
-              <small>{extensionOptions.length ? 'Restart the lock on a longer term.' : 'This plan is already on the longest term.'}</small>
-            </button>
-          </div>
-
-          {planTopUpOpen && (
-            <div className="plan-action-panel">
-              <div className="plan-action-panel-head">
-                <div><span>ADD MORE</span><h2>Increase this plan.</h2></div>
-                <button type="button" onClick={() => setPlanTopUpOpen(false)}>×</button>
-              </div>
-              <div className="plan-action-input-row">
-                <div>
-                  <small>AVAILABLE</small>
-                  <strong>{contractAvailableBalance} ETH</strong>
-                </div>
-                <label>
-                  <input value={planTopUpAmount} onChange={(event) => setPlanTopUpAmount(event.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="0.00" />
-                  <span className="asset-suffix">ETH</span>
-                </label>
-              </div>
-              {(planTopUpTxStatus === 'awaiting-wallet' || planTopUpTxStatus === 'pending') && (
-                <div className="rixor-deposit-loading" role="status" aria-live="polite">
-                  <div className="rixor-deposit-loader" aria-hidden="true" />
-                  <div><small>{planTopUpTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small><strong>{planTopUpTxStatus === 'awaiting-wallet' ? 'Approve the plan top-up' : 'Adding to your plan…'}</strong><span>{planTopUpParsed.toFixed(4)} ETH · Plan #{selectedActivePlan.id}</span></div>
-                </div>
-              )}
-              {planTopUpTxStatus === 'confirmed' ? (
-                <a className="rixor-deposit-receipt" href={planTopUpTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planTopUpTxHash}` : undefined} target="_blank" rel="noreferrer">
-                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{planTopUpParsed.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                  <div className="rixor-receipt-copy"><small>TOP-UP CONFIRMED</small><strong>{planTopUpParsed.toFixed(4)} ETH added</strong><span>Your plan principal has been updated</span></div>
-                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
-                </a>
-              ) : planTopUpTxStatus !== 'awaiting-wallet' && planTopUpTxStatus !== 'pending' && (
-                <button type="button" className="plan-action-confirm" disabled={!planTopUpValid} onClick={topUpSelectedPlan}>Add to plan</button>
-              )}
-              {planTopUpTxStatus === 'failed' && <div className="plan-review-error"><strong>Top-up failed</strong><span>{planTopUpTxError}</span></div>}
-            </div>
-          )}
-
-          {planExtendOpen && (
-            <div className="plan-action-panel">
-              <div className="plan-action-panel-head">
-                <div><span>EXTEND PLAN</span><h2>Choose a longer lock.</h2></div>
-                <button type="button" onClick={() => setPlanExtendOpen(false)}>×</button>
-              </div>
-              <div className="plan-extension-options">
-                {extensionOptions.map((option) => option.id !== 'flexible' && (
-                  <button key={option.id} type="button" className={planExtendTerm === option.id ? 'is-active' : ''} onClick={() => setPlanExtendTerm(option.id)}>
-                    <strong>{option.label}</strong><small>Up to {option.earlyExitMax}% early-exit fee</small>
-                  </button>
-                ))}
-              </div>
-              {(planExtendTxStatus === 'awaiting-wallet' || planExtendTxStatus === 'pending') && (
-                <div className="rixor-deposit-loading" role="status" aria-live="polite">
-                  <div className="rixor-deposit-loader" aria-hidden="true" />
-                  <div><small>{planExtendTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small><strong>{planExtendTxStatus === 'awaiting-wallet' ? 'Approve the extension' : 'Extending your plan…'}</strong><span>New term · {planOptions.find((option) => option.id === planExtendTerm)?.label}</span></div>
-                </div>
-              )}
-              {planExtendTxStatus === 'confirmed' ? (
-                <a className="rixor-deposit-receipt" href={planExtendTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planExtendTxHash}` : undefined} target="_blank" rel="noreferrer">
-                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{planOptions.find((option) => option.id === planExtendTerm)?.label}</span></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                  <div className="rixor-receipt-copy"><small>EXTENSION CONFIRMED</small><strong>Plan term updated</strong><span>The new lock starts from this confirmation</span></div>
-                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
-                </a>
-              ) : planExtendTxStatus !== 'awaiting-wallet' && planExtendTxStatus !== 'pending' && (
-                <button type="button" className="plan-action-confirm" onClick={extendSelectedPlan}>Extend plan</button>
-              )}
-              {planExtendTxStatus === 'failed' && <div className="plan-review-error"><strong>Extension failed</strong><span>{planExtendTxError}</span></div>}
-            </div>
-          )}
-
-          {planWithdrawReviewOpen && (
-            <div className="plan-exit-review">
-              <div className="plan-exit-review-head">
-                <div>
-                  <span>EXIT PLAN</span>
-                  <h2>Withdraw this plan?</h2>
-                  <p>Review the exact early-exit cost before returning funds to {shortAddress(walletSession.address)}.</p>
-                </div>
-                  <strong className="amount-with-asset"><span>{selectedPlanExitQuote?.amountReturned.toFixed(4)}</span><em>ETH</em></strong>
-              </div>
-
-              <div className="plan-exit-review-meta">
-                <div><small>PLAN</small><strong>{selectedActivePlan.termLabel}</strong></div>
-                <div><small>GOAL</small><strong>{selectedActivePlan.goal}</strong></div>
-                <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                <div><small>EXIT</small><strong>{selectedPlanExitQuote?.earlyExit ? 'Early withdrawal' : 'Standard withdrawal'}</strong></div>
-                <div><small>PRINCIPAL</small><strong>{selectedActivePlan.principalAmount.toFixed(4)} ETH</strong></div>
-                <div><small>EARLY EXIT FEE</small><strong>{selectedPlanExitQuote?.earlyExit ? `${((selectedPlanExitQuote.feeBps ?? 0) / 100).toFixed(2)}% · ${(selectedPlanExitQuote.feeAmount ?? 0).toFixed(6)} ETH` : '0%'}</strong></div>
-                <div>
-                  <small>LOSS VALUE</small>
-                  <strong className={selectedPlanExitQuote?.earlyExit ? 'plan-exit-loss' : ''}>
-                    {selectedPlanExitQuote?.earlyExit
-                      ? (selectedPlanFeeUsd !== null ? `−$${selectedPlanFeeUsd.toFixed(2)} USD` : 'USD price loading…')
-                      : '$0.00 USD'}
-                  </strong>
-                </div>
-                <div><small>YOU RECEIVE</small><strong>{selectedPlanExitQuote?.amountReturned.toFixed(6)} ETH</strong></div>
-              </div>
-
-              {selectedPlanExitQuote?.earlyExit && (
-                <div className="plan-decision-warning">
-                  <strong>Your fee is already decreasing.</strong>
-                  <p>The early-withdrawal fee falls continuously as this plan approaches maturity and reaches 0% at maturity.</p>
-                </div>
-              )}
-
-              {(planWithdrawTxStatus === 'awaiting-wallet' || planWithdrawTxStatus === 'pending') && (
-                <div className="rixor-deposit-loading" role="status" aria-live="polite">
-                  <div className="rixor-deposit-loader" aria-hidden="true" />
-                  <div>
-                    <small>{planWithdrawTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
-                    <strong>{planWithdrawTxStatus === 'awaiting-wallet' ? 'Approve the plan withdrawal' : 'Closing plan onchain…'}</strong>
-                    <span>{selectedPlanExitQuote?.amountReturned.toFixed(4)} ETH expected · Plan #{selectedActivePlan.id}</span>
-                  </div>
-                </div>
-              )}
-
-              {planWithdrawTxStatus === 'failed' && (
-                <div className="plan-review-error">
-                  <strong>Withdrawal failed</strong>
-                  <span>{planWithdrawTxError}</span>
-                </div>
-              )}
-
-              {planWithdrawTxStatus === 'confirmed' && (
-                <>
-                  <a className="rixor-deposit-receipt" href={planWithdrawTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${planWithdrawTxHash}` : undefined} target="_blank" rel="noreferrer">
-                    <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{selectedPlanExitQuote?.amountReturned.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                    <div className="rixor-receipt-copy"><small>PLAN WITHDRAWN</small><strong>{selectedPlanExitQuote?.amountReturned.toFixed(6)} ETH returned</strong><span className={selectedPlanExitQuote?.earlyExit ? 'plan-exit-loss-copy' : ''}>{selectedPlanExitQuote?.earlyExit ? `−${(selectedPlanExitQuote.feeAmount ?? 0).toFixed(6)} ETH${selectedPlanFeeUsd !== null ? ` · −$${selectedPlanFeeUsd.toFixed(2)}` : ''} early-exit loss` : 'No early-exit fee'} · moved to Plan History</span></div>
-                    <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
-                  </a>
-                  <button
-                    type="button"
-                    className="plan-exit-return"
-                    onClick={async () => {
-                      await refreshOnchainPlans()
-                      setPlanWithdrawReviewOpen(false)
-                      setSelectedPlanId(null)
-                    }}
-                  >
-                    Return to dashboard
-                  </button>
-                </>
-              )}
-
-              {planWithdrawTxStatus !== 'awaiting-wallet' && planWithdrawTxStatus !== 'pending' && planWithdrawTxStatus !== 'confirmed' && (
-                <div className="plan-exit-review-actions">
-                  <button type="button" onClick={() => setPlanWithdrawReviewOpen(false)}>Keep plan</button>
-                  <button type="button" onClick={withdrawSelectedPlanFromRixor}>Confirm withdrawal</button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="plan-detail-chain-note">
-            <span className="dashboard-footnote-dot" />
-            <p>This page is designed to hydrate from onchain contract state and events for {shortAddress(walletSession.address)}. No private account database is required for the source of truth.</p>
-          </div>
-        </section>
+        </div>
       </main>
     )
   }
 
   if (walletSession && withdrawOpen) {
     return (
-      <main className={`carbon-stage withdraw-page-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
-        <div className="carbon-layer carbon-base" aria-hidden="true" />
-        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
-        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
-        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+      <main className={`app flow ${lightMode ? 'theme-light' : 'theme-dark'}`}>
+        {renderFlowBar(() => setWithdrawOpen(false))}
 
-        <header className="withdraw-page-topbar">
-          <button type="button" className="withdraw-page-back" onClick={() => setWithdrawOpen(false)}>
-            <span>←</span>
-            Back to dashboard
-          </button>
-          <span className="withdraw-page-brand">{renderRixorBrand(true)}</span>
-          <div className="withdraw-page-network">
-            <div className="chain-inline-label">
-              {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
-              <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
-            </div>
-            <strong>{shortAddress(walletSession.address)}</strong>
-          </div>
-        </header>
-
-        <section className="withdraw-page-shell">
+        <div className="container flow-body">
           {withdrawStep === 'setup' ? (
             <>
-              <div className="withdraw-page-hero">
-                <span>WITHDRAW</span>
-                <h1>Withdraw your available balance.</h1>
-                <p>This page only withdraws ETH already sitting in your Rixor available balance. To exit a savings plan, open that specific plan from Active Plans and withdraw it there.</p>
-              </div>
+              <section className="flow-hero">
+                <p className="eyebrow">Withdraw</p>
+                <h1>Move your available balance back to your wallet.</h1>
+                <p>This only touches ETH that is not in a plan. To exit a plan, open it from your dashboard.</p>
+              </section>
 
-              <div className="withdraw-available-banner">
-                <div>
-                  <small>AVAILABLE TO WITHDRAW</small>
-                  <strong>{rixorAvailableBalance.toFixed(4)} ETH</strong>
-                </div>
-                <span>{currentEvmNetwork?.shortName ?? 'Testnet'} · {shortAddress(walletSession.address)}</span>
-              </div>
-
-              <div className="withdraw-page-layout">
-                <section className="withdraw-builder-card">
-                  <div className="withdraw-section-head">
-                    <div>
-                      <span>AMOUNT</span>
-                      <h2>How much do you want back?</h2>
-                    </div>
-                    <p><strong>{withdrawSourceBalance.toFixed(4)} ETH</strong> available in Rixor</p>
-                  </div>
-
-                  <div className={`withdraw-amount-input ${withdrawInsufficient ? 'is-insufficient' : ''}`}>
-                    <input
-                      inputMode="decimal"
-                      value={withdrawAmount}
-                      onChange={(event) => setWithdrawAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00"
-                      aria-label="Amount to withdraw"
-                    />
-                    <span className="asset-suffix">ETH</span>
-                  </div>
-
-                  <div className="withdraw-quick-amounts">
-                    {[25, 50, 75].map((percent) => (
-                      <button
-                        key={percent}
-                        type="button"
-                        disabled={withdrawSourceBalance <= 0}
-                        onClick={() => setWithdrawAmount(((withdrawSourceBalance * percent) / 100).toFixed(4))}
-                      >
-                        {percent}%
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={withdrawSourceBalance <= 0}
-                      onClick={() => setWithdrawAmount(withdrawSourceBalance.toFixed(4))}
-                    >
-                      Max
-                    </button>
-                  </div>
-
+              <div className="flow-grid">
+                <section className="card flow-main">
+                  {renderAmountField({
+                    id: 'withdraw-amount',
+                    label: 'Amount',
+                    value: withdrawAmount,
+                    onChange: setWithdrawAmount,
+                    balance: withdrawSourceBalance,
+                    balanceLabel: `${contractAvailableBalance} ETH available`,
+                    insufficient: withdrawInsufficient,
+                    insufficientCopy: 'More than your available Rixor balance.',
+                    onMax: () => setWithdrawAmount(contractAvailableBalance),
+                  })}
                   {withdrawSourceBalance <= 0 && (
-                    <div className="withdraw-empty-state">
-                      <strong>Nothing available here yet.</strong>
-                      <span>This will populate from your real Rixor positions once the testnet contract is connected.</span>
+                    <div className="empty empty--inline">
+                      <strong>Nothing available to withdraw.</strong>
+                      <span>Your available balance is empty. ETH inside plans stays there until you exit the plan.</span>
                     </div>
                   )}
-
-                  {withdrawInsufficient && (
-                    <div className="withdraw-inline-error">
-                      <strong>Not available</strong>
-                      <span>Choose an amount within this source balance.</span>
-                    </div>
-                  )}
-
-                  <div className="withdraw-destination-card">
+                  <div className="source-card">
+                    {icon('arrowDown')}
                     <div>
-                      <small>DESTINATION</small>
+                      <small>Destination</small>
                       <strong>{shortAddress(walletSession.address)}</strong>
                     </div>
-                    <span>Connected wallet</span>
+                    <span className="source-card-balance">Connected wallet</span>
                   </div>
                 </section>
 
-                <aside className="withdraw-summary-card">
-                  <span className="withdraw-summary-kicker">WITHDRAWAL SUMMARY</span>
-                  <h2>Available balance</h2>
-
-                  <div className="withdraw-summary-amount">
-                    <strong>{withdrawAmount || '0.00'}</strong>
-                    <span className="asset-suffix">ETH</span>
-                  </div>
-
-                  <div className="withdraw-summary-list">
-                    <div><span>Principal returned</span><strong>{(withdrawParsed || 0).toFixed(4)} ETH</strong></div>
-                    <div><span>Plan impact</span><strong>None</strong></div>
-                    <div><span>Destination</span><strong>{shortAddress(walletSession.address)}</strong></div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="withdraw-review-button"
-                    disabled={!withdrawValid}
-                    onClick={() => setWithdrawStep('review')}
-                  >
-                    Review withdrawal
-                    {actionArrow}
-                  </button>
+                <aside className="flow-side">
+                  <section className="card summary-card">
+                    <small className="kicker">Summary</small>
+                    <p className="figure figure--md">{fmtEth(withdrawParsed)} <em>ETH</em></p>
+                    {renderRows([
+                      ['From', 'Available balance'],
+                      ['Plans affected', 'None'],
+                      ['Fee', '0%'],
+                    ])}
+                    <button type="button" className="btn btn--dark btn--block btn--lg" disabled={!withdrawValid} onClick={() => setWithdrawStep('review')}>
+                      Review withdrawal {icon('arrowRight')}
+                    </button>
+                  </section>
                 </aside>
               </div>
             </>
           ) : (
-            <div className="withdraw-review-page">
-              <div className="withdraw-page-hero">
-                <span>FINAL CHECK</span>
+            <div className="review-page">
+              <section className="flow-hero">
+                <p className="eyebrow">Final check</p>
                 <h1>Know what leaves. Know what returns.</h1>
-                <p>The destination, principal, and any reward impact are shown before the testnet transaction can be signed.</p>
-              </div>
+              </section>
 
-              <div className="withdraw-review-stage">
-                <div className="withdraw-review-machine" aria-hidden="true">
-                  <div className="review-machine-card"><div className="review-machine-card-line"/><div className="review-machine-card-dots"/></div>
-                  <div className="review-machine-terminal"><div className="review-machine-slot"/><div className="review-machine-screen"><span>{withdrawParsed.toFixed(4)}</span><small>ETH</small></div><div className="review-machine-keys"/><div className="review-machine-keys second"/></div>
-                  <span className="withdraw-review-machine-label">WITHDRAWAL</span>
+              <section className="card review-card">
+                <div className="review-figure">
+                  <small>You receive</small>
+                  <strong>{fmtEth(withdrawParsed)} <em>ETH</em></strong>
+                  {ethUsdPrice && <span>≈ {fmtUsd(withdrawParsed * ethUsdPrice)}</span>}
                 </div>
-                <div className="withdraw-review-main refined">
-                  <span>YOU RECEIVE</span>
-                  <strong className="amount-with-asset"><span>{withdrawParsed.toFixed(4)}</span><em>ETH</em></strong>
-                  <p>Returned directly to {shortAddress(walletSession.address)}</p>
-                  <div className="withdraw-review-meta-grid">
-                    <div><small>SOURCE</small><strong>Available balance</strong></div>
-                    <div><small>NETWORK</small><strong>{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                    <div><small>PRINCIPAL</small><strong>{withdrawParsed.toFixed(4)} ETH</strong></div>
-                    <div><small>PLAN IMPACT</small><strong>None</strong></div>
+                {renderRows([
+                  ['From', 'Rixor available balance'],
+                  ['To', shortAddress(walletSession.address)],
+                  ['Network', currentEvmNetwork?.shortName ?? 'Unknown'],
+                  ['Plans affected', 'None'],
+                ])}
+
+                {renderTxProgress(withdrawTxStatus, 'Approve the withdrawal in your wallet', 'Sending ETH back to your wallet…', `${fmtEth(withdrawParsed)} ETH · ${currentEvmNetwork?.shortName ?? 'Testnet'}`)}
+                {withdrawTxStatus === 'failed' && renderTxError('Withdrawal failed', withdrawTxError)}
+                {withdrawTxStatus === 'confirmed' && (
+                  <>
+                    {renderReceipt(withdrawTxHash, 'Withdrawal confirmed', `${fmtEth(withdrawParsed)} ETH returned`, 'Sent to your connected wallet')}
+                    <button type="button" className="btn btn--dark btn--block btn--lg" onClick={() => setWithdrawOpen(false)}>Back to dashboard</button>
+                  </>
+                )}
+                {!isBusy(withdrawTxStatus) && withdrawTxStatus !== 'confirmed' && (
+                  <div className="btn-pair">
+                    <button type="button" className="btn btn--ghost btn--lg" onClick={() => setWithdrawStep('setup')}>Edit</button>
+                    <button type="button" className="btn btn--lime btn--lg" onClick={withdrawAvailableFromRixor} disabled={!currentRixorContractAddress || !withdrawValid}>
+                      Withdraw
+                    </button>
                   </div>
-                </div>
-              </div>
-
-              <div className="withdraw-review-note">
-                <strong>Testnet safety</strong>
-                <p>This sends a real testnet withdrawal from your Rixor available balance back to the connected wallet. Savings-plan exits are handled from the selected Plan Detail page.</p>
-              </div>
-
-              {(withdrawTxStatus === 'awaiting-wallet' || withdrawTxStatus === 'pending') && (
-                <div className="rixor-deposit-loading" role="status" aria-live="polite">
-                  <div className="rixor-deposit-loader" aria-hidden="true" />
-                  <div>
-                    <small>{withdrawTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
-                    <strong>{withdrawTxStatus === 'awaiting-wallet' ? 'Approve the withdrawal in your wallet' : 'Sending ETH back to your wallet…'}</strong>
-                    <span>{withdrawParsed.toFixed(4)} ETH · {currentEvmNetwork?.shortName ?? 'Testnet'}</span>
-                  </div>
-                </div>
-              )}
-
-              {withdrawTxStatus === 'confirmed' && (
-                <a className="rixor-deposit-receipt" href={withdrawTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${withdrawTxHash}` : undefined} target="_blank" rel="noreferrer">
-                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{withdrawParsed.toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                  <div className="rixor-receipt-copy"><small>WITHDRAWAL CONFIRMED</small><strong>{withdrawParsed.toFixed(4)} ETH returned</strong><span>Sent back to your connected wallet</span></div>
-                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
-                </a>
-              )}
-
-              {withdrawTxStatus !== 'confirmed' && withdrawTxStatus !== 'awaiting-wallet' && withdrawTxStatus !== 'pending' && <div className="withdraw-review-actions">
-                <button type="button" onClick={() => setWithdrawStep('setup')}>Back and edit</button>
-                <button
-                  type="button"
-                  onClick={withdrawAvailableFromRixor}
-                  disabled={!currentRixorContractAddress || !withdrawValid}
-                >
-                  Withdraw on testnet
-                </button>
-              </div>}
-
-              {(withdrawTxHash || withdrawTxError) && (
-                <div className={`add-money-tx-state ${withdrawTxStatus === 'confirmed' ? 'is-confirmed' : ''} ${withdrawTxStatus === 'failed' ? 'is-failed' : ''}`}>
-                  {withdrawTxHash && currentEvmNetwork ? (
-                    <a href={`${currentEvmNetwork.explorerUrl}/tx/${withdrawTxHash}`} target="_blank" rel="noreferrer">View transaction ↗</a>
-                  ) : null}
-                  {withdrawTxError && <span>{withdrawTxError}</span>}
-                </div>
-              )}
+                )}
+              </section>
+              <p className="fine-print">This sends a real testnet transaction. Plan exits are handled from each plan's own page.</p>
             </div>
           )}
-        </section>
+        </div>
       </main>
     )
   }
 
   if (walletSession && startPlanOpen) {
+    const planAmountValue = Number(startPlanAmount || 0)
+
     return (
-      <main className={`carbon-stage plan-page-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
-        <div className="carbon-layer carbon-base" aria-hidden="true" />
-        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
-        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
-        <div className="carbon-layer carbon-grain" aria-hidden="true" />
+      <main className={`app flow ${lightMode ? 'theme-light' : 'theme-dark'}`}>
+        {renderFlowBar(() => setStartPlanOpen(false))}
 
-        <header className="plan-page-topbar">
-          <button type="button" className="plan-page-back" onClick={() => setStartPlanOpen(false)}>
-            <span>←</span>
-            Back to dashboard
-          </button>
-          <span className="plan-page-brand">{renderRixorBrand(true)}</span>
-          <div className="plan-page-network">
-            <small>{currentEvmNetwork?.shortName ?? 'EVM testnet'}</small>
-            <strong>{shortAddress(walletSession.address)}</strong>
-          </div>
-        </header>
-
-        <section className="plan-page-shell">
+        <div className="container flow-body">
           {startPlanStep === 'setup' ? (
             <>
-              <div className="plan-page-hero">
-                <span>BUILD A SAVINGS PLAN</span>
+              <section className="flow-hero">
+                <p className="eyebrow">New savings plan</p>
                 <h1>What are you saving for?</h1>
-                <p>Start with the goal, then choose how much access you want and how long the money can stay untouched.</p>
-              </div>
+                <p>Start with the goal. We will suggest a timeline, and you choose the final terms.</p>
+              </section>
 
-              <div className="plan-goal-grid">
+              <div className="goal-scroller" role="radiogroup" aria-label="Savings goal">
                 {savingsGoals.map((goal) => (
                   <button
                     key={goal.id}
                     type="button"
-                    className={`plan-goal-card ${startPlanGoal === goal.id ? 'is-active' : ''}`}
+                    role="radio"
+                    aria-checked={startPlanGoal === goal.id}
+                    className={`goal ${startPlanGoal === goal.id ? 'is-active' : ''}`}
                     onClick={() => {
                       setStartPlanGoal(goal.id)
                       setStartPlanTerm(goal.suggested)
                     }}
                   >
-                    <span className="plan-goal-mark">{startPlanGoal === goal.id ? '✓' : '○'}</span>
-                    <div>
-                      <span className="plan-goal-tag">
-                        {goal.id === 'emergency' ? 'Quick access' :
-                          goal.id === 'school' ? 'Known date' :
-                            goal.id === 'rent' ? 'Planned bill' :
-                              goal.id === 'long-term' ? 'Higher yield' : 'Your rules'}
-                      </span>
-                      <strong>{goal.title}</strong>
-                      <p>{goal.copy}</p>
-                      <small>
-                        Suggested · {planOptions.find((item) => item.id === goal.suggested)?.label}
-                      </small>
-                    </div>
+                    <strong>{goal.title}</strong>
+                    <span>{goal.copy}</span>
+                    <small>Suggested · {planOptions.find((item) => item.id === goal.suggested)?.label}</small>
                   </button>
                 ))}
               </div>
 
-              <div className="plan-page-layout">
-                <section className="plan-builder-panel">
-                  <div className="plan-section-head">
-                    <div>
-                      <span>1 · CHOOSE ACCESS</span>
-                      <h2>Pick a timeline</h2>
-                    </div>
-                    <p>Suggested for {selectedGoal.title}: <strong>{planOptions.find((item) => item.id === selectedGoal.suggested)?.label}</strong></p>
+              <div className="flow-grid">
+                <section className="card flow-main">
+                  <div className="step-head">
+                    <span className="step-num">1</span>
+                    <div><h2>Pick a timeline</h2><p>Longer locks carry a higher maximum early-exit fee.</p></div>
                   </div>
-
-                  <div className="plan-page-options">
+                  <div className="term-grid" role="radiogroup" aria-label="Plan term">
                     {planOptions.map((option) => (
                       <button
                         key={option.id}
                         type="button"
-                        className={`plan-page-option ${startPlanTerm === option.id ? 'is-active' : ''}`}
+                        role="radio"
+                        aria-checked={startPlanTerm === option.id}
+                        className={`term ${startPlanTerm === option.id ? 'is-active' : ''}`}
                         onClick={() => setStartPlanTerm(option.id)}
                       >
-                        <div className="plan-page-option-top">
-                          <span>{option.label}</span>
+                        <span className="term-top">
+                          <strong>{option.label}</strong>
                           {selectedGoal.suggested === option.id && <em>Suggested</em>}
-                        </div>
-                        <strong>{option.apy}%</strong>
-                        <small>{option.access}{option.earlyExitMax ? ` · up to ${option.earlyExitMax}% early-exit fee` : ''}</small>
+                        </span>
+                        <small>{option.earlyExitMax ? `Up to ${option.earlyExitMax}% exit fee` : 'No exit fee'}</small>
                       </button>
                     ))}
                   </div>
 
-                  <div className="plan-section-head plan-section-head--amount">
-                    <div>
-                      <span>2 · SET AMOUNT</span>
-                      <h2>How much do you want to save?</h2>
-                    </div>
-                    <p><strong>{nativeBalance} ETH</strong> available on {currentEvmNetwork?.shortName ?? 'this chain'}</p>
+                  <div className="step-head">
+                    <span className="step-num">2</span>
+                    <div><h2>Set the amount</h2><p>Plans are funded from your Rixor available balance.</p></div>
                   </div>
-
-                  <div className={`plan-page-amount ${startPlanInsufficient ? 'is-insufficient' : ''}`}>
-                    <input
-                      inputMode="decimal"
-                      value={startPlanAmount}
-                      onChange={(event) => setStartPlanAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-                      placeholder="0.00"
-                      aria-label="Amount to save"
-                    />
-                    <span className="asset-suffix">ETH</span>
-                  </div>
-
-                  <div className="plan-page-quick-amounts">
-                    {[25, 50, 75].map((percent) => (
-                      <button
-                        key={percent}
-                        type="button"
-                        disabled={startPlanAvailableBalance <= 0}
-                        onClick={() => setStartPlanAmount(((startPlanAvailableBalance * percent) / 100).toFixed(4))}
-                      >
-                        {percent}%
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={startPlanAvailableBalance <= 0}
-                      onClick={() => setStartPlanAmount(contractAvailableBalance)}
-                    >
-                      Max
-                    </button>
-                  </div>
-
-                  {startPlanInsufficient && (
-                    <div className="plan-page-inline-error">
-                      <strong>Not available</strong>
-                      <span>Top up this wallet before creating the plan.</span>
+                  {renderAmountField({
+                    id: 'start-plan-amount',
+                    label: 'Amount to save',
+                    value: startPlanAmount,
+                    onChange: setStartPlanAmount,
+                    balance: startPlanAvailableBalance,
+                    balanceLabel: `${contractAvailableBalance} ETH available in Rixor`,
+                    insufficient: startPlanInsufficient,
+                    insufficientCopy: 'More than your available Rixor balance.',
+                    onMax: () => setStartPlanAmount(contractAvailableBalance),
+                  })}
+                  {startPlanAvailableBalance <= 0 && (
+                    <div className="empty empty--inline empty--action">
+                      <div>
+                        <strong>Your Rixor balance is empty.</strong>
+                        <span>Add testnet ETH from your wallet first, then come back to fund the plan.</span>
+                      </div>
+                      <button type="button" className="btn btn--dark btn--sm" onClick={() => { setStartPlanOpen(false); openAddMoney() }}>Add money</button>
                     </div>
                   )}
 
-                  <div className="plan-section-head plan-section-head--reward">
-                    <div>
-                      <span>3 · REWARDS</span>
-                      <h2>Rewards are paid in $RIXOR.</h2>
-                    </div>
-                  </div>
-
-                  <div className="plan-reward-grid">
-                    <div className="plan-reward-card is-active">
-                      <div className="plan-reward-topline">
-                        <span>Rixor reward token</span>
-                        <em>Only reward asset</em>
-                      </div>
-                      <strong>Earn $RIXOR</strong>
-                      <p>Your saved principal remains ETH. Plan rewards vest separately in $RIXOR and are paid from the protocol rewards treasury.</p>
-                    </div>
+                  <div className="step-head">
+                    <span className="step-num">3</span>
+                    <div><h2>Rewards</h2><p>Your principal stays ETH. $RIXOR rewards are planned but not live on testnet.</p></div>
                   </div>
                 </section>
 
-                <aside className="plan-decision-panel">
-                  <span className="plan-decision-kicker">YOUR PLAN</span>
-                  <h2>{selectedGoal.title}</h2>
-                  <div className="plan-decision-amount">
-                    <strong>{startPlanAmount || '0.00'}</strong>
-                    <span>ETH</span>
-                  </div>
-
-                  <div className="plan-decision-list">
-                    <div><span>Timeline</span><strong>{startPlanSelected.label}</strong></div>
-                    <div><span>Rate</span><strong>{startPlanSelected.apy}%</strong></div>
-                    <div><span>Access</span><strong>{startPlanSelected.access}</strong></div>
-                    <div><span>Maturity</span><strong>{startPlanMaturity}</strong></div>
-                    <div><span>Rewards</span><strong>$RIXOR</strong></div>
-                  </div>
-
-                  <div className="plan-decision-estimate">
-                    <small>ESTIMATED REWARD VALUE</small>
-                    <strong>Paid in $RIXOR at settlement</strong>
-                    <p>Reward value accrues through the plan and is settled in $RIXOR. Rates are not guaranteed.</p>
-                  </div>
-
-                  {startPlanTerm !== 'flexible' && (
-                    <div className="plan-decision-warning">
-                      <strong>Locked plan</strong>
-                      <p>Early withdrawal starts at a maximum {startPlanSelected.earlyExitMax}% fee and declines continuously to 0% at maturity.</p>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    className="plan-page-review-button"
-                    disabled={!startPlanValid}
-                    onClick={() => setStartPlanStep('review')}
-                  >
-                    Review this plan
-                    {actionArrow}
-                  </button>
+                <aside className="flow-side">
+                  <section className="card summary-card is-sticky">
+                    <small className="kicker">Your plan</small>
+                    <h3>{selectedGoal.title}</h3>
+                    <p className="figure figure--md">{fmtEth(planAmountValue)} <em>ETH</em></p>
+                    {renderRows([
+                      ['Timeline', startPlanSelected.label],
+                      ['Access', startPlanSelected.access],
+                      ['Maturity', startPlanMaturity],
+                      ['Max exit fee', startPlanSelected.earlyExitMax ? `${startPlanSelected.earlyExitMax}%, falling to 0%` : 'None'],
+                      ['Illustrative rate', `${startPlanSelected.apy}%`],
+                    ])}
+                    <button type="button" className="btn btn--dark btn--block btn--lg" disabled={!startPlanValid} onClick={() => setStartPlanStep('review')}>
+                      Review plan {icon('arrowRight')}
+                    </button>
+                  </section>
                 </aside>
               </div>
             </>
           ) : (
-            <div className="plan-review-page is-refined">
-              <div className="plan-review-hero-row">
-                <div className="plan-page-hero plan-page-hero--review">
-                  <span>FINAL CHECK</span>
-                  <h1>Make it official.</h1>
-                  <p>Review the plan once, then approve a single transaction on the selected testnet.</p>
-                </div>
-                <div className="plan-review-network-pill">
-                  {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
-                  <small>{currentEvmNetwork?.shortName ?? 'Testnet'}</small>
-                  <strong>{shortAddress(walletSession.address)}</strong>
-                </div>
-              </div>
+            <div className="review-page">
+              <section className="flow-hero">
+                <p className="eyebrow">Final check</p>
+                <h1>Make it official.</h1>
+              </section>
 
-              <div className="plan-review-stage">
-                <div className="plan-review-machine" aria-hidden="true">
-                  <div className="plan-review-machine-card">
-                    <div className="plan-review-machine-line" />
-                    <div className="plan-review-machine-dots" />
+              <section className="card review-card">
+                <div className="review-figure">
+                  <small>{selectedGoal.title}</small>
+                  <strong>{fmtEth(planAmountValue)} <em>ETH</em></strong>
+                  <span>{startPlanSelected.label} · {startPlanSelected.access}</span>
+                </div>
+                {renderRows([
+                  ['Maturity', startPlanMaturity],
+                  ['Max early-exit fee', startPlanSelected.earlyExitMax ? `${startPlanSelected.earlyExitMax}% at start, 0% at maturity` : 'None'],
+                  ['Network', <span className="inline-chain">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Testnet'}</span>],
+                  ['Contract', currentRixorContractAddress ? shortAddress(currentRixorContractAddress) : 'Unavailable'],
+                  ['Rewards', '$RIXOR · not live yet'],
+                ])}
+
+                {renderTxProgress(startPlanTxStatus, 'Approve your savings plan', 'Creating your plan…', `${fmtEth(planAmountValue)} ETH · ${startPlanSelected.label}`)}
+                {startPlanTxStatus === 'failed' && renderTxError('Plan creation failed', startPlanTxError)}
+                {startPlanTxStatus === 'confirmed' && (
+                  <>
+                    {renderReceipt(startPlanTxHash, 'Plan confirmed', `${fmtEth(planAmountValue)} ETH committed`, `${startPlanSelected.label} plan is now active`)}
+                    <button type="button" className="btn btn--dark btn--block btn--lg" onClick={() => setStartPlanOpen(false)}>Back to dashboard</button>
+                  </>
+                )}
+                {!isBusy(startPlanTxStatus) && startPlanTxStatus !== 'confirmed' && (
+                  <div className="btn-pair">
+                    <button type="button" className="btn btn--ghost btn--lg" onClick={() => setStartPlanStep('setup')}>Edit</button>
+                    <button type="button" className="btn btn--lime btn--lg" onClick={createSavingsPlan} disabled={!currentRixorContractAddress || !startPlanValid}>
+                      Start plan
+                    </button>
                   </div>
-                  <div className="plan-review-machine-terminal">
-                    <div className="plan-review-machine-slot" />
-                    <div className="plan-review-machine-screen">
-                      <span>{Number(startPlanAmount || 0).toFixed(4)}</span>
-                      <small>ETH</small>
-                    </div>
-                    <div className="plan-review-machine-keys" />
-                    <div className="plan-review-machine-keys second" />
-                  </div>
-                  <span className="plan-review-machine-label">{startPlanSelected.label.toUpperCase()}</span>
-                </div>
-
-                <div className="plan-review-primary">
-                  <span>{selectedGoal.title.toUpperCase()}</span>
-                    <strong className="amount-with-asset"><span>{Number(startPlanAmount || 0).toFixed(4)}</span><em>ETH</em></strong>
-                  <p>{startPlanSelected.label} · {startPlanSelected.apy}% rate · rewards in $RIXOR</p>
-
-                  <div className="plan-review-meta-grid">
-                    <div><small>ACCESS</small><strong>{startPlanSelected.access}</strong></div>
-                    <div><small>MATURITY</small><strong>{startPlanMaturity}</strong></div>
-                    <div><small>REWARD</small><strong>$RIXOR</strong></div>
-                    <div><small>EST. REWARD*</small><strong>Settled in $RIXOR</strong></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="plan-review-explainer refined">
-                <div>
-                  <span className="dashboard-footnote-dot" />
-                  <div>
-                    <strong>Your principal stays ETH. Rewards are separate.</strong>
-                    <p>$RIXOR is the only reward asset. Rewards vest over the plan and are funded from a dedicated $RIXOR rewards treasury, with protocol revenue and real yield intended to replenish that treasury over time.</p>
-                  </div>
-                </div>
-                <small>{currentRixorContractAddress ? `Contract ${shortAddress(currentRixorContractAddress)}` : 'Contract unavailable'}</small>
-              </div>
-
-              {(startPlanTxStatus === 'awaiting-wallet' || startPlanTxStatus === 'pending') && (
-                <div className="plan-review-loading" role="status" aria-live="polite">
-                  <div className="plan-review-loader" aria-hidden="true" />
-                  <div>
-                    <small>{startPlanTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
-                    <strong>{startPlanTxStatus === 'awaiting-wallet' ? 'Approve your savings plan' : 'Creating your plan…'}</strong>
-                    <span>{Number(startPlanAmount || 0).toFixed(4)} ETH · {startPlanSelected.label}</span>
-                  </div>
-                </div>
-              )}
-
-              {startPlanTxStatus === 'failed' && (
-                <div className="plan-review-error">
-                  <strong>Plan creation failed</strong>
-                  <span>{startPlanTxError || 'The transaction did not complete.'}</span>
-                </div>
-              )}
-
-              {startPlanTxStatus === 'confirmed' ? (
-                <a className="rixor-deposit-receipt" href={startPlanTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${startPlanTxHash}` : undefined} target="_blank" rel="noreferrer">
-                  <div className="rixor-receipt-machine"><div className="rixor-receipt-card"><div className="rixor-receipt-card-line"/><div className="rixor-receipt-card-dots"/></div><div className="rixor-receipt-terminal"><div className="rixor-receipt-slot"/><div className="rixor-receipt-screen"><span>{Number(startPlanAmount || 0).toFixed(4)}</span><small>ETH</small></div><div className="rixor-receipt-keys"/><div className="rixor-receipt-keys second"/></div></div>
-                  <div className="rixor-receipt-copy"><small>PLAN CONFIRMED</small><strong>{Number(startPlanAmount || 0).toFixed(4)} ETH committed</strong><span>{startPlanSelected.label} plan is now active</span></div>
-                  <svg viewBox="0 0 451.846 451.847" aria-hidden="true"><path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z"/></svg>
-                </a>
-              ) : startPlanTxStatus !== 'awaiting-wallet' && startPlanTxStatus !== 'pending' && (
-                <div className="plan-review-actions plan-review-actions--page refined">
-                  <button type="button" onClick={() => setStartPlanStep('setup')}>Back and edit</button>
-                  <button
-                    type="button"
-                    className="plan-review-confirm"
-                    onClick={createSavingsPlan}
-                    disabled={!currentRixorContractAddress || !startPlanValid}
-                  >
-                    <span>Confirm & start plan</span>
-                    <small>{Number(startPlanAmount || 0).toFixed(4)} ETH</small>
-                  </button>
-                </div>
-              )}
+                )}
+              </section>
+              <p className="fine-print">One wallet approval moves this amount from your available balance into a new plan. Displayed rates are illustrative.</p>
             </div>
           )}
-        </section>
+        </div>
       </main>
     )
   }
 
   if (walletSession && dashboardView) {
+    const isEvm = walletSession.kind === 'evm'
+
     return (
-      <main className={`carbon-stage dashboard-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}>
-        <div className="carbon-layer carbon-base" aria-hidden="true" />
-        <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
-        <div className="carbon-layer carbon-vignette" aria-hidden="true" />
-        <div className="carbon-layer carbon-grain" aria-hidden="true" />
-
-        {walletSession.kind === 'evm' && currentEvmNetwork && (
-          <div className={`dashboard-chain-ambient dashboard-chain-ambient--${currentEvmNetwork.id === 46630 ? 'robinhood' : 'sepolia'}`} aria-hidden="true">
-            {currentEvmNetwork.id === 46630 ? (
-              <img
-                src={lightMode ? '/images/robinhood-chain-feather.jpg' : '/images/robinhood-chain-feather-transparent.png'}
-                alt=""
-                className="dashboard-robinhood-ambient-mark"
-              />
-            ) : (
-              <svg className="dashboard-ambient-eth-mark" viewBox="0 0 784.37 1277.39" role="presentation">
-                <polygon fill="#B9D700" points="392.07,0 383.5,29.11 383.5,873.74 392.07,882.29 784.13,650.54" />
-                <polygon fill="#CFEF00" points="392.07,0 0,650.54 392.07,882.29 392.07,472.33" />
-                <polygon fill="#8FA500" points="392.07,956.52 387.24,962.41 387.24,1263.28 392.07,1277.38 784.37,724.89" />
-                <polygon fill="#CFEF00" points="392.07,1277.38 392.07,956.52 0,724.89" />
-                <polygon fill="#718000" points="392.07,882.29 784.13,650.54 392.07,472.33" />
-                <polygon fill="#A9C300" points="0,650.54 392.07,882.29 392.07,472.33" />
-              </svg>
-            )}
-          </div>
-        )}
-
-        <header className="dashboard-topbar">
-          <button className="dashboard-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            {renderRixorBrand()}
-          </button>
-
-          <nav className="dashboard-tab-container" aria-label="Dashboard navigation">
-            <input
-              type="radio"
-              name="dashboard-tab"
-              id="dashboard-tab-home"
-              className="dashboard-tab dashboard-tab--1"
-              checked={dashboardNavTab === 'home'}
-              onChange={() => switchDashboardSection('home')}
-            />
-            <label className="dashboard-tab-label" htmlFor="dashboard-tab-home">Home</label>
-
-            <input
-              type="radio"
-              name="dashboard-tab"
-              id="dashboard-tab-diamond"
-              className="dashboard-tab dashboard-tab--2"
-              checked={dashboardNavTab === 'diamond'}
-              onChange={() => switchDashboardSection('diamond')}
-            />
-            <label className="dashboard-tab-label" htmlFor="dashboard-tab-diamond">Diamond Hands</label>
-
-            <div className="dashboard-tab-indicator" />
-          </nav>
-
-          <div className="dashboard-topbar-actions">
-            <label className="switch" aria-label={lightMode ? 'Switch to dark mode' : 'Switch to light mode'}>
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={lightMode}
-                onChange={(event) => setLightMode(event.target.checked)}
-              />
-              <div className="slider" />
-            </label>
-
-            <button className="dashboard-wallet" type="button" onClick={() => setWalletModalOpen(true)}>
-              {walletSession.kind === 'evm' && currentEvmNetwork
-                ? renderChainIcon(currentEvmNetwork.id)
-                : <span className="dashboard-wallet-dot" />}
-              <span className="dashboard-wallet-identity">
-                <small>
-                  {walletSession.name}
-                  {walletSession.kind === 'evm' && currentEvmNetwork ? ` · ${currentEvmNetwork.shortName}` : ''}
-                </small>
-                <strong>{shortAddress(walletSession.address)}</strong>
-              </span>
-              {walletSession.kind === 'evm' && (
-                <span className="dashboard-wallet-native">
-                  <small>WALLET BALANCE</small>
-                  <strong>{nativeBalance} ETH</strong>
-                </span>
-              )}
+      <main className={`app dashboard ${lightMode ? 'theme-light' : 'theme-dark'}`}>
+        <header className={`app-bar ${navCompact ? 'is-scrolled' : ''}`}>
+          <div className="container app-bar-inner">
+            <button className="brand-btn" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Rixor dashboard">
+              {renderRixorBrand()}
             </button>
+
+            <nav className="seg seg--nav" aria-label="Dashboard sections">
+              <button type="button" aria-current={dashboardNavTab === 'home' ? 'page' : undefined} className={dashboardNavTab === 'home' ? 'is-active' : ''} onClick={() => switchDashboardSection('home')}>Savings</button>
+              <button type="button" aria-current={dashboardNavTab === 'diamond' ? 'page' : undefined} className={dashboardNavTab === 'diamond' ? 'is-active' : ''} onClick={() => switchDashboardSection('diamond')}>Diamond Hands</button>
+            </nav>
+
+            <div className="app-bar-actions">
+              <button type="button" className="icon-btn" onClick={() => setLightMode(!lightMode)} aria-label={lightMode ? 'Switch to dark mode' : 'Switch to light mode'}>
+                {icon(lightMode ? 'moon' : 'sun')}
+              </button>
+              <button className="wallet-btn" type="button" onClick={() => setWalletModalOpen(true)}>
+                {isEvm && currentEvmNetwork ? renderChainIcon(currentEvmNetwork.id) : <span className="dot-live" />}
+                <span className="wallet-btn-copy">
+                  {isEvm && <small>{nativeBalance} ETH</small>}
+                  <b>{shortAddress(walletSession.address)}</b>
+                </span>
+              </button>
+            </div>
           </div>
         </header>
 
-        {walletSession.kind === 'evm' && (
-          <div className="dashboard-wallet-balance-strip">
-            <span>
-              <small>CONNECTED WALLET</small>
-              <strong>{shortAddress(walletSession.address)}</strong>
-            </span>
-            <span>
-              <small>NETWORK</small>
-              <strong className="dashboard-network-value">
-                {currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}
-                {currentEvmNetwork?.shortName ?? (evmChainId ? `Chain ${evmChainId}` : 'Detecting…')}
-              </strong>
-            </span>
-            <span>
-              <small>{currentEvmNetwork ? `${currentEvmNetwork.shortName.toUpperCase()} WALLET BALANCE` : 'TESTNET WALLET BALANCE'}</small>
-              <strong>{nativeBalanceStatus === 'loading' ? 'Refreshing…' : `${nativeBalance} ETH`}</strong>
-            </span>
-            <button
-              type="button"
-              className="dashboard-balance-refresh"
-              onClick={() => void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance()])}
-            >
-              Refresh
-            </button>
-          </div>
-        )}
+        {renderWalletSheet()}
+        {renderAddMoneySheet()}
 
-        {walletSession.kind === 'evm' && nativeBalanceStatus === 'error' && (
-          <div className="dashboard-balance-read-error">
-            <strong>Could not read {currentEvmNetwork?.shortName ?? 'testnet'} balance.</strong>
-            <span>{nativeBalanceError || 'Try Refresh or reconnect the wallet.'}</span>
-          </div>
-        )}
-
-        {walletModalOpen && (
-          <div className="wallet-modal-backdrop" role="presentation" onMouseDown={() => setWalletModalOpen(false)}>
-            <section
-              className="wallet-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="wallet-modal-title"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="wallet-modal-head">
-                <div>
-                  <span>RIXOR ACCESS</span>
-                  <h2 id="wallet-modal-title">Wallet connected</h2>
-                </div>
-                <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
-                  ×
-                </button>
-              </div>
-
-              <div className="wallet-connected-view">
-                {walletSession.kind === 'evm' && currentEvmNetwork
-                  ? renderChainIcon(currentEvmNetwork.id)
-                  : <span className="wallet-connected-dot" />}
-                <div>
-                  <small>{walletSession.name.toUpperCase()}</small>
-                  <strong>{shortAddress(walletSession.address)}</strong>
-                  {walletSession.kind === 'evm' && (
-                    <span className="wallet-connected-balance">{nativeBalance} ETH</span>
-                  )}
-                </div>
-                <button type="button" onClick={disconnectWallet}>Disconnect</button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {addMoneyOpen && (
-          <div className="wallet-modal-backdrop add-money-backdrop" role="presentation" onMouseDown={() => setAddMoneyOpen(false)}>
-            <section
-              className={`add-money-modal ${addMoneyStep === 'review' ? 'is-review' : ''}`}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="add-money-title"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="add-money-head">
-                <div>
-                  <span>TESTNET FUNDING</span>
-                  <h2 id="add-money-title">{addMoneyStep === 'amount' ? 'Add money' : 'Review deposit'}</h2>
-                </div>
-                <button type="button" className="wallet-modal-close" onClick={() => setAddMoneyOpen(false)} aria-label="Close add money dialog">
-                  ×
-                </button>
-              </div>
-
-              {walletSession.kind !== 'evm' ? (
-                <div className="add-money-disabled">
-                  <strong>EVM wallet required.</strong>
-                  <p>Testnet deposits are being built on Sepolia and Robinhood Chain Testnet first.</p>
-                </div>
-              ) : addMoneyStep === 'amount' ? (
-                <>
-                  <div className="add-money-chain-summary">
-                    <div className="add-money-chain-copy">
-                      <span>AVAILABLE ON THIS CHAIN</span>
-                      <h3 className="chain-title-with-logo">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Unsupported network'}</h3>
-                      <p>This is the amount available from your connected wallet on this network.</p>
-                    </div>
-                    <div className="add-money-chain-balance">
-                      <small>YOU CAN ADD UP TO</small>
-                      <strong className="amount-with-asset"><span>{nativeBalance}</span><em>ETH</em></strong>
-                    </div>
-                  </div>
-
-                  <div className="add-money-asset-card dashboard-soft-card">
-                    <div className="add-money-asset-top">
-                      <div className="add-money-chain-icon">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}</div>
-                      <div>
-                        <span>FUNDING ASSET</span>
-                        <strong>ETH</strong>
-                      </div>
-                      <em>Testnet</em>
-                    </div>
-                    <p>Native testnet ETH is the principal asset for this first Rixor contract version.</p>
-                  </div>
-
-                  <div className="add-money-amount-card dashboard-soft-card">
-                    <div className="add-money-amount-head">
-                      <div>
-                        <label htmlFor="add-money-amount">Amount to add</label>
-                        <small>From {currentEvmNetwork?.shortName ?? 'current chain'}</small>
-                      </div>
-                      <span className={`add-money-available-pill ${addMoneyInsufficient ? 'is-insufficient' : ''}`}>
-                        {nativeBalance} ETH available
-                      </span>
-                    </div>
-                    <div className={`add-money-input-wrap ${addMoneyInsufficient ? 'is-insufficient' : ''}`}>
-                      <input
-                        id="add-money-amount"
-                        inputMode="decimal"
-                        value={addMoneyAmount}
-                        onChange={(event) => setAddMoneyAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-                        placeholder="0.00"
-                      />
-                      <span className="asset-suffix">ETH</span>
-                    </div>
-                    <div className="dashboard-range add-money-range">
-                      <span
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            Number(nativeBalance) > 0 ? (Number(addMoneyAmount || 0) / Number(nativeBalance)) * 100 : 0,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-
-                    {addMoneyInsufficient && (
-                      <div className="add-money-inline-error">
-                        <span>Not available</span>
-                        <strong>Top up this wallet first</strong>
-                      </div>
-                    )}
-
-                    <div className="add-money-quick-amounts" aria-label="Quick amount selection">
-                      {[25, 50, 75].map((percent) => (
-                        <button
-                          key={percent}
-                          type="button"
-                          disabled={Number(nativeBalance) <= 0}
-                          onClick={() => setAddMoneyAmount(((Number(nativeBalance) * percent) / 100).toFixed(4))}
-                        >
-                          {percent}%
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        disabled={Number(nativeBalance) <= 0}
-                        onClick={() => void setGasSafeDepositMax()}
-                      >
-                        Max (keep gas)
-                      </button>
-                    </div>
-
-                    <div className="add-money-balance-line">
-                      <span>
-                        <small>CHAIN BALANCE</small>
-                        <strong>{nativeBalance} ETH</strong>
-                      </span>
-                      <span>
-                        <small>AFTER THIS</small>
-                        <strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {!currentEvmNetwork && (
-                    <p className="add-money-warning">Switch to Sepolia or Robinhood Testnet before continuing.</p>
-                  )}
-                  {addMoneyAmount && !addMoneyValid && !addMoneyInsufficient && (
-                    <p className="add-money-warning">Enter an amount above 0 and within your wallet balance.</p>
-                  )}
-
-                  <button
-                    type="button"
-                    className="add-money-continue"
-                    disabled={!currentEvmNetwork || !addMoneyValid}
-                    onClick={() => setAddMoneyStep('review')}
-                  >
-                    <span>Review deposit</span>
-                    {actionArrow}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="add-money-review-shell">
-                    <div className="add-money-review-visual" aria-hidden="true">
-                      <div className="review-machine-card">
-                        <div className="review-machine-card-line" />
-                        <div className="review-machine-card-dots" />
-                      </div>
-                      <div className="review-machine-terminal">
-                        <div className="review-machine-slot" />
-                        <div className="review-machine-screen">
-                          <span>{Number(addMoneyAmount || 0).toFixed(4)}</span>
-                          <small>ETH</small>
-                        </div>
-                        <div className="review-machine-keys" />
-                        <div className="review-machine-keys second" />
-                      </div>
-                      <span className="review-visual-label">READY TO DEPOSIT</span>
-                    </div>
-
-                    <div className="add-money-review-copy">
-                      <span>REVIEW DEPOSIT</span>
-                      <strong className="amount-with-asset"><span>{Number(addMoneyAmount || 0).toFixed(4)}</span><em>ETH</em></strong>
-                      <p>One wallet approval will move this testnet ETH into your Rixor available balance.</p>
-                    </div>
-                  </div>
-
-                  <div className="add-money-review-meta">
-                    <div><small>NETWORK</small><strong className="chain-meta-value">{currentEvmNetwork && renderChainIcon(currentEvmNetwork.id)}{currentEvmNetwork?.shortName ?? 'Unknown'}</strong></div>
-                    <div><small>FROM</small><strong>{shortAddress(walletSession.address)}</strong></div>
-                    <div><small>ASSET</small><strong>ETH</strong></div>
-                    <div><small>WALLET AFTER</small><strong>{Math.max(0, Number(nativeBalance) - Number(addMoneyAmount || 0)).toFixed(4)} ETH</strong></div>
-                  </div>
-
-                  <div className="add-money-review-note">
-                    <span className="dashboard-footnote-dot" />
-                    <p>
-                      {currentRixorContractAddress
-                        ? `Contract: ${shortAddress(currentRixorContractAddress)}. Your wallet will ask you to approve the testnet transaction.`
-                        : 'Deployment is the only remaining blocker for this network. No funds will be sent to a placeholder address.'}
+        <div className="container app-body">
+          {dashboardNavTab === 'home' ? (
+            <div className="view" key="home">
+              <section className="card balance-card">
+                <div className="balance-card-top">
+                  <div>
+                    <small className="label">Available in Rixor</small>
+                    <p className="figure figure--xl">{contractAvailableBalance} <em>ETH</em></p>
+                    <p className="figure-sub">
+                      {ethUsdPrice ? `≈ ${fmtUsd(rixorAvailableBalance * ethUsdPrice)} · ` : ''}
+                      {currentRixorContractAddress ? 'Read live from the contract' : 'Rixor is not on this network yet'}
                     </p>
                   </div>
-
-                  {(addMoneyTxStatus === 'awaiting-wallet' || addMoneyTxStatus === 'pending') && (
-                    <div className="rixor-deposit-loading" role="status" aria-live="polite">
-                      <div className="rixor-deposit-loader" aria-hidden="true" />
-                      <div>
-                        <small>{addMoneyTxStatus === 'awaiting-wallet' ? 'WALLET APPROVAL' : 'ONCHAIN CONFIRMATION'}</small>
-                        <strong>{addMoneyTxStatus === 'awaiting-wallet' ? 'Approve the deposit in your wallet' : 'Adding money to Rixor…'}</strong>
-                        <span>{Number(addMoneyAmount || 0).toFixed(4)} ETH · {currentEvmNetwork?.shortName ?? 'Testnet'}</span>
-                      </div>
+                  {isEvm ? (
+                    <div className="net-switch" aria-label="Network">
+                      {evmNetworks.map((network) => (
+                        <button
+                          key={network.id}
+                          type="button"
+                          className={evmChainId === network.id ? 'is-active' : ''}
+                          onClick={() => switchEvmNetwork(network.id)}
+                          disabled={networkSwitching !== null}
+                        >
+                          {renderChainIcon(network.id)}
+                          <span>{networkSwitching === network.id ? 'Switching…' : network.id === 46630 ? 'Robinhood' : 'Sepolia'}</span>
+                        </button>
+                      ))}
                     </div>
+                  ) : (
+                    <span className="tag">Solana connected</span>
                   )}
+                </div>
 
-                  {addMoneyTxStatus === 'failed' && (
-                    <div className="add-money-tx-state is-failed">
-                      <strong>Deposit failed</strong>
-                      {addMoneyTxError && <span>{addMoneyTxError}</span>}
-                    </div>
-                  )}
+                <div className="action-row">
+                  <button type="button" className="btn btn--dark btn--lg" onClick={openAddMoney}>{icon('plus')} Add money</button>
+                  <button type="button" className="btn btn--lime btn--lg" onClick={openStartPlan}>Start a plan</button>
+                  <button type="button" className="btn btn--ghost btn--lg" onClick={openWithdraw}>{icon('arrowUp')} Withdraw</button>
+                </div>
+              </section>
 
-                  {addMoneyTxStatus === 'confirmed' && (
-                    <a
-                      className="rixor-deposit-receipt"
-                      href={addMoneyTxHash && currentEvmNetwork ? `${currentEvmNetwork.explorerUrl}/tx/${addMoneyTxHash}` : undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <div className="rixor-receipt-machine">
-                        <div className="rixor-receipt-card">
-                          <div className="rixor-receipt-card-line" />
-                          <div className="rixor-receipt-card-dots" />
-                        </div>
-                        <div className="rixor-receipt-terminal">
-                          <div className="rixor-receipt-slot" />
-                          <div className="rixor-receipt-screen">
-                            <span>{Number(addMoneyAmount || 0).toFixed(4)}</span>
-                            <small>ETH</small>
-                          </div>
-                          <div className="rixor-receipt-keys" />
-                          <div className="rixor-receipt-keys second" />
-                        </div>
-                      </div>
-                      <div className="rixor-receipt-copy">
-                        <small>DEPOSIT CONFIRMED</small>
-                        <strong>{Number(addMoneyAmount || 0).toFixed(4)} ETH added</strong>
-                        <span>Now available in your Rixor balance</span>
-                      </div>
-                      <svg viewBox="0 0 451.846 451.847" aria-hidden="true">
-                        <path d="M345.441 248.292L151.154 442.573c-12.359 12.365-32.397 12.365-44.75 0-12.354-12.354-12.354-32.391 0-44.744L278.318 225.92 106.409 54.017c-12.354-12.359-12.354-32.394 0-44.748 12.354-12.359 32.391-12.359 44.75 0l194.287 194.284c6.177 6.18 9.262 14.271 9.262 22.366 0 8.099-3.091 16.196-9.267 22.373z" />
-                      </svg>
-                    </a>
-                  )}
-
-                  {addMoneyTxStatus !== 'confirmed' && addMoneyTxStatus !== 'awaiting-wallet' && addMoneyTxStatus !== 'pending' && (
-                    <div className="add-money-review-actions">
-                      <button type="button" className="add-money-back" onClick={() => setAddMoneyStep('amount')}>
-                        Back
-                      </button>
-                      <button
-                        type="button"
-                        className="add-money-submit is-ready"
-                        disabled={!currentRixorContractAddress}
-                        onClick={depositToRixor}
-                      >
-                        <span>Confirm deposit</span>
-                        <small>{Number(addMoneyAmount || 0).toFixed(4)} ETH</small>
-                      </button>
-                    </div>
-                  )}
-                </>
+              {isEvm && !currentEvmNetwork && evmChainId !== null && (
+                <div className="notice notice--warn"><strong>Unsupported network.</strong><span>Switch to Sepolia or Robinhood Chain Testnet to use Rixor.</span></div>
               )}
-            </section>
-          </div>
-        )}
+              {isEvm && walletError && renderTxError('Network', walletError)}
+              {isEvm && nativeBalanceStatus === 'error' && (
+                <div className="notice notice--error"><strong>Could not read your {currentEvmNetwork?.shortName ?? 'testnet'} balance.</strong><span>{nativeBalanceError || 'Try refresh or reconnect the wallet.'}</span></div>
+              )}
 
-        <section className={`dashboard-shell ${dashboardNavTransitioning ? 'is-nav-transitioning' : ''}`} aria-labelledby="dashboard-title">
-          <div className={`dashboard-home-view ${dashboardNavTab === 'home' ? 'is-active' : ''}`}>
-          <div className="dashboard-intro">
-            <div>
-              <span className="dashboard-kicker">YOUR SAVINGS</span>
-              <h1 id="dashboard-title">Good to have you here.</h1>
-              <p>Your wallet is connected. Your onchain savings will live here.</p>
-            </div>
-
-            {walletSession.kind === 'evm' ? (
-              <div className="dashboard-network-switcher" aria-label="EVM testnet">
-                {evmNetworks.map((network) => (
-                  <button
-                    key={network.id}
-                    type="button"
-                    className={`dashboard-network-option ${evmChainId === network.id ? 'is-active' : ''}`}
-                    onClick={() => switchEvmNetwork(network.id)}
-                    disabled={networkSwitching !== null}
-                  >
-                    {renderChainIcon(network.id)}
-                    <span>{network.shortName}</span>
-                    {networkSwitching === network.id && <em>Switching…</em>}
+              <div className="stat-grid">
+                <div className="stat">
+                  <small>Saved in plans</small>
+                  <strong>{fmtEth(savedInPlans)} <em>ETH</em></strong>
+                  <span>{activePlans.length} active {activePlans.length === 1 ? 'plan' : 'plans'}</span>
+                </div>
+                <div className="stat">
+                  <small>Wallet balance</small>
+                  <strong>{nativeBalanceStatus === 'loading' ? '…' : nativeBalance} <em>ETH</em></strong>
+                  <button type="button" className="text-btn" onClick={() => void Promise.all([refreshNativeBalance(), refreshContractAvailableBalance(), refreshOnchainPlans()])}>
+                    {icon('refresh', 14)} Refresh
                   </button>
-                ))}
-                {!currentEvmNetwork && evmChainId !== null && (
-                  <span className="dashboard-network-unsupported">Unsupported network</span>
-                )}
+                </div>
+                <div className="stat">
+                  <small>Rewards earned</small>
+                  <strong>0.0000 <em>$RIXOR</em></strong>
+                  <span>Not live on testnet</span>
+                </div>
+                <div className="stat">
+                  <small>Plans closed</small>
+                  <strong>{planHistory.length}</strong>
+                  <span>{planHistory.filter((item) => item.earlyExit).length} early</span>
+                </div>
               </div>
-            ) : (
-              <span className="dashboard-network-pill">Solana connected</span>
-            )}
-          </div>
 
-          {walletSession.kind === 'evm' && walletError && (
-            <p className="dashboard-network-error">{walletError}</p>
-          )}
-          </div>
-
-          <div className={`dashboard-diamond-view ${dashboardNavTab === 'diamond' ? 'is-active' : ''}`}>
-          <div className="dashboard-diamond-page-intro">
-            <span>DIAMOND HANDS</span>
-            <h1>Conviction without the sell button.</h1>
-            <p>Lock meme coins you already hold on Robinhood Chain and commit to your own long-term thesis.</p>
-          </div>
-          <article id="diamond-hands" className="dashboard-diamond-panel dashboard-soft-card">
-            <div className="dashboard-diamond-head">
-              <div>
-                <span>DIAMOND HANDS</span>
-                <h2>Hold your memes with conviction.</h2>
-                <p>You already bought it. Diamond Hands is for locking a meme you believe in so you cannot paper-hand it before your chosen unlock date.</p>
-              </div>
-              {evmChainId === 46630 ? (
-                <span className="dashboard-diamond-network">
-                  {renderChainIcon(46630)}
-                  Robinhood
-                </span>
-              ) : (
-                <button type="button" onClick={() => void switchEvmNetwork(46630)}>
-                  Switch to Robinhood
-                </button>
-              )}
-            </div>
-
-            {evmChainId !== 46630 ? (
-              <div className="dashboard-diamond-empty">
-                <strong>Robinhood Chain only.</strong>
-                <span>Switch networks to see meme coins already held by this wallet.</span>
-              </div>
-            ) : diamondTokensStatus === 'loading' ? (
-              <div className="dashboard-diamond-empty">
-                <strong>Checking your meme bag…</strong>
-                <span>Looking for recognized meme coins already held in this wallet.</span>
-              </div>
-            ) : diamondTokensStatus === 'error' ? (
-              <div className="dashboard-diamond-empty">
-                <strong>Could not read your meme holdings.</strong>
-                <span>Refresh the page or try again in a moment.</span>
-              </div>
-            ) : diamondTokens.length === 0 ? (
-              <div className="dashboard-diamond-empty">
-                <strong>No recognized memes found in this wallet.</strong>
-                <span>Diamond Hands only shows meme coins you already hold. Tokenized stocks and unrelated ERC-20s stay out.</span>
-              </div>
-            ) : (
-              <div className="dashboard-diamond-cards">
-                {diamondTokens.map((token) => {
-                  const numericBalance = Number(token.balance)
-                  const displayBalance = Number.isFinite(numericBalance)
-                    ? numericBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })
-                    : token.balance
-
-                  return (
-                    <div className="dashboard-diamond-card" key={token.address}>
-                      <div className="dashboard-diamond-card-top">
-                        <span className="dashboard-diamond-mark">{token.symbol.slice(0, 2).toUpperCase()}</span>
-                        <span className="dashboard-diamond-status">In wallet</span>
-                      </div>
-                      <div className="dashboard-diamond-card-copy">
-                        <small>MEME HOLDING</small>
-                        <strong>{token.symbol}</strong>
-                        <span>{token.name}</span>
-                      </div>
-                      <div className="dashboard-diamond-card-balance">
-                        <small>READY TO DIAMOND HAND</small>
-                        <strong>{displayBalance}</strong>
-                        <span>{token.symbol}</span>
-                      </div>
-                      <div className="dashboard-diamond-card-foot">
-                        <span>Conviction lock</span>
-                        <small>{shortAddress(token.address)}</small>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            <div className="dashboard-diamond-foot">
-              <span>Conviction, enforced.</span>
-              <small>Only meme coins already held in the connected wallet appear here. The actual lock transaction layer comes next.</small>
-            </div>
-          </article>
-          </div>
-
-          <div className={`dashboard-home-view ${dashboardNavTab === 'home' ? 'is-active' : ''}`}>
-          <div className="dashboard-hero-grid">
-            <div className="dashboard-summary">
-              <div className="dashboard-total-card dashboard-soft-card">
-                <span className="dashboard-card-label">AVAILABLE IN RIXOR</span>
-                <strong className="amount-with-asset"><span>{contractAvailableBalance}</span><em>ETH</em></strong>
-                <p>{currentRixorContractAddress ? 'Available contract balance for this wallet.' : 'Testnet contract not deployed on this network yet.'}</p>
-
-                {currentEvmNetwork && !currentRixorContractAddress && isDeploymentAdmin && (
-                  <div className="dashboard-contract-setup">
-                    <div>
-                      <small>TESTNET CONTRACT</small>
-                      <strong>{currentEvmNetwork.shortName}</strong>
-                      <span>Wallet-signed deployment targets only this selected testnet. Gas is paid with test ETH on this network.</span>
-                    </div>
+              {currentEvmNetwork && !currentRixorContractAddress && isDeploymentAdmin && (
+                <section className="card admin-card">
+                  <div>
+                    <small className="kicker">Admin · testnet contract</small>
+                    <h2>Deploy on {currentEvmNetwork.shortName}</h2>
+                    <p>Wallet-signed deployment for this testnet only. Gas is paid in test ETH.</p>
+                    {deployError && <p className="field-error">{deployError}</p>}
+                  </div>
+                  <div className="admin-card-actions">
                     <button
                       type="button"
+                      className="btn btn--dark"
                       onClick={() => void deployRixorContract()}
                       disabled={deployStatus === 'awaiting-wallet' || deployStatus === 'pending' || deployStatus === 'confirmed'}
                     >
-                      {deployStatus === 'awaiting-wallet'
-                        ? 'Approve in wallet…'
-                        : deployStatus === 'pending'
-                          ? 'Deploying…'
-                          : deployStatus === 'confirmed'
-                            ? 'Deployed'
-                            : `Deploy on ${currentEvmNetwork.shortName}`}
+                      {deployStatus === 'awaiting-wallet' ? 'Approve in wallet…' : deployStatus === 'pending' ? 'Deploying…' : deployStatus === 'confirmed' ? 'Deployed' : 'Deploy contract'}
                     </button>
-                    {deployTxHash && (
-                      <a href={`${currentEvmNetwork.explorerUrl}/tx/${deployTxHash}`} target="_blank" rel="noreferrer">
-                        View deployment ↗
-                      </a>
+                    {deployTxHash && <a className="text-btn" href={`${currentEvmNetwork.explorerUrl}/tx/${deployTxHash}`} target="_blank" rel="noreferrer">View deployment {icon('arrowUpRight', 14)}</a>}
+                  </div>
+                </section>
+              )}
+
+              <section className="card list-card">
+                <header className="panel-head">
+                  <div><small className="kicker">Active plans</small><h2>Your savings plans</h2></div>
+                  {activePlans.length > 0 && <button type="button" className="btn btn--sm btn--ghost" onClick={openStartPlan}>{icon('plus', 16)} New</button>}
+                </header>
+                {activePlans.length === 0 ? (
+                  <div className="empty empty--action">
+                    <div>
+                      <strong>No active plans yet.</strong>
+                      <span>Plans you create onchain appear here automatically for this wallet.</span>
+                    </div>
+                    <button type="button" className="btn btn--lime btn--sm" onClick={openStartPlan}>Start a plan</button>
+                  </div>
+                ) : (
+                  <div className="plan-list">
+                    {activePlans.map((planItem) => {
+                      const progress = Math.min(100, Math.max(0, planItem.progress))
+                      return (
+                        <button key={planItem.id} type="button" className="plan-row" onClick={() => setSelectedPlanId(planItem.id)}>
+                          <span className={`plan-badge ${planItem.status === 'matured' ? 'is-matured' : ''}`}>{termShort[planItem.planType] ?? '—'}</span>
+                          <span className="plan-row-main">
+                            <strong>{planItem.goal}</strong>
+                            <span>{planItem.maturesAt ? `${planItem.status === 'matured' ? 'Matured' : 'Matures'} ${formatPlanDate(planItem.maturesAt)}` : planItem.accessLabel}</span>
+                          </span>
+                          <span className="plan-row-amount">
+                            <strong>{fmtEth(planItem.principalAmount)} ETH</strong>
+                            <span className="progress progress--sm"><i style={{ width: `${progress}%` }} /></span>
+                          </span>
+                          {icon('arrowRight')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <div className="split">
+                <section className="card list-card">
+                  <header className="panel-head">
+                    <div><small className="kicker">Activity</small><h2>Recent movement</h2></div>
+                    {activityItems.length > 4 && (
+                      <button type="button" className="text-btn" onClick={() => setActivityExpanded((current) => !current)}>{activityExpanded ? 'Show less' : 'View all'}</button>
                     )}
-                    {deployError && <p>{deployError}</p>}
-                  </div>
-                )}
+                  </header>
+                  {activityItems.length === 0 ? (
+                    <div className="empty"><span>Confirmed deposits, plan starts and withdrawals for this wallet will appear here.</span></div>
+                  ) : (
+                    <ul className="feed">
+                      {(activityExpanded ? activityItems : activityItems.slice(0, 4)).map((item) => (
+                        <li key={item.id}>
+                          <span className={`feed-icon feed-icon--${item.type}`}>
+                            {icon(item.type === 'deposit' ? 'arrowDown' : item.type === 'withdrawal' ? 'arrowUp' : item.type === 'reward' ? 'arrowUpRight' : 'lock', 16)}
+                          </span>
+                          <span className="feed-copy">
+                            <strong>{item.title}</strong>
+                            <span>{formatActivityDate(item.timestamp)} · {item.network}</span>
+                          </span>
+                          <span className="feed-amount">
+                            <strong>{item.type === 'withdrawal' ? '−' : item.type === 'deposit' ? '+' : ''}{fmtEth(item.amount)} {item.asset}</strong>
+                            {item.txHash && currentEvmNetwork
+                              ? <a href={`${currentEvmNetwork.explorerUrl}/tx/${item.txHash}`} target="_blank" rel="noreferrer">Tx {icon('arrowUpRight', 12)}</a>
+                              : <span className={`status status--${item.status}`}>{item.status}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
-                {currentRixorContractAddress && (
-                  <div className="dashboard-contract-live">
-                    <span>Contract live</span>
-                    <a href={`${currentEvmNetwork?.explorerUrl}/address/${currentRixorContractAddress}`} target="_blank" rel="noreferrer">
-                      {shortAddress(currentRixorContractAddress)} ↗
-                    </a>
-                    <span className="dashboard-contract-latest">Protocol contract active</span>
-                  </div>
-                )}
-
-                <div className="dashboard-actions dashboard-actions--compact">
-                  <button type="button" className="dashboard-action dashboard-action--primary" onClick={openAddMoney}>
-                    <span>Add money</span>
-                    {actionArrow}
-                  </button>
-                  <button type="button" className="dashboard-action" onClick={openStartPlan}>
-                    <span>Start a plan</span>
-                    {actionArrow}
-                  </button>
-                  <button type="button" className="dashboard-action" onClick={openWithdraw}>
-                    <span>Withdraw</span>
-                    {actionArrow}
-                  </button>
-                </div>
+                <section className="card list-card">
+                  <header className="panel-head">
+                    <div><small className="kicker">Plan history</small><h2>Completed & withdrawn</h2></div>
+                    {planHistory.length > 4 && (
+                      <button type="button" className="text-btn" onClick={() => setHistoryExpanded((current) => !current)}>{historyExpanded ? 'Show less' : 'View all'}</button>
+                    )}
+                  </header>
+                  {planHistory.length === 0 ? (
+                    <div className="empty"><span>When you close a plan, its final amount and exit details stay here.</span></div>
+                  ) : (
+                    <ul className="feed">
+                      {(historyExpanded ? planHistory : planHistory.slice(0, 4)).map((item) => (
+                        <li key={`${item.id}-${item.txHash ?? item.closedAt}`}>
+                          <span className="feed-icon feed-icon--closed">{icon('check', 16)}</span>
+                          <span className="feed-copy">
+                            <strong>{item.goal} · {item.termLabel}</strong>
+                            <span>{formatPlanDate(item.startedAt)} → {formatPlanDate(item.closedAt)}</span>
+                          </span>
+                          <span className="feed-amount">
+                            <strong>{fmtEth(item.amountReturned)} {item.principalAsset}</strong>
+                            {item.earlyExitFee > 0
+                              ? <span className="is-loss">−{fmtEth(item.earlyExitFee)} fee</span>
+                              : <span>{item.earlyExit ? 'Early exit' : 'Completed'}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
               </div>
 
-              <div className="dashboard-metric-grid">
-                <article className="dashboard-metric-card dashboard-soft-card">
-                  <div className="dashboard-metric-title">
-                    <span className="dashboard-metric-icon">↗</span>
-                    <strong>Earned</strong>
-                    <em>0%</em>
-                  </div>
-                  <div className="dashboard-metric-data">
-                    <p>0.00 <small>Rewards</small></p>
-                    <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
-                  </div>
-                </article>
-
-                <article className="dashboard-metric-card dashboard-soft-card">
-                  <div className="dashboard-metric-title">
-                    <span className="dashboard-metric-icon">◎</span>
-                    <strong>Available</strong>
-                    <em>Ready</em>
-                  </div>
-                  <div className="dashboard-metric-data">
-                    <p>{contractAvailableBalance} <small>ETH</small></p>
-                    <div className="dashboard-range"><span style={{ width: '0%' }} /></div>
-                  </div>
-                </article>
-              </div>
+              <p className="fine-print fine-print--center">
+                {currentRixorContractAddress && currentEvmNetwork ? (
+                  <>Balances and plans are read from the Rixor contract <a href={`${currentEvmNetwork.explorerUrl}/address/${currentRixorContractAddress}`} target="_blank" rel="noreferrer">{shortAddress(currentRixorContractAddress)}</a> on {currentEvmNetwork.shortName}. Testnet only.</>
+                ) : 'Rixor is available on Sepolia and Robinhood Chain Testnet.'}
+              </p>
             </div>
+          ) : (
+            <div className="view" key="diamond">
+              <section className="diamond-hero">
+                <p className="eyebrow">Diamond Hands</p>
+                <h1>Conviction without the sell button.</h1>
+                <p>Lock meme coins you already hold on Robinhood Chain and commit to your own long-term thesis.</p>
+                {evmChainId === 46630 ? (
+                  <span className="tag tag--lime">{renderChainIcon(46630)} Robinhood Chain</span>
+                ) : (
+                  <button type="button" className="btn btn--lime" onClick={() => void switchEvmNetwork(46630)} disabled={!isEvm}>Switch to Robinhood Chain</button>
+                )}
+              </section>
 
-            <div className="rixor-wallet-stage">
-              <div className="rixor-wallet-copy">
-                <span>SAVINGS POCKET</span>
-                <h2>Choose how your money sits.</h2>
-                <p>Hover the pocket to explore the plans available to you.</p>
-              </div>
-
-              <div className="rixor-wallet" aria-label="Rixor savings plan wallet">
-                <div className="rixor-wallet-back" />
-
-                <div className="rixor-plan-card rixor-plan-card--year">
-                  <div className="rixor-plan-card-inner">
-                    <div className="rixor-plan-card-top">
-                      <span>1 Year</span>
-                      <div className="rixor-plan-chip">9.4%</div>
-                    </div>
-                    <div className="rixor-plan-card-bottom">
-                      <div>
-                        <span className="rixor-plan-label">PLAN</span>
-                        <span className="rixor-plan-value">Highest rate</span>
-                      </div>
-                      <strong>365D</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rixor-plan-card rixor-plan-card--ninety">
-                  <div className="rixor-plan-card-inner">
-                    <div className="rixor-plan-card-top">
-                      <span>90 Day</span>
-                      <div className="rixor-plan-chip">6.8%</div>
-                    </div>
-                    <div className="rixor-plan-card-bottom">
-                      <div>
-                        <span className="rixor-plan-label">PLAN</span>
-                        <span className="rixor-plan-value">Balanced lock</span>
-                      </div>
-                      <strong>90D</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rixor-plan-card rixor-plan-card--flex">
-                  <div className="rixor-plan-card-inner">
-                    <div className="rixor-plan-card-top">
-                      <span>Flexible</span>
-                      <div className="rixor-plan-chip">3.8%</div>
-                    </div>
-                    <div className="rixor-plan-card-bottom">
-                      <div>
-                        <span className="rixor-plan-label">ACCESS</span>
-                        <span className="rixor-plan-value">Withdraw anytime</span>
-                      </div>
-                      <strong>LIVE</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rixor-pocket">
-                  <svg className="rixor-pocket-svg" viewBox="0 0 280 160" fill="none" aria-hidden="true">
-                    <path
-                      d="M 0 20 C 0 10, 5 10, 10 10 C 20 10, 25 25, 40 25 L 240 25 C 255 25, 260 10, 270 10 C 275 10, 280 10, 280 20 L 280 120 C 280 155, 260 160, 240 160 L 40 160 C 20 160, 0 155, 0 120 Z"
-                    />
-                    <path
-                      d="M 8 22 C 8 16, 12 16, 15 16 C 23 16, 27 29, 40 29 L 240 29 C 253 29, 257 16, 265 16 C 268 16, 272 16, 272 22 L 272 120 C 272 150, 255 152, 240 152 L 40 152 C 25 152, 8 152, 8 120 Z"
-                      className="rixor-pocket-stitch"
-                    />
-                  </svg>
-                  <div className="rixor-pocket-content">
-                    <div className="rixor-pocket-balance">
-                      <span className="rixor-balance-stars">••••••</span>
-                      <span className="rixor-balance-real">{contractAvailableBalance} ETH</span>
-                    </div>
-                    <small>Available savings</small>
-                    <span className="rixor-eye" aria-hidden="true">◉</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="dashboard-lower-grid">
-            <article className="dashboard-panel dashboard-soft-card">
-              <div className="dashboard-panel-head">
-                <div>
-                  <span>ACTIVE PLANS</span>
-                  <h2>Your savings plans</h2>
-                </div>
-              </div>
-              {activePlans.length === 0 ? (
-                <div className="dashboard-empty-plan">
-                  <span className="dashboard-empty-orb">+</span>
-                  <div>
-                    <strong>No active plans yet.</strong>
-                    <p>When you create a plan onchain, it will appear here automatically for this wallet.</p>
-                  </div>
-                  <button type="button" onClick={openStartPlan}>Start a plan</button>
-                </div>
-              ) : (
-                <div className="dashboard-plan-list">
-                  {activePlans.map((planItem) => (
-                    <button
-                      key={planItem.id}
-                      type="button"
-                      className="dashboard-plan-row"
-                      onClick={() => setSelectedPlanId(planItem.id)}
-                    >
-                      <div className="dashboard-plan-row-main">
-                        <span className="dashboard-plan-status-dot" />
-                        <div>
-                          <small>{planItem.goal.toUpperCase()}</small>
-                          <strong>{planItem.principalAmount.toFixed(4)} {planItem.principalAsset}</strong>
-                          <span>{planItem.termLabel} · {planItem.apy}% rate</span>
+              <section className="card list-card">
+                <header className="panel-head">
+                  <div><small className="kicker">Your meme bag</small><h2>Ready to diamond-hand</h2></div>
+                </header>
+                {evmChainId !== 46630 ? (
+                  <div className="empty"><strong>Robinhood Chain only.</strong><span>Switch networks to see meme coins this wallet already holds.</span></div>
+                ) : diamondTokensStatus === 'loading' ? (
+                  <div className="empty"><span className="spinner" aria-hidden="true" /><strong>Checking your wallet…</strong></div>
+                ) : diamondTokensStatus === 'error' ? (
+                  <div className="empty"><strong>Could not read your holdings.</strong><span>Refresh the page or try again in a moment.</span></div>
+                ) : diamondTokens.length === 0 ? (
+                  <div className="empty"><strong>No recognized meme coins found.</strong><span>Only meme coins you already hold appear here. Tokenized stocks and other ERC-20s stay out.</span></div>
+                ) : (
+                  <div className="token-grid">
+                    {diamondTokens.map((token) => {
+                      const numericBalance = Number(token.balance)
+                      const displayBalance = Number.isFinite(numericBalance)
+                        ? numericBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })
+                        : token.balance
+                      return (
+                        <div className="token-card" key={token.address}>
+                          <div className="token-card-top">
+                            <span className="token-mark">{token.symbol.slice(0, 2).toUpperCase()}</span>
+                            <span className="tag">In wallet</span>
+                          </div>
+                          <strong>{token.symbol}</strong>
+                          <span>{token.name}</span>
+                          <p className="figure figure--sm">{displayBalance}</p>
+                          <small>{shortAddress(token.address)}</small>
                         </div>
-                      </div>
-                      <div className="dashboard-plan-row-progress">
-                        <span>{Math.round(planItem.progress)}%</span>
-                        <div><i style={{ width: `${Math.min(100, Math.max(0, planItem.progress))}%` }} /></div>
-                      </div>
-                      <div className="dashboard-plan-row-meta">
-                        <small>{planItem.maturesAt ? 'MATURITY' : 'ACCESS'}</small>
-                        <strong>{planItem.maturesAt ? formatPlanDate(planItem.maturesAt) : planItem.accessLabel}</strong>
-                      </div>
-                      <span className="dashboard-plan-row-arrow">→</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </article>
-
-            <article className={`dashboard-panel dashboard-soft-card dashboard-activity-panel ${activityExpanded ? 'is-expanded' : ''}`}>
-              <div className="dashboard-panel-head">
-                <div>
-                  <span>ACTIVITY</span>
-                  <h2>Recent movement</h2>
-                </div>
-                {activityItems.length > 3 && (
-                  <button
-                    type="button"
-                    className="dashboard-activity-toggle"
-                    onClick={() => setActivityExpanded((current) => !current)}
-                  >
-                    {activityExpanded ? 'Show less' : 'View more'}
-                  </button>
-                )}
-              </div>
-              {activityItems.length === 0 ? (
-                <div className="dashboard-empty-activity">
-                  <span />
-                  <p>Your confirmed onchain deposits, plan starts, withdrawals, and rewards will appear here for this wallet.</p>
-                </div>
-              ) : (
-                <div className="dashboard-activity-viewport">
-                  <div className="dashboard-activity-list">
-                  {(activityExpanded ? activityItems : activityItems.slice(0, 3)).map((item) => (
-                    <div className="dashboard-activity-row" key={item.id}>
-                      <span className={`dashboard-activity-icon dashboard-activity-icon--${item.type}`}>
-                        {item.type === 'deposit' ? '↓' : item.type === 'withdrawal' ? '↑' : item.type === 'reward' ? '↗' : '◎'}
-                      </span>
-                      <div className="dashboard-activity-copy">
-                        <strong>{item.title}</strong>
-                        <span>{item.network} · {formatActivityDate(item.timestamp)}</span>
-                      </div>
-                      <div className="dashboard-activity-amount">
-                        <strong>{item.amount.toFixed(4)} {item.asset}</strong>
-                        <span className={`dashboard-activity-status is-${item.status}`}>{item.status}</span>
-                      </div>
-                      {item.txHash ? (
-                        <a
-                          href={`${currentEvmNetwork?.explorerUrl ?? ''}/tx/${item.txHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="dashboard-activity-link"
-                        >
-                          ↗
-                        </a>
-                      ) : (
-                        <span className="dashboard-activity-link is-disabled">↗</span>
-                      )}
-                    </div>
-                  ))}
+                      )
+                    })}
                   </div>
-                </div>
-              )}
-            </article>
-          </div>
-
-          <article className={`dashboard-panel dashboard-soft-card dashboard-history-panel ${historyExpanded ? 'is-expanded' : ''}`}>
-            <div className="dashboard-panel-head">
-              <div>
-                <span>PLAN HISTORY</span>
-                <h2>Completed & withdrawn</h2>
-              </div>
-              <div className="dashboard-history-head-actions">
-                <small>{planHistory.length} closed</small>
-                {planHistory.length > 3 && (
-                  <button
-                    type="button"
-                    className="dashboard-history-toggle"
-                    onClick={() => setHistoryExpanded((current) => !current)}
-                  >
-                    {historyExpanded ? 'Show less' : 'View more'}
-                  </button>
                 )}
-              </div>
+              </section>
+              <p className="fine-print fine-print--center">Only meme coins already in the connected wallet appear here. The lock contract for Diamond Hands is not live yet.</p>
             </div>
+          )}
+        </div>
 
-            {planHistory.length === 0 ? (
-              <div className="dashboard-history-empty">
-                <span>✓</span>
-                <div>
-                  <strong>No closed plans yet.</strong>
-                  <p>When you withdraw or close a plan, its final amount and exit details will stay here.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="dashboard-history-viewport">
-                <div className="dashboard-history-list">
-                {(historyExpanded ? planHistory : planHistory.slice(0, 3)).map((item) => (
-                  <div className="dashboard-history-row" key={`${item.id}-${item.txHash ?? item.closedAt}`}>
-                    <div className="dashboard-history-main">
-                      <span className="dashboard-history-mark">✓</span>
-                      <div>
-                        <small>{item.goal.toUpperCase()}</small>
-                        <strong>{item.amountReturned.toFixed(4)} {item.principalAsset} returned</strong>
-                        <span>{item.termLabel}{item.earlyExitFee > 0 ? ` · ${item.earlyExitFee.toFixed(4)} ETH early-exit fee` : ''}</span>
-                      </div>
-                    </div>
-                    <div className="dashboard-history-meta">
-                      <small>STARTED</small>
-                      <strong>{formatPlanDate(item.startedAt)}</strong>
-                    </div>
-                    <div className="dashboard-history-meta">
-                      <small>EXIT</small>
-                      <strong>{formatPlanDate(item.closedAt)}</strong>
-                      <span>{item.earlyExit ? 'Early withdrawal' : 'Completed'}</span>
-                    </div>
-                    {item.txHash && currentEvmNetwork ? (
-                      <a className="dashboard-history-link" href={`${currentEvmNetwork.explorerUrl}/tx/${item.txHash}`} target="_blank" rel="noreferrer">↗</a>
-                    ) : (
-                      <span className="dashboard-history-link is-disabled">↗</span>
-                    )}
-                  </div>
-                ))}
-                </div>
-              </div>
-            )}
-          </article>
-
-          <div className="dashboard-footnote">
-            <span className="dashboard-footnote-dot" />
-            <p>
-              Connected as {shortAddress(walletSession.address)}. {currentRixorContractAddress
-                ? 'Rixor available balance is read directly from the active testnet contract.'
-                : isDeploymentAdmin
-                  ? 'This supported testnet does not have a configured Rixor contract yet.'
-                  : 'Rixor is not available on this network yet.'}
-            </p>
-          </div>
-          </div>
-        </section>
+        <nav className="tabbar" aria-label="Dashboard sections">
+          <button type="button" className={dashboardNavTab === 'home' ? 'is-active' : ''} aria-current={dashboardNavTab === 'home' ? 'page' : undefined} onClick={() => switchDashboardSection('home')}>
+            {icon('home', 20)}<span>Savings</span>
+          </button>
+          <button type="button" className="tabbar-cta" onClick={openAddMoney} aria-label="Add money">
+            {icon('plus', 22)}
+          </button>
+          <button type="button" className={dashboardNavTab === 'diamond' ? 'is-active' : ''} aria-current={dashboardNavTab === 'diamond' ? 'page' : undefined} onClick={() => switchDashboardSection('diamond')}>
+            {icon('diamond', 20)}<span>Diamond</span>
+          </button>
+        </nav>
       </main>
     )
   }
 
+  const feeCurveY = (feePercent: number) => 132 - (feePercent / 8) * 104
+  const showcaseMax = selectedPlan.earlyExitMax
+  const showcaseCta = walletSession ? 'Open dashboard' : 'Connect wallet'
+  const compareRows: Array<[string, string, string, string]> = [
+    ['Choose a lock term', 'Flexible to 1 year', 'No', 'Some products'],
+    ['Exit fee shown before you sign', 'Yes', '—', 'Varies'],
+    ['Exit fee at maturity', '0%', '—', 'Varies'],
+    ['Who signs withdrawals', 'You', 'You', 'The bank'],
+    ['Where your history lives', 'Public chain', 'Public chain', 'Bank records'],
+  ]
+
   return (
-    <main
-      className={`carbon-stage ${lightMode ? 'light-mode' : 'dark-mode'}`}
-      aria-label="Rixor theme background preview"
-    >
-      <div className="carbon-layer carbon-base" aria-hidden="true" />
-      <div className="carbon-layer carbon-spotlight" aria-hidden="true" />
-      <div className="carbon-layer carbon-vignette" aria-hidden="true" />
-      <div className="carbon-layer carbon-grain" aria-hidden="true" />
+    <main className="site">
+      {renderWalletSheet()}
 
-      {walletModalOpen && (
-        <div className="wallet-modal-backdrop" role="presentation" onMouseDown={() => setWalletModalOpen(false)}>
-          <section
-            className="wallet-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="wallet-modal-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="wallet-modal-head">
-              <div>
-                <span>RIXOR ACCESS</span>
-                <h2 id="wallet-modal-title">Connect your wallet</h2>
-              </div>
-              <button type="button" className="wallet-modal-close" onClick={() => setWalletModalOpen(false)} aria-label="Close wallet dialog">
-                ×
-              </button>
-            </div>
-
-            <>
-                <p className="wallet-modal-copy">
-                  Your wallet is your Rixor account. Rixor checks this browser for compatible
-                  EVM wallets and requests your public address only. No funds move when you connect.
-                </p>
-
-                <div className="wallet-options">
-                  {detectedWallets.map((wallet) => {
-                    return (
-                      <button
-                        key={wallet.id}
-                        type="button"
-                        className="wallet-option"
-                        onClick={() => connectEvmWallet(wallet)}
-                        disabled={walletConnecting !== null}
-                      >
-                        <span className="wallet-option-mark wallet-option-mark--eth" aria-hidden="true">
-                          <svg viewBox="0 0 256 417" role="presentation">
-                            <path d="M127.9 0L125.1 9.5V279.1L127.9 281.9L255.8 206.3Z" fill="currentColor" opacity=".72" />
-                            <path d="M127.9 0L0 206.3L127.9 281.9V154.1Z" fill="currentColor" />
-                            <path d="M127.9 306.1L126.3 308V414.6L127.9 417L255.9 230.5Z" fill="currentColor" opacity=".72" />
-                            <path d="M127.9 417V306.1L0 230.5Z" fill="currentColor" />
-                            <path d="M127.9 281.9L255.8 206.3L127.9 154.1Z" fill="currentColor" opacity=".35" />
-                            <path d="M0 206.3L127.9 281.9V154.1Z" fill="currentColor" opacity=".72" />
-                          </svg>
-                        </span>
-                        <span>
-                          <strong>{wallet.name}</strong>
-                          <small>EVM wallet detected</small>
-                        </span>
-                        <em>{walletConnecting === wallet.id ? 'Connecting…' : 'Detected'}</em>
-                      </button>
-                    )
-                  })}
-
-                  {detectedWallets.length === 0 && (
-                    <div className="wallet-empty-state">
-                      <span>No compatible wallet detected.</span>
-                      <small>
-                        Install an EVM wallet such as Zerion, MetaMask, or Coinbase Wallet, then reopen this panel.
-                      </small>
-                    </div>
-                  )}
-                </div>
-
-                {walletError && <p className="wallet-error">{walletError}</p>}
-                <p className="wallet-modal-foot">Rixor never asks for your seed phrase or private key.</p>
-            </>
-          </section>
+      <header className={`site-nav ${navCompact ? 'is-scrolled' : ''}`}>
+        <div className="container site-nav-inner">
+          <button className="brand-btn" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Rixor home">
+            {renderRixorBrand()}
+          </button>
+          <nav className="site-links" aria-label="Sections">
+            <button type="button" onClick={() => scrollToSection('compare')}>Compare</button>
+            <button type="button" onClick={() => scrollToSection('plans')}>Plans</button>
+            <button type="button" onClick={() => scrollToSection('how-it-works')}>How it works</button>
+            <button type="button" onClick={() => scrollToSection('security')}>Security</button>
+          </nav>
+          <button type="button" className="btn btn--dark btn--sm" onClick={() => (walletSession ? setDashboardView(true) : openWalletFor('dashboard'))}>
+            {walletSession ? 'Open app' : 'Connect wallet'}
+          </button>
         </div>
-      )}
+      </header>
 
-      {!walletSession && <header className={`top-shell ${navCompact ? 'is-compact' : ''}`}>
-        <button className="top-brand" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Rixor home">
-          {renderRixorBrand()}
-        </button>
-        <div className="tab-container" aria-label="Primary navigation">
-          <input type="radio" name="tab" id="tab1" className="tab tab--1" checked={activeSection === 'save'} readOnly />
-          <label className="tab_label" htmlFor="tab1" onClick={focusSavingsPanel}>Save</label>
-
-          <input type="radio" name="tab" id="tab2" className="tab tab--2" checked={activeSection === 'how'} readOnly />
-          <label className="tab_label" htmlFor="tab2" onClick={scrollToHowItWorks}>How it works</label>
-
-          <input type="radio" name="tab" id="tab3" className="tab tab--3" checked={activeSection === 'plans'} readOnly />
-          <label className="tab_label" htmlFor="tab3" onClick={scrollToPlans}>Plans</label>
-
-          <input type="radio" name="tab" id="tab4" className="tab tab--4" checked={activeSection === 'security'} readOnly />
-          <label className="tab_label" htmlFor="tab4" onClick={scrollToSecurity}>Security</label>
-
-          <div className="indicator" />
-        </div>
-
-        <div className="theme-toggle-wrap">
-          <label className="switch" aria-label={lightMode ? 'Switch to dark mode' : 'Switch to light mode'}>
-            <input
-              type="checkbox"
-              className="checkbox"
-              checked={lightMode}
-              onChange={(event) => setLightMode(event.target.checked)}
-            />
-            <div className="slider" />
-          </label>
-        </div>
-      </header>}
-
-      <section id="save" className="hero-copy-shell" aria-labelledby="hero-title">
-        <div className="hero-layout">
+      <section className="hero" aria-labelledby="hero-title">
+        <div className="container hero-grid">
           <div className="hero-copy">
-          <div className="hero-kicker hero-enter hero-enter--1">ONCHAIN SAVINGS</div>
-
-          <h1 id="hero-title" className="hero-title">
-            <span className="hero-line hero-line--one hero-bounce hero-bounce--1">MAKE ROOM</span>
-            <span className="hero-line hero-line--two hero-bounce hero-bounce--2">FOR MORE<span className="hero-period">.</span></span>
-          </h1>
-
-          <div className="hero-bottom-row hero-enter hero-enter--3">
-            <p className="hero-description">
-              Save testnet ETH with flexible access or lock in longer for higher returns.
-            </p>
-
+            <span className="tag tag--outline"><span className="dot-live" /> Live on Sepolia & Robinhood Chain Testnet</span>
+            <h1 id="hero-title">Save onchain. <span>On terms you can read.</span></h1>
+            <p>Put ETH aside in a plan, choose how long it stays, and see every exit fee before you sign. Your balance, plans and history come straight from the chain.</p>
             <div className="hero-actions">
-              <button className="hero-primary" type="button" onClick={() => walletSession ? setDashboardView(true) : openWalletFor('dashboard')}>
-                <span>{walletSession ? 'Dashboard' : 'Start saving'}</span>
-                {actionArrow}
+              <button type="button" className="btn btn--lime btn--lg" onClick={() => (walletSession ? setDashboardView(true) : openWalletFor('dashboard'))}>
+                Start saving {icon('arrowRight')}
               </button>
-              <button className="hero-secondary" type="button" onClick={scrollToHowItWorks}>
-                <span>How it works</span>
-                {actionArrow}
-              </button>
+              <button type="button" className="btn btn--ghost btn--lg" onClick={() => scrollToSection('how-it-works')}>How it works</button>
             </div>
-          </div>
-          </div>
-
-          <div className="hero-ball-flight" aria-hidden="true">
-            <div className="hero-ball hero-ball--1" />
-            <div className="hero-ball hero-ball--2" />
-            <div className="hero-ball hero-ball--3" />
-            <div className="hero-ball-shadow hero-ball-shadow--1" />
-            <div className="hero-ball-shadow hero-ball-shadow--2" />
-            <div className="hero-ball-shadow hero-ball-shadow--3" />
+            <p className="hero-note">{icon('info', 14)} Testnet build. Use test ETH only.</p>
           </div>
 
-          <aside
-            ref={savingsPanelRef}
-            className="savings-panel savings-panel--reveal"
-            aria-label="Rixor savings preview"
-            tabIndex={-1}
-          >
-            <div className="panel-head">
-              <div>
-                <span className="panel-eyebrow">SAVE YOUR ASSET</span>
-                <h2>Choose your plan</h2>
+          <div className="hero-visual" aria-hidden="true">
+            <div className="phone">
+              <div className="phone-screen">
+                <div className="phone-status"><span>9:41</span><span className="phone-notch" /><span>●●●</span></div>
+                <div className="mock-head"><span>Available in Rixor</span></div>
+                <div className="mock-balance">2.4180 <em>ETH</em></div>
+                <div className="mock-delta">▲ 1.2500 ETH saved in plans</div>
+                <div className="mock-actions"><span className="is-lime">Add money</span><span>Start a plan</span></div>
+                <div className="mock-list">
+                  {[
+                    ['90D', 'School fees', '0.8000', 62],
+                    ['1Y', 'Long-term', '0.4500', 18],
+                    ['Flex', 'Emergency fund', '0.0000', 100],
+                  ].map(([badge, goal, amount, progress]) => (
+                    <div className="mock-row" key={String(goal)}>
+                      <span className="mock-badge">{badge}</span>
+                      <span className="mock-row-copy"><b>{goal}</b><i style={{ width: `${progress}%` }} /></span>
+                      <span className="mock-amount">{amount}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span className="panel-chip">REWARDS FLEXIBLE</span>
             </div>
-
-            <div className="amount-block">
-              <label htmlFor="save-amount">Amount</label>
-              <div className="amount-input-row">
-                <span className="currency">$</span>
-                <input
-                  id="save-amount"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-                />
-              </div>
-              <span className="balance-line">Balance: 0.0000 ETH</span>
+            <div className="float-card float-card--fee">
+              <small>Exit fee today</small>
+              <strong>2.31%</strong>
+              <span>falls to 0% at maturity</span>
             </div>
-
-            <div className="plan-cards">
-              <button type="button" className={`plan-card ${plan === 'flexible' ? 'active' : ''}`} onClick={() => { setPlan('flexible'); openWalletFor('start-plan', 'flexible') }}>
-                <span>Flexible</span>
-                <strong>3.8% rate</strong>
-                <small>Withdraw anytime</small>
-              </button>
-              <button type="button" className={`plan-card ${plan === 'locked' ? 'active' : ''}`} onClick={() => { setPlan('locked'); openWalletFor('start-plan', '90') }}>
-                <span>Locked</span>
-                <strong>6.8% rate</strong>
-                <small>Higher return</small>
-              </button>
+            <div className="float-card float-card--ok">
+              <span className="receipt-check">{icon('check', 16)}</span>
+              <span><small>Plan confirmed</small><strong>0.8000 ETH · 90 days</strong></span>
             </div>
-
-            <div className="earnings-row">
-              <span>Estimated earnings</span>
-              <strong>+{projected.toFixed(4)} ETH / year</strong>
-            </div>
-
-            <button className="connect-wallet" type="button" onClick={() => walletSession ? setDashboardView(true) : openWalletFor('dashboard')}>
-              <span>{walletSession ? 'Open dashboard' : 'Connect Wallet'}</span>
-            </button>
-          </aside>
+          </div>
         </div>
       </section>
 
-      <section
-        id="how-it-works"
-        ref={howSectionRef}
-        className={`how-section ${howInView ? 'is-visible' : ''}`}
-        aria-labelledby="how-title"
-      >
-        <div className="how-heading">
-          <span className="how-kicker">HOW RIXOR WORKS</span>
-          <h2 id="how-title">One balance. Your timeline.</h2>
-          <p>
-            Bring testnet ETH in from the EVM wallet you already use, then choose how long you want
-            that money to stay in a savings plan.
+      <section className="compare" id="compare" aria-labelledby="compare-title">
+        <div className="container">
+          <h2 id="compare-title" className="section-title section-title--center">A clearer way to hold ETH</h2>
+          <div className="compare-card">
+            <div className="compare-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col"><span className="sr-only">Feature</span></th>
+                    <th scope="col" className="is-rixor">{renderRixorBrand()}</th>
+                    <th scope="col">Wallet only</th>
+                    <th scope="col">Bank savings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compareRows.map(([feature, rixor, wallet, bank]) => (
+                    <tr key={feature}>
+                      <th scope="row">{feature}</th>
+                      <td className="is-rixor">{rixor}</td>
+                      <td>{wallet}</td>
+                      <td>{bank}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p className="compare-note">
+            Comparison is general and for illustration. Bank products and wallets vary. Rixor is a testnet build: ETH principal and plan rules are enforced by the contract, and $RIXOR rewards are not live yet.
           </p>
+          <button type="button" className="info-link info-link--center" onClick={() => scrollToSection('security')}>{icon('info', 14)} What Rixor does and does not do</button>
         </div>
+      </section>
 
-        <div className="how-intro-flow" aria-label="Rixor savings flow">
-          <div className="how-intro-copy">
-            <span className="how-intro-label">THE SIMPLE VERSION</span>
-            <h3>Your money moves through one clear path.</h3>
+      <section className="lime-band" aria-labelledby="fee-title">
+        <div className="container lime-grid">
+          <div className="lime-art">
+            {renderOutlineNumeral('0%', 'Zero percent')}
+            <span className="lime-art-label">at maturity</span>
+          </div>
+          <div className="lime-copy">
+            <p className="eyebrow eyebrow--onlime">Exit</p>
+            <h2 id="fee-title" className="section-title">Zero exit fee once your plan matures</h2>
             <p>
-              Connect your wallet, fund Rixor with testnet ETH, then choose whether to stay flexible
-              or lock for longer. From there, Rixor keeps the position, progress and next action
-              visible in one place.
+              Each locked plan starts with a maximum early-exit fee, from 2% on 30 days to 8% on one year, and it falls every second until it reaches zero at maturity. Flexible plans never pay one. You see the exact fee in ETH and dollars before you sign.
             </p>
+            <button type="button" className="info-link" onClick={() => scrollToSection('plans')}>{icon('info', 14)} See the fee for each plan</button>
+            <button type="button" className="btn btn--dark btn--lg" onClick={() => openWalletFor('start-plan', planTerm)}>Start a plan</button>
           </div>
-
-          <div className="how-flow-illustration" aria-hidden="true">
-            <span className="flow-node">Wallet</span>
-            <svg viewBox="0 0 120 34" role="presentation">
-              <path d="M4 17C32 17 43 4 68 4C90 4 94 17 114 17" />
-              <path d="M105 9L114 17L105 25" />
-            </svg>
-            <span className="flow-node flow-node--accent">SAVE</span>
-            <svg viewBox="0 0 120 34" role="presentation">
-              <path d="M4 17C32 17 43 30 68 30C90 30 94 17 114 17" />
-              <path d="M105 9L114 17L105 25" />
-            </svg>
-            <span className="flow-node">Plan</span>
-          </div>
-        </div>
-
-        <div className="how-grid">
-          <article className={`how-card how-card--connect ${openHowCard === 'connect' ? 'is-open' : ''}`} tabIndex={0}>
-            <div className="how-card-top">
-              <span className="how-step">01</span>
-              <span className="how-dot" />
-            </div>
-            <div className="how-card-copy">
-              <h3>Connect</h3>
-              <p className="how-card-lead">Start with the wallet you already have.</p>
-              <p className="how-card-more">
-                Connect a compatible EVM wallet. Rixor requests your public address only — never
-                your seed phrase or private key — and connecting by itself does not move funds.
-              </p>
-              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Connect wallet</span>
-                {actionArrow}
-              </button>
-            </div>
-            <div className="how-visual how-visual--wallet" aria-hidden="true">
-              <div className="wallet-shell">
-                <span className="wallet-mark">R</span>
-                <span className="wallet-line wallet-line--wide" />
-                <span className="wallet-line" />
-              </div>
-              <span className="wallet-pulse" />
-            </div>
-          </article>
-
-          <article className={`how-card how-card--convert ${openHowCard === 'convert' ? 'is-open' : ''}`} tabIndex={0}>
-            <div className="how-card-top">
-              <span className="how-step">02</span>
-              <span className="how-dot" />
-            </div>
-            <div className="how-card-copy">
-              <h3>Convert</h3>
-              <p className="how-card-lead">Testnet ETH in. One clear savings balance.</p>
-              <p className="how-card-more">
-                Deposited testnet ETH stays denominated in ETH throughout the current tester build.
-                The separate $RIXOR rewards system shown in the product direction is not live onchain yet.
-              </p>
-              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Connect wallet</span>
-                {actionArrow}
-              </button>
-            </div>
-            <div className="how-visual how-visual--convert" aria-hidden="true">
-              <div className="asset-stack">
-                <span>ETH</span>
-                <span>SOL</span>
-                <span>USDC</span>
-              </div>
-              <span className="flow-line" />
-              <div className="usdg-orb">ASSET</div>
-            </div>
-          </article>
-
-          <article className={`how-card how-card--choose how-card--wide ${openHowCard === 'choose' ? 'is-open' : ''}`} tabIndex={0}>
-            <div className="how-card-top">
-              <span className="how-step">03</span>
-              <span className="how-dot" />
-            </div>
-            <div className="how-card-copy">
-              <h3>Choose</h3>
-              <p className="how-card-lead">Flexible when you need it. Locked when you don’t.</p>
-              <p className="how-card-more">
-                Keep funds accessible with Flexible savings, or choose a fixed term when
-                you’re comfortable committing for longer. You review the amount, term and
-                illustrative rate before anything moves.
-              </p>
-              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Connect wallet</span>
-                {actionArrow}
-              </button>
-            </div>
-            <div className="how-visual how-visual--plans" aria-hidden="true">
-              <div className="mini-plan mini-plan--active">
-                <span>Flexible</span>
-                <strong>3.8%</strong>
-              </div>
-              <div className="mini-plan">
-                <span>90 days</span>
-                <strong>6.8%</strong>
-              </div>
-            </div>
-          </article>
-
-          <article className={`how-card how-card--track ${openHowCard === 'track' ? 'is-open' : ''}`} tabIndex={0}>
-            <div className="how-card-top">
-              <span className="how-step">04</span>
-              <span className="how-dot" />
-            </div>
-            <div className="how-card-copy">
-              <h3>Track</h3>
-              <p className="how-card-lead">Know what your money is doing.</p>
-              <p className="how-card-more">
-                Follow plan balances, earnings, maturity dates and activity from one place.
-                Locked plans show the time remaining; Flexible plans stay available.
-              </p>
-              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Connect wallet</span>
-                {actionArrow}
-              </button>
-            </div>
-            <div className="how-visual how-visual--track" aria-hidden="true">
-              <div className="track-meta">
-                <span>Travel fund</span>
-                <strong>1.0000 ETH</strong>
-              </div>
-              <div className="track-bar"><span /></div>
-              <div className="track-foot">
-                <span>42 days left</span>
-                <span>+34.20</span>
-              </div>
-            </div>
-          </article>
-
-          <article className={`how-card how-card--review ${openHowCard === 'review' ? 'is-open' : ''}`} tabIndex={0}>
-            <div className="how-card-top">
-              <span className="how-step">05</span>
-              <span className="how-dot" />
-            </div>
-            <div className="how-card-copy">
-              <h3>Review</h3>
-              <p className="how-card-lead">Review first. Confirm second.</p>
-              <p className="how-card-more">
-                Before a money-moving action is confirmed, Rixor shows the important details
-                in plain language so you know exactly what you’re agreeing to.
-              </p>
-              <button className="how-card-action" type="button" onClick={() => openWalletFor('dashboard')}>
-                <span>Connect wallet</span>
-                {actionArrow}
-              </button>
-            </div>
-            <div className="how-visual how-visual--review" aria-hidden="true">
-              <div className="review-sheet">
-                <span>90-day plan</span>
-                <strong>1.0000 ETH</strong>
-                <div className="review-row"><span>Rate</span><b>6.8%</b></div>
-                <div className="review-confirm">Confirm plan</div>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div className="how-close">
-          <span>Built for saving, not watching charts.</span>
-          <p>Put money aside, choose a timeline, and keep the progress clear.</p>
         </div>
       </section>
 
-      <section
-        id="plans"
-        ref={plansSectionRef}
-        className={`plans-section ${plansInView ? 'is-visible' : ''}`}
-        aria-labelledby="plans-title"
-      >
-        <div className="plans-heading">
-          <span className="plans-kicker">PLANS</span>
-          <h2 id="plans-title">Choose the pace.</h2>
-          <p>
-            Keep access flexible or lock your savings for longer. Your principal stays in ETH,
-            while every plan reward is paid separately in $RIXOR.
-          </p>
-        </div>
-
-        <div className="plans-reward-model">
-          <span>HOW $RIXOR REWARDS WORK</span>
-          <strong>Rewards vest while you stay committed.</strong>
-          <p>
-            Rixor uses a dedicated $RIXOR rewards treasury for plan payouts. At launch, that treasury
-            funds saver rewards from a fixed allocation rather than unlimited minting. As the protocol
-            begins generating real yield and revenue, those sources are intended to replenish the rewards
-            treasury over time. Your ETH principal remains separate from the $RIXOR reward.
-          </p>
-        </div>
-
-        <div className="plans-shell">
-          <div className="plans-config">
-            <div className="plans-config-head">
-              <div>
-                <span>Plan type</span>
-                <strong>{selectedPlan.label}</strong>
-              </div>
-              <span className="plans-apy-chip">{selectedPlan.apy}% rate</span>
-            </div>
-
-            <div className="glass-radio-group plans-radio-group">
-              {planOptions.map((option) => (
-                <label
-                  key={option.id}
-                  className={planTerm === option.id ? 'is-active' : ''}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setPlanTerm(option.id)
-                    openWalletFor('start-plan', option.id)
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="savings-plan"
-                    value={option.id}
-                    checked={planTerm === option.id}
-                    onChange={() => undefined}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-              <div className={'plans-glider plans-glider--' + selectedPlanIndex} />
-            </div>
-
-            <div className="plans-amount-card">
-              <div className="plans-amount-head">
-                <div>
-                  <span className="plans-amount-label">Savings amount</span>
-                  <span className="plans-amount-sub">Set how much of your saved asset you want in this plan.</span>
-                </div>
-                <span className="plans-status">ETH TESTNET</span>
-              </div>
-
-              <div className="plans-live-value">
-                <span className="plans-currency">$</span>
-                <strong>{planAmount.toLocaleString()}</strong>
-              </div>
-
-              <div className="plans-slider-wrap">
-                <div
-                  className="plans-slider-tooltip"
-                  style={{ left: String(((planAmount - 500) / 9500) * 100) + '%' }}
-                >
-                  {'$'}{planAmount.toLocaleString()}
-                </div>
-                <div className="plans-track">
-                  <div
-                    className="plans-track-fill"
-                    style={{ width: String(((planAmount - 500) / 9500) * 100) + '%' }}
-                  />
-                </div>
-                <input
-                  className="plans-range"
-                  type="range"
-                  min="500"
-                  max="10000"
-                  step="500"
-                  value={planAmount}
-                  onChange={(event) => setPlanAmount(Number(event.target.value))}
-                  aria-label="Savings amount"
-                />
-              </div>
-
-              <div className="plans-scale">
-                <span>$500</span>
-                <span>$5,000</span>
-                <span>$10,000</span>
-              </div>
-            </div>
-          </div>
-
-          <aside className="plans-preview" aria-label="Selected savings plan preview">
-            <div className="plans-preview-top">
-              <span>YOUR PLAN</span>
-              <span className="plans-preview-dot" />
-            </div>
-
-            <div className="plans-preview-rate">
-              <strong>{selectedPlan.apy}%</strong>
-                <span>APY</span>
-            </div>
-
-            <div className="plans-preview-list">
-              <div>
-                <span>Deposit</span>
-                <strong>{planAmount.toLocaleString()} ETH</strong>
-              </div>
-              <div>
-                <span>Access</span>
-                <strong>{selectedPlan.access}</strong>
-              </div>
-              <div>
-                <span>{planTerm === 'flexible' ? 'Estimated / year' : 'At maturity'}</span>
-                <strong>$RIXOR reward</strong>
-              </div>
-              <div>
-                <span>Maturity</span>
-                <strong>{maturityDate}</strong>
-              </div>
-            </div>
-
-            {planTerm !== 'flexible' && (
-              <p className="plans-warning">
-                Early withdrawal starts at a maximum {selectedPlan.earlyExitMax}% fee and declines
-                continuously to 0% at maturity.
-              </p>
-            )}
-
-            <p className="plans-disclaimer">Illustrative rate. Not guaranteed.</p>
-
-            <button className="plans-action" type="button" onClick={() => openWalletFor('start-plan', planTerm)}>
-              <span>Start this plan</span>
-              {actionArrow}
-            </button>
-          </aside>
-        </div>
-      </section>
-
-      <section
-        id="security"
-        ref={securitySectionRef}
-        className={`security-section ${securityInView ? 'is-visible' : ''}`}
-        aria-labelledby="security-title"
-      >
-        <div className="security-heading">
-          <span className="security-kicker">SECURITY</span>
-          <h2 id="security-title">Your money. Your keys. Your decision.</h2>
-          <p>
-            Rixor is designed to keep the boundary clear: your wallet stays yours, and every
-            important action stays visible before you confirm it.
-          </p>
-        </div>
-
-        <div className="security-visual" aria-label="Wallet protection boundary">
-          <div className="security-side security-side--wallet">
-            <span className="security-side-label">YOUR WALLET</span>
-            <div className="security-wallet-card">
-              <span className="security-wallet-mark" aria-hidden="true">
-                <svg className="security-eth-mark" viewBox="0 0 784.37 1277.39" role="presentation">
-                  <polygon fill="#343434" points="392.07,0 383.5,29.11 383.5,873.74 392.07,882.29 784.13,650.54" />
-                  <polygon fill="#8C8C8C" points="392.07,0 0,650.54 392.07,882.29 392.07,472.33" />
-                  <polygon fill="#3C3C3B" points="392.07,956.52 387.24,962.41 387.24,1263.28 392.07,1277.38 784.37,724.89" />
-                  <polygon fill="#8C8C8C" points="392.07,1277.38 392.07,956.52 0,724.89" />
-                  <polygon fill="#141414" points="392.07,882.29 784.13,650.54 392.07,472.33" />
-                  <polygon fill="#393939" points="0,650.54 392.07,882.29 392.07,472.33" />
+      <section className="showcase" id="plans" aria-labelledby="plans-title">
+        <div className="container showcase-grid">
+          <div className="showcase-visual" aria-hidden="true">
+            <div className="phone phone--dark">
+              <div className="phone-screen">
+                <div className="phone-status"><span>9:41</span><span className="phone-notch" /><span>●●●</span></div>
+                <div className="mock-head"><span>{selectedPlan.label} plan</span></div>
+                <div className="mock-balance">{showcaseMax}% <em>max fee</em></div>
+                <div className="mock-delta">▼ falls to 0% by {maturityDate === 'Anytime' ? 'design' : maturityDate}</div>
+                <svg className="fee-chart" viewBox="0 0 300 150" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="feeFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#c8ff00" stopOpacity=".35" />
+                      <stop offset="100%" stopColor="#c8ff00" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {[28, 54, 80, 106, 132].map((y) => <line key={y} x1="0" x2="300" y1={y} y2={y} className="fee-grid" />)}
+                  <path d={`M0 ${feeCurveY(showcaseMax)} L300 132 L300 150 L0 150 Z`} fill="url(#feeFill)" />
+                  <path d={`M0 ${feeCurveY(showcaseMax)} L300 132`} className="fee-line" />
+                  <circle cx="0" cy={feeCurveY(showcaseMax)} r="4" className="fee-dot" />
+                  <circle cx="300" cy="132" r="4" className="fee-dot" />
                 </svg>
-              </span>
-              <div>
-                <strong>Private keys</strong>
-                <span>Stay with you</span>
+                <div className="mock-axis"><span>Day 0</span><span>{planTerm === 'flexible' ? 'Any day' : `Day ${selectedPlan.days}`}</span></div>
+                <div className="mock-range">
+                  {planOptions.map((option) => (
+                    <span key={option.id} className={option.id === planTerm ? 'is-active' : ''}>{termShort[planOptions.indexOf(option)]}</span>
+                  ))}
+                </div>
+                <div className="mock-foot"><span>Access</span><b>{selectedPlan.access}</b></div>
               </div>
             </div>
           </div>
 
-          <div className="security-boundary" aria-hidden="true">
-            <span className="security-boundary-line" />
-            <span className="security-lock">
-              <span className="security-lock-shackle" />
-              <span className="security-lock-body">✓</span>
-            </span>
-            <span className="security-signal security-signal--one">PUBLIC ADDRESS</span>
-            <span className="security-signal security-signal--two">APPROVAL</span>
-          </div>
+          <div className="showcase-copy">
+            <p className="eyebrow">Plans</p>
+            <h2 id="plans-title" className="section-title">Pick a timeline that fits the goal</h2>
+            <p>Emergency fund, school fees, rent or something long-term. Choose Flexible access or lock for 30, 90, 180 days or a year. You can top up or extend a plan at any time.</p>
 
-          <div className="security-side security-side--rixor">
-            <span className="security-side-label">RIXOR</span>
-            <div className="security-rules">
-              <div>
-                <span>01</span>
-                <strong>Read public address</strong>
-              </div>
-              <div>
-                <span>02</span>
-                <strong>Show action details</strong>
-              </div>
-              <div>
-                <span>03</span>
-                <strong>Wait for confirmation</strong>
-              </div>
+            <div className="seg seg--wrap" role="radiogroup" aria-label="Plan term">
+              {planOptions.map((option) => (
+                <button key={option.id} type="button" role="radio" aria-checked={planTerm === option.id} className={planTerm === option.id ? 'is-active' : ''} onClick={() => setPlanTerm(option.id)}>
+                  {option.label}
+                </button>
+              ))}
             </div>
+
+            {renderRows([
+              ['Access', selectedPlan.access],
+              ['Max early-exit fee', showcaseMax ? `${showcaseMax}%, falling to 0%` : 'None'],
+              ['Matures', maturityDate],
+              ['Illustrative rate', `${selectedPlan.apy}%`],
+            ])}
+
+            <button type="button" className="info-link" onClick={() => scrollToSection('security')}>{icon('info', 14)} Rates are illustrative and not paid on testnet</button>
+            <button type="button" className="btn btn--lime btn--lg" onClick={() => openWalletFor('start-plan', planTerm)}>
+              {walletSession ? `Start a ${selectedPlan.label.toLowerCase()} plan` : showcaseCta}
+            </button>
           </div>
-        </div>
-
-        <div className="security-grid">
-          <article className="security-card">
-            <span className="security-card-index">01</span>
-            <h3>Wallet stays yours.</h3>
-            <p>
-              Connecting Rixor does not hand over your seed phrase or private key. The wallet
-              remains the place where ownership stays.
-            </p>
-          </article>
-
-          <article className="security-card">
-            <span className="security-card-index">02</span>
-            <h3>Review before action.</h3>
-            <p>
-              Amounts, plan terms and important effects are surfaced before a money-moving
-              action is confirmed.
-            </p>
-          </article>
-
-          <article className="security-card">
-            <span className="security-card-index">03</span>
-            <h3>Rules stay visible.</h3>
-            <p>
-              Access, maturity and early-withdrawal effects stay readable so the plan does not
-              hide its conditions from you.
-            </p>
-          </article>
-        </div>
-
-        <div className="security-close">
-          <span>Clear boundaries. Clear decisions.</span>
-          <p>That is the standard Rixor is built around.</p>
         </div>
       </section>
+
+      <section className="steps" id="how-it-works" aria-labelledby="how-title">
+        <div className="container">
+          <p className="eyebrow">How it works</p>
+          <h2 id="how-title" className="section-title">One balance. Your timeline.</h2>
+          <ol className="step-list">
+            <li>
+              <span className="step-index">01</span>
+              <h3>Add money</h3>
+              <p>Deposit test ETH from your wallet into your Rixor balance with one signature.</p>
+            </li>
+            <li>
+              <span className="step-index">02</span>
+              <h3>Start a plan</h3>
+              <p>Move part of that balance into a Flexible, 30, 90, 180-day or 1-year plan with a goal attached.</p>
+            </li>
+            <li>
+              <span className="step-index">03</span>
+              <h3>Withdraw on your terms</h3>
+              <p>Take your available balance back any time. Exit a plan after seeing the exact fee, if there is one.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="commitments" id="security" aria-labelledby="security-title">
+        <div className="container">
+          <h2 id="security-title" className="section-title section-title--center">Rixor Commitments</h2>
+          <div className="commitments-cta">
+            <a className="btn btn--outline-light" href={sepoliaContractUrl} target="_blank" rel="noreferrer">Read the contract</a>
+          </div>
+          <div className="commitment-grid">
+            <article>
+              <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
+                <path d="M60 14 102 38v44L60 106 18 82V38Z" /><path d="M18 38l42 24 42-24M60 62v44" />
+                <path d="M39 26l42 24M81 26 39 50M32 59v24M88 59v24M46 67v24M74 67v24" />
+              </svg>
+              <h3>Your keys stay yours</h3>
+              <p>Rixor only asks for your public address. Every movement of funds is a transaction you sign.</p>
+            </article>
+            <article>
+              <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
+                <path d="M30 16h46l18 18v70H30Z" /><path d="M76 16v18h18" />
+                <path d="M42 50h40M42 62h40M42 74h22" /><circle cx="78" cy="84" r="14" /><path d="m71 84 5 5 9-10" />
+              </svg>
+              <h3>Review before you sign</h3>
+              <p>Amounts, destination, maturity and any early-exit fee are shown before your wallet opens.</p>
+            </article>
+            <article>
+              <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
+                <path d="M60 18 98 36 60 54 22 36Z" /><path d="M22 36v14l38 18 38-18V36" />
+                <path d="M22 58v14l38 18 38-18V58" /><path d="M22 80v14l38 18 38-18V80" />
+              </svg>
+              <h3>Rules live onchain</h3>
+              <p>Plan terms and fees are enforced by the contract. Your history is rebuilt from public events, not a private database.</p>
+            </article>
+            <article>
+              <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
+                <path d="M60 12c22 10 36 10 40 10 0 40-12 70-40 86C32 92 20 62 20 22c4 0 18 0 40-10Z" />
+                <path d="M60 28c14 6 24 7 27 7-1 28-9 50-27 61-18-11-26-33-27-61 3 0 13-1 27-7Z" />
+              </svg>
+              <h3>Honest about what is live</h3>
+              <p>This is a testnet build. ETH savings are real contract behavior; $RIXOR rewards and displayed rates are not.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <footer className="site-footer">
+        <div className="container footer-grid">
+          <div>
+            {renderRixorBrand()}
+            <p>Onchain savings with clear terms. Testnet only.</p>
+          </div>
+          <div className="footer-links">
+            <a href={sepoliaContractUrl} target="_blank" rel="noreferrer">Sepolia contract {icon('arrowUpRight', 12)}</a>
+            <a href={robinhoodContractUrl} target="_blank" rel="noreferrer">Robinhood Testnet contract {icon('arrowUpRight', 12)}</a>
+          </div>
+          <p className="footer-legal">
+            Rixor runs on public testnets and holds no real funds. Do not send mainnet assets. Displayed rates are illustrative and are not paid by the current contract. $RIXOR is not a live token.
+          </p>
+        </div>
+      </footer>
     </main>
   )
 }
