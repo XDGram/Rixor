@@ -4,43 +4,50 @@
 
 # Rixor
 
-**Diamond hands for $WIF, enforced onchain on Robinhood Chain.**
+**Tiered conviction locks, ROI targets, commitment rewards and community challenges, built for $WIF on Robinhood Chain. Testnet first.**
 
-Rixor lets holders lock $WIF for 7 days to 1 year. Breaking a lock early costs a paper-hands fee that falls every second until it reaches zero at unlock. Every fee splits 50/50: half is **burned** through $WIF's own `burn()`, half is **paid to everyone still locked**, weighted by how long they committed. Patience gets paid, panic gets burned.
+## Conviction vault
 
-Rixor also includes ETH savings plans on Sepolia and Robinhood Chain Testnet (described further below).
+Contract: `contracts/RixorConvictionVault.sol`. It works with any burnable ERC-20 and has no owner or admin functions.
 
-## Diamond Hands ($WIF)
+| Tier | Reward weight | Leaving early | Free withdrawal |
+| --- | ---: | --- | --- |
+| Flexible | 1x | Up to 1% fee in the first 7 days | After 7 days |
+| Committed | 1.5x | Up to 10%, falling to 0% over the 30-365 day term | ROI target reached, optional max loss hit, or term ended |
+| Diamond Hands | 3x | Not allowed | ROI target reached, max loss hit, term ended, or price oracle stale for 7 days |
 
-Contract: `contracts/RixorDiamondHands.sol` · token: $WIF `0x5173b8eA6923c2d40267890D45C46a3480954773` on Robinhood Chain (chain ID 4663).
+- **ROI tracking:** the entry price is recorded from the oracle at lock time. `exitStatus(lockId)` returns live ROI, the reason a lock can or cannot exit, and the current fee. Exits take a `maxFeeBps` guard so a fee can never be higher than the one you reviewed.
+- **No trapping:** every Committed and Diamond lock has a hard term of at most 365 days. Diamond locks also open if the oracle has been stale for 7 days.
+- **Rewards:** early-exit fees split 50/50, half burned and half into the commitment reward pool. Anyone can add to the pool with `fundRewards`. The pool accrues to open locks by weight and is paid only when a commitment completes; early and stop-loss exits forfeit their share to remaining holders.
+- **Challenges:** sponsors escrow a reward pool with `createChallenge`. There are holding challenges (keep a qualifying lock open to the end) and performance challenges (also finish at or above an ROI target at the final price), with optional community targets. Holders `joinChallenge` with a lock. After the end anyone can `finalizeChallenge`; participants then `qualify` during a 3-day window and split the pool with `claimChallengeReward`. Failed or stuck challenges are refunded to the sponsor with `refundChallenge`.
 
-| Lock | Reward weight | Max paper-hands fee |
-| --- | ---: | ---: |
-| 7 days | 1x | 5% |
-| 30 days | 1.25x | 10% |
-| 90 days | 1.5x | 15% |
-| 180 days | 2x | 20% |
-| 1 year | 3x | 25% |
+Tests: `npm run contract:test` covers every tier, every exit reason, the fee guard, the anti-trap backstops, weighted rewards, forfeits and full challenge lifecycles, with a solvency check after each step.
 
-- `lock(amount, term)`: lock $WIF (after `approve`).
-- `claim(lockId)`: collect rewards earned from other holders' exits, anytime.
-- `unlock(lockId)`: after the term, withdraw principal plus rewards with no fee.
-- `breakLock(lockId)`: exit early. Pays the current fee and forfeits unclaimed rewards. Half the fee is burned; the rest (plus the forfeit) goes to open locks. If no one else is locked, all of it is burned.
+### Price oracle
 
-**The flywheel:** locking takes $WIF out of circulation → paper hands burn supply and fund holders → holders come back to claim and relock for a bigger share → more $WIF locked.
+The vault reads `IRixorPriceOracle.latestPrice()`. **No verified $WIF price feed exists on Robinhood Chain.** Robinhood's oracle docs list Chainlink feeds for a selected subset of assets and none for WIF, and the one Uniswap V3 WIF/WETH pool has zero liquidity, so it can't provide a time-averaged price. For testnet there is `contracts/testnet/RixorMockPriceOracle.sol`, a hand-set price that is clearly marked as mock in the app. A mainnet launch needs a real oracle adapter first.
 
-**Trust model:** no owner, no admin, no upgrade path, no protocol fee. Rewards come only from exit fees; nothing is minted. Tested (`npm run contract:test`), not audited.
+### $WIF
 
-The app reads live totals, your locks, a leaderboard and a feed of locks and paper-hand exits straight from the contract through the public Robinhood Chain RPC. There is no backend.
+The official token is `0x5173b8eA6923c2d40267890D45C46a3480954773` on Robinhood Chain mainnet (chain 4663). I verified it onchain: "World is Flat", WIF, 18 decimals, burnable, no owner. It is **not deployed on Robinhood Chain Testnet**. The app shows your real $WIF balance live and read-only; locking real $WIF needs a mainnet vault and a real oracle, which are deliberately not part of this build.
 
-### Deploying Diamond Hands
+### App modes
+
+- **Testnet:** real transactions against a deployed vault on Robinhood Chain Testnet. This mode is on only when `VITE_RIXOR_VAULT_ADDRESS` is set.
+- **Simulation:** runs entirely in the browser with made-up balances, prices, holders and challenges, using the same rules. Every simulated screen and receipt is labelled, and nothing is sent to a chain.
+
+### Deploying to testnet
 
 ```bash
 npm run contract:compile
-npm run contract:deploy:diamond -- robinhood-mainnet   # needs RIXOR_DEPLOYER_PRIVATE_KEY with a little ETH for gas
+RIXOR_VAULT_TOKEN=<existing burnable ERC-20 on testnet> \
+RIXOR_VAULT_MOCK_ORACLE_PRICE=1.0 \
+npm run contract:deploy:vault -- robinhood-testnet
 ```
 
-Then set `VITE_RIXOR_DIAMOND_ADDRESS` and `VITE_RIXOR_DIAMOND_FROM_BLOCK` (printed by the script) in Vercel and redeploy. Until the address is set, the app shows Diamond Hands in a "not deployed yet" state and never sends transactions.
+The script refuses mainnet and the mainnet $WIF address, checks that the token exists and has `burn(uint256)`, and prints the `VITE_RIXOR_VAULT_*` values to add to Vercel.
+
+Rixor is an independent project and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. $WIF comes with no promise of value or return.
 
 ## ETH savings (testnet)
 

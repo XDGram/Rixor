@@ -1,32 +1,27 @@
 # Rixor: world is flat hackathon submission
 
-**One-liner:** Diamond hands for $WIF. Lock it, and paper hands pay you.
+**One-liner:** Tiered conviction locks for $WIF. Set an ROI target and a max loss, earn from early leavers, and win community challenges.
 
 **Categories:** hooks and defi · social and creators
 
 ## What it does
 
-Holders lock $WIF on Robinhood Chain for 7 days, 30 days, 90 days, 180 days or 1 year. Breaking a lock early costs a paper-hands fee: up to 5% to 25% depending on the term, falling linearly to 0% at unlock. Every fee splits 50/50:
-
-- **50% is burned** with $WIF's own `burn()`, so total supply drops onchain.
-- **50% is paid to everyone still locked**, pro rata to lock weight (1x to 3x for longer terms), along with any rewards the exiting holder forfeits.
+- **Three tiers:** Flexible (1x reward weight, up to 1% fee in the first 7 days), Committed (1.5x, an ROI target, up to 10% fee falling over the term) and Diamond Hands (3x, no early exit; opens at the ROI target, the max loss or the end of a term of up to 365 days).
+- **Live ROI** from your entry price, with clear withdrawal eligibility and a fee guard on every exit.
+- **Rewards:** early-exit fees split 50/50 between burning and a commitment reward pool that pays out when commitments complete. Anyone can add to the pool.
+- **Community challenges:** holding and performance challenges with sponsored reward pools, progress toward community targets, participant rankings and equal payouts to qualifiers.
 
 ## The flywheel
 
-1. Locking takes $WIF out of circulation.
-2. Every early exit burns supply and pays the holders who stayed.
-3. Holders come back to claim, check the leaderboard and relock for a bigger weight.
-4. More $WIF is locked, so the next paper hand pays more people and burns more.
+Stronger commitments earn more weight. Every early exit burns supply and funds the people who kept their word. Challenges give holders reasons to lock more and come back.
 
-## Proof
+## Status: honest
 
-- Contract: `contracts/RixorDiamondHands.sol`, with no owner, admin key, upgrade path or protocol fee.
-- Tests: `npm run contract:test` covers fee decay, the 50/50 split, weighted rewards, forfeits, the only-holder full burn, ownership checks and solvency after every step.
-- App: live totals, your locks with countdown and fee-now, a leaderboard and a feed of locks and paper hands, all read from contract state and events.
-- Live link: https://rixor-eight.vercel.app
-- Lock contract on Robinhood Chain: _add the address after deployment_
-- Demo transactions: _add a lock, a claim and a paper-hand transaction after deployment_
+- Contract and tests: done (`npm run contract:test`).
+- Testnet vault: **not deployed yet.** This needs a deployer key, an existing burnable test token on Robinhood Chain Testnet, and the mock oracle.
+- $WIF: the official mainnet token is integrated read-only. It is not on testnet, and **no verified $WIF price feed exists**, so locking real $WIF is blocked on a real oracle and a mainnet deployment.
+- Simulation mode lets judges try every feature now; it is clearly labelled and sends nothing to any chain.
 
 ## Notes
 
-Rixor is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. $WIF comes with no promise of value or return. The contract has been tested but not audited.
+Rixor is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. $WIF comes with no promise of value or return. The contract is tested, not audited.

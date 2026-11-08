@@ -1,24 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { formatUnits, parseUnits } from 'ethers'
+import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { icon } from './ui'
+import { ROBINHOOD_MAINNET, WIF_ADDRESS, explorerAddress, shortAddr, useWifBalance } from './wif'
 import {
-  DIAMOND_ADDRESS,
-  LOCK_TERMS,
-  ROBINHOOD_MAINNET,
-  WIF_ADDRESS,
-  WIF_DECIMALS,
-  currentFeeBps,
-  diamondInterface,
-  erc20Interface,
-  explorerAddress,
-  explorerTx,
-  formatWif,
-  readContract,
-  shortAddr,
-  toWif,
-  useDiamondHistory,
-  useDiamondStats,
-} from './wif'
+  EXIT,
+  LOSS_OPTIONS,
+  TARGET_OPTIONS,
+  TERM_OPTIONS,
+  TIERS,
+  challengePhase,
+  exitPaysRewards,
+  exitReasonLabel,
+  formatAmount,
+  formatBps,
+  formatDate,
+  formatDuration,
+  type ChallengeView,
+  type Position,
+  type Tier,
+  type VaultMode,
+} from './vault/model'
+import { VAULT_ADDRESS, VAULT_NETWORK, VAULT_USES_MOCK_ORACLE, vaultExplorerAddress, vaultExplorerTx } from './vault/onchain'
+import { simulationControls } from './vault/simulation'
+import { onchainAvailable, useVault, type TxState } from './vault/useVault'
 
 type Provider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
 
@@ -27,456 +31,547 @@ type Props = {
   provider: Provider | null
   chainId: number | null
   switching: boolean
-  onSwitchToMainnet: () => void
+  onSwitchNetwork: (chainId: number) => void
 }
 
-type UserLock = {
-  id: bigint
-  term: number
-  amount: number
-  amountRaw: bigint
-  startedAt: number
-  unlocksAt: number
-  pending: number
-}
+const roiClass = (roi: number | null) => (roi === null ? '' : roi > 0 ? 'is-gain' : roi < 0 ? 'is-loss' : '')
 
-type Action = {
-  kind: 'approve' | 'lock' | 'claim' | 'unlock' | 'break'
-  lockId?: bigint
-  status: 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'
-  hash?: string
-  error?: string
-}
+export default function DiamondHands({ walletAddress, provider, chainId, switching, onSwitchNetwork }: Props) {
+  const [mode, setMode] = useState<VaultMode>(onchainAvailable ? 'onchain' : 'simulation')
+  const { state, actions, tx, canTransact, onWrongChain } = useVault({ mode, walletAddress, provider, chainId })
+  const wif = useWifBalance(walletAddress)
+  const simulated = mode === 'simulation'
+  const symbol = state.tokenSymbol
 
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
-
-const walletErrorMessage = (error: unknown) => {
-  const code = typeof error === 'object' && error !== null && 'code' in error ? Number((error as { code?: number }).code) : null
-  if (code === 4001) return 'You rejected the request in your wallet.'
-  const message = error instanceof Error ? error.message : String(error)
-  return message.length > 180 ? `${message.slice(0, 180)}…` : message
-}
-
-const formatCountdown = (seconds: number) => {
-  if (seconds <= 0) return 'Unlocked'
-  const days = Math.floor(seconds / 86_400)
-  const hours = Math.floor((seconds % 86_400) / 3_600)
-  const minutes = Math.floor((seconds % 3_600) / 60)
-  if (days > 0) return `${days}d ${hours}h left`
-  if (hours > 0) return `${hours}h ${minutes}m left`
-  return `${Math.max(1, minutes)}m left`
-}
-
-export default function DiamondHands({ walletAddress, provider, chainId, switching, onSwitchToMainnet }: Props) {
-  const [refreshKey, setRefreshKey] = useState(0)
-  const stats = useDiamondStats(refreshKey)
-  const history = useDiamondHistory(refreshKey)
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
-  const [term, setTerm] = useState(2)
+  const [tier, setTier] = useState<Tier>(1)
   const [amount, setAmount] = useState('')
-  const [wifBalance, setWifBalance] = useState<bigint>(0n)
-  const [allowance, setAllowance] = useState<bigint>(0n)
-  const [locks, setLocks] = useState<UserLock[]>([])
-  const [userStatus, setUserStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
-  const [action, setAction] = useState<Action | null>(null)
-  const [confirmBreak, setConfirmBreak] = useState<bigint | null>(null)
+  const [termDays, setTermDays] = useState<number>(90)
+  const [target, setTarget] = useState<number>(5_000)
+  const [maxLoss, setMaxLoss] = useState<number>(3_000)
+  const [confirmExit, setConfirmExit] = useState<string | null>(null)
+  const [joinChoice, setJoinChoice] = useState<Record<string, string>>({})
 
-  const onMainnet = chainId === ROBINHOOD_MAINNET.id
-  const live = Boolean(DIAMOND_ADDRESS)
-  const canTransact = live && onMainnet && Boolean(walletAddress && provider)
-
+  // Diamond Hands always needs a max loss; Committed may run without one.
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1_000)
-    return () => window.clearInterval(interval)
-  }, [])
+    if (tier === 2 && maxLoss === 0) setMaxLoss(3_000)
+  }, [tier, maxLoss])
 
-  const loadUser = useCallback(async () => {
-    if (!walletAddress) return
-    setUserStatus((current) => (current === 'ready' ? 'ready' : 'loading'))
-    try {
-      const [balance] = await readContract(erc20Interface, WIF_ADDRESS, 'balanceOf', [walletAddress])
-      setWifBalance(balance as bigint)
-      if (live) {
-        const [[allowed], [ids]] = await Promise.all([
-          readContract(erc20Interface, WIF_ADDRESS, 'allowance', [walletAddress, DIAMOND_ADDRESS]),
-          readContract(diamondInterface, DIAMOND_ADDRESS, 'getOwnerLockIds', [walletAddress]),
-        ])
-        setAllowance(allowed as bigint)
-        const rows = await Promise.all((ids as bigint[]).map(async (id) => {
-          const [record, [pending]] = await Promise.all([
-            readContract(diamondInterface, DIAMOND_ADDRESS, 'locks', [id]),
-            readContract(diamondInterface, DIAMOND_ADDRESS, 'pendingReward', [id]),
-          ])
-          if (!record.open) return null
-          return {
-            id,
-            term: Number(record.term),
-            amount: toWif(record.amount as bigint),
-            amountRaw: record.amount as bigint,
-            startedAt: Number(record.startedAt),
-            unlocksAt: Number(record.unlocksAt),
-            pending: toWif(pending as bigint),
-          } satisfies UserLock
-        }))
-        setLocks(rows.filter((row): row is UserLock => row !== null).sort((a, b) => a.unlocksAt - b.unlocksAt))
-      }
-      setUserStatus('ready')
-    } catch {
-      setUserStatus('error')
-    }
-  }, [walletAddress, live])
+  const parsed = Number(amount || 0)
+  const insufficient = parsed > state.walletBalance
+  const amountValid = parsed > 0 && !insufficient
+  const busy = tx?.status === 'awaiting-wallet' || tx?.status === 'pending'
+  const tierMeta = TIERS[tier]
+  const accrued = state.positions.reduce((total, position) => total + position.pendingReward, 0)
+  const lockedByMe = state.positions.reduce((total, position) => total + position.amount, 0)
+  const priceText = state.price.value === null ? 'unavailable' : state.price.value.toLocaleString(undefined, { maximumFractionDigits: 6 })
 
-  useEffect(() => {
-    void loadUser()
-  }, [loadUser, refreshKey])
-
-  const parsedAmount = useMemo(() => {
-    try {
-      return amount ? parseUnits(amount, WIF_DECIMALS) : 0n
-    } catch {
-      return 0n
-    }
-  }, [amount])
-
-  const selectedTerm = LOCK_TERMS[term]
-  const insufficient = parsedAmount > wifBalance
-  const amountValid = parsedAmount > 0n && !insufficient
-  const needsApproval = parsedAmount > allowance
-  const busy = action?.status === 'awaiting-wallet' || action?.status === 'pending'
-  const unlockDate = new Date(Date.now() + selectedTerm.days * 86_400_000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  const myLocked = locks.reduce((total, row) => total + row.amount, 0)
-  const myPending = locks.reduce((total, row) => total + row.pending, 0)
-
-  const send = async (kind: Action['kind'], to: string, data: string, lockId?: bigint) => {
-    if (!provider || !walletAddress) return false
-    setAction({ kind, lockId, status: 'awaiting-wallet' })
-    try {
-      // Estimate first: a doomed transaction fails here with a reason, before the wallet asks to sign.
-      let gas: string | undefined
-      try {
-        const estimate = BigInt(await provider.request({ method: 'eth_estimateGas', params: [{ from: walletAddress, to, data }] }) as string)
-        gas = `0x${((estimate * 12n) / 10n).toString(16)}`
-      } catch (error) {
-        throw new Error(`This transaction would fail: ${walletErrorMessage(error)}`)
-      }
-      const hash = await provider.request({ method: 'eth_sendTransaction', params: [{ from: walletAddress, to, data, gas }] }) as string
-      setAction({ kind, lockId, status: 'pending', hash })
-      for (let attempt = 0; attempt < 120; attempt += 1) {
-        const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [hash] }) as { status?: string } | null
-        if (receipt) {
-          if (receipt.status === '0x0') throw new Error('The transaction reverted onchain.')
-          setAction({ kind, lockId, status: 'confirmed', hash })
-          setRefreshKey((key) => key + 1)
-          return true
-        }
-        await sleep(1_500)
-      }
-      throw new Error('Timed out waiting for confirmation. Check the explorer.')
-    } catch (error) {
-      setAction((current) => ({ kind, lockId, status: 'failed', hash: current?.hash, error: walletErrorMessage(error) }))
-      return false
-    }
+  const submitLock = async () => {
+    const ok = await actions.lock({ amount, tier, termDays, roiTargetBps: target, maxLossBps: tier === 0 ? 0 : maxLoss })
+    if (ok) setAmount('')
   }
 
-  const approveAndLock = async () => {
-    if (!amountValid) return
-    if (needsApproval) {
-      const approved = await send('approve', WIF_ADDRESS, erc20Interface.encodeFunctionData('approve', [DIAMOND_ADDRESS, parsedAmount]))
-      if (!approved) return
-      setAllowance(parsedAmount)
-    }
-    const locked = await send('lock', DIAMOND_ADDRESS, diamondInterface.encodeFunctionData('lock', [parsedAmount, term]))
-    if (locked) setAmount('')
+  const renderTx = (key: string) => {
+    if (!tx || tx.key !== key) return null
+    return <TxNotice tx={tx} />
   }
 
-  const actionLabel = (kind: Action['kind']) => ({
-    approve: ['Approve $WIF in your wallet', 'Confirming approval…', 'Approval confirmed'],
-    lock: ['Confirm the lock in your wallet', 'Locking your $WIF…', 'Locked. Diamond hands.'],
-    claim: ['Confirm the claim in your wallet', 'Claiming rewards…', 'Rewards claimed'],
-    unlock: ['Confirm the unlock in your wallet', 'Unlocking…', 'Unlocked with rewards'],
-    break: ['Confirm in your wallet', 'Breaking the lock…', 'Lock broken. Fee burned and shared.'],
-  })[kind]
-
-  const renderActionStatus = (scope: 'form' | bigint) => {
-    if (!action) return null
-    const inScope = scope === 'form' ? action.kind === 'approve' || action.kind === 'lock' : action.lockId === scope
-    if (!inScope) return null
-    const [approveText, pendingText, doneText] = actionLabel(action.kind)
-    if (action.status === 'failed') {
-      return <div className="notice notice--error" role="alert"><strong>Transaction failed</strong><span>{action.error}</span></div>
-    }
-    if (action.status === 'confirmed') {
-      return (
-        <a className="receipt" href={action.hash ? explorerTx(action.hash) : undefined} target="_blank" rel="noreferrer">
-          <span className="receipt-check">{icon('check', 22)}</span>
-          <span className="receipt-copy"><small>Confirmed on Robinhood Chain</small><strong>{doneText}</strong></span>
-          <span className="receipt-link">Receipt {icon('arrowUpRight', 14)}</span>
-        </a>
-      )
-    }
-    return (
-      <div className="tx-progress" role="status" aria-live="polite">
-        <span className="spinner" aria-hidden="true" />
-        <div>
-          <small>{action.status === 'awaiting-wallet' ? 'Waiting for your wallet' : 'Confirming onchain'}</small>
-          <strong>{action.status === 'awaiting-wallet' ? approveText : pendingText}</strong>
-        </div>
-      </div>
-    )
+  const lockButtonLabel = () => {
+    if (simulated) return `Lock ${symbol} (simulated)`
+    if (!VAULT_ADDRESS) return 'Testnet vault not deployed yet'
+    if (!walletAddress) return 'Connect a wallet'
+    if (onWrongChain) return `Switch to ${VAULT_NETWORK.name}`
+    return `Lock ${symbol} on testnet`
   }
-
-  const statValue = (value: number) => (stats.status === 'ready' ? formatWif(value, true) : stats.status === 'not-deployed' ? '—' : '…')
 
   return (
     <div className="view diamond" key="diamond">
       <section className="diamond-hero">
         <div className="diamond-hero-copy">
-          <p className="eyebrow">Diamond Hands · $WIF</p>
-          <h1>Lock your $WIF. Paper hands pay the holders.</h1>
-          <p>Break a lock early and half your fee is burned, the other half goes to everyone still holding. The longer you lock, the bigger your share.</p>
+          <p className="eyebrow">Diamond Hands · {simulated ? 'Simulation' : VAULT_NETWORK.name}</p>
+          <h1>Pick your conviction. Get paid for keeping it.</h1>
+          <p>Flexible, Committed or Diamond Hands. Set an ROI target and a max loss, see your live ROI, and earn from everyone who leaves early.</p>
         </div>
         <div className="flywheel-stats">
-          <div><small>$WIF locked</small><strong>{statValue(stats.totalLocked)}</strong></div>
-          <div><small>Burned by paper hands</small><strong>{statValue(stats.totalBurned)}</strong></div>
-          <div><small>Paid to holders</small><strong>{statValue(stats.totalDistributed)}</strong></div>
-          <div><small>Open locks</small><strong>{stats.status === 'ready' ? stats.openLocks.toLocaleString() : stats.status === 'not-deployed' ? '—' : '…'}</strong></div>
+          <div><small>{symbol} locked</small><strong>{formatAmount(state.stats.totalLocked, true)}</strong></div>
+          <div><small>Reward pool so far</small><strong>{formatAmount(state.stats.poolFromFees + state.stats.poolFunded, true)}</strong></div>
+          <div><small>Burned by early exits</small><strong>{formatAmount(state.stats.totalBurned, true)}</strong></div>
+          <div><small>Commitments completed</small><strong>{state.stats.completedLocks.toLocaleString()}</strong></div>
         </div>
       </section>
 
-      {!live && (
+      <div className="mode-bar">
+        <div className="seg" role="radiogroup" aria-label="Data source">
+          <button type="button" role="radio" aria-checked={mode === 'onchain'} className={mode === 'onchain' ? 'is-active' : ''} onClick={() => setMode('onchain')}>
+            Testnet
+          </button>
+          <button type="button" role="radio" aria-checked={simulated} className={simulated ? 'is-active' : ''} onClick={() => setMode('simulation')}>
+            Simulation
+          </button>
+        </div>
+        <span className={`tag ${simulated ? 'tag--sim' : 'tag--outline'}`}>
+          {simulated ? 'Simulated: no blockchain, no real prices' : VAULT_ADDRESS ? 'Real testnet transactions · test tokens only' : 'Not deployed'}
+        </span>
+      </div>
+
+      {simulated ? (
+        <section className="card sim-panel">
+          <div className="sim-panel-copy">
+            <strong>This is a simulation running only in your browser.</strong>
+            <span>Balances, prices, other holders and challenges are made up so you can try every rule. Nothing is sent to any chain.</span>
+          </div>
+          <div className="sim-controls">
+            <div className="sim-price">
+              <small>Simulated price</small>
+              <strong>{priceText}</strong>
+              <span className={state.price.fresh ? '' : 'is-loss'}>{state.price.fresh ? 'feed live' : 'feed stalled'}</span>
+            </div>
+            <div className="chip-row">
+              <button type="button" className="chip" onClick={() => simulationControls.movePrice(-10)}>Price −10%</button>
+              <button type="button" className="chip" onClick={() => simulationControls.movePrice(10)}>Price +10%</button>
+              <button type="button" className="chip" onClick={() => simulationControls.advance(1)}>Skip 1 day</button>
+              <button type="button" className="chip" onClick={() => simulationControls.advance(7)}>Skip 7 days</button>
+              <button type="button" className="chip" onClick={() => simulationControls.toggleFeed()}>{simulationControls.feedStalled() ? 'Resume feed' : 'Stall feed'}</button>
+              <button type="button" className="chip" onClick={() => { if (window.confirm('Reset the simulation?')) simulationControls.reset() }}>Reset</button>
+            </div>
+          </div>
+        </section>
+      ) : !VAULT_ADDRESS ? (
         <div className="notice notice--warn">
-          <strong>The lock contract is not deployed yet.</strong>
-          <span>Locking turns on as soon as the RixorDiamondHands address is configured. Your $WIF balance below is read live from Robinhood Chain.</span>
+          <strong>The testnet vault is not deployed yet.</strong>
+          <span>Real locking turns on once RixorConvictionVault is deployed to {VAULT_NETWORK.name} and its address is configured. Use Simulation to try every feature meanwhile.</span>
         </div>
+      ) : (
+        <>
+          <div className="notice">
+            <strong>{VAULT_NETWORK.name} · price {priceText}</strong>
+            <span>
+              {state.price.source}.{VAULT_USES_MOCK_ORACLE ? ' ROI and exits use this hand-set test price, not a market price.' : ''}{' '}
+              Vault <a href={vaultExplorerAddress(VAULT_ADDRESS)} target="_blank" rel="noreferrer">{shortAddr(VAULT_ADDRESS)}</a>
+            </span>
+          </div>
+          {state.status === 'error' && <div className="notice notice--error"><strong>Could not read the vault.</strong><span>{state.error}</span></div>}
+          {walletAddress && onWrongChain && (
+            <div className="notice notice--warn notice--action">
+              <div><strong>Switch to {VAULT_NETWORK.name}.</strong><span>The vault runs on testnet. No real funds are involved.</span></div>
+              <button type="button" className="btn btn--dark btn--sm" onClick={() => onSwitchNetwork(VAULT_NETWORK.id)} disabled={switching}>{switching ? 'Switching…' : 'Switch network'}</button>
+            </div>
+          )}
+        </>
       )}
-      {live && walletAddress && !onMainnet && (
-        <div className="notice notice--warn notice--action">
-          <div><strong>Switch to Robinhood Chain.</strong><span>Diamond Hands runs on Robinhood Chain mainnet, where $WIF lives.</span></div>
-          <button type="button" className="btn btn--dark btn--sm" onClick={onSwitchToMainnet} disabled={switching}>{switching ? 'Switching…' : 'Switch network'}</button>
+
+      <section className="card wif-card">
+        <div>
+          <small className="kicker">Your $WIF on {ROBINHOOD_MAINNET.name} · live, read-only</small>
+          <p className="figure figure--sm">
+            {!walletAddress ? '—' : wif.status === 'ready' ? formatAmount(wif.balance) : wif.status === 'error' ? 'Unavailable' : '…'} <em>$WIF</em>
+          </p>
         </div>
-      )}
+        <p className="fine-print">
+          Official token <a href={explorerAddress(WIF_ADDRESS)} target="_blank" rel="noreferrer">{shortAddr(WIF_ADDRESS)}</a>, verified onchain.
+          $WIF exists only on mainnet, so it cannot be locked until a mainnet vault and a real price oracle are in place.
+        </p>
+      </section>
 
       <div className="diamond-grid">
         <section className="card lock-card">
           <header className="panel-head">
-            <div><small className="kicker">New lock</small><h2>Commit your $WIF</h2></div>
-            <a className="text-btn" href={explorerAddress(WIF_ADDRESS)} target="_blank" rel="noreferrer">$WIF {icon('arrowUpRight', 12)}</a>
+            <div><small className="kicker">New lock</small><h2>Choose your tier</h2></div>
           </header>
 
-          <div className="amount-field">
-            <div className="amount-field-head">
-              <label htmlFor="wif-amount">Amount</label>
-              <span className={insufficient ? 'is-error' : ''}>
-                {walletAddress ? `${formatWif(toWif(wifBalance))} $WIF in wallet` : 'Connect a wallet'}
-              </span>
-            </div>
-            <div className={`amount-input ${insufficient ? 'is-error' : ''}`}>
-              <input id="wif-amount" inputMode="decimal" autoComplete="off" placeholder="0" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))} />
-              <span>$WIF</span>
-            </div>
-            <div className="chip-row">
-              {[25, 50, 75, 100].map((percent) => (
-                <button
-                  key={percent}
-                  type="button"
-                  className="chip"
-                  disabled={wifBalance === 0n}
-                  onClick={() => setAmount(formatUnits((wifBalance * BigInt(percent)) / 100n, WIF_DECIMALS))}
-                >
-                  {percent === 100 ? 'Max' : `${percent}%`}
-                </button>
-              ))}
-            </div>
-            {insufficient && <div className="field-error">That is more $WIF than this wallet holds.</div>}
-          </div>
-
-          <div className="term-grid term-grid--wif" role="radiogroup" aria-label="Lock term">
-            {LOCK_TERMS.map((option) => (
-              <button key={option.id} type="button" role="radio" aria-checked={term === option.id} className={`term ${term === option.id ? 'is-active' : ''}`} onClick={() => setTerm(option.id)}>
-                <span className="term-top"><strong>{option.label}</strong><em>{option.weightBps / 10_000}x</em></span>
-                <small>Up to {option.maxFeeBps / 100}% fee</small>
+          <div className="term-grid tier-grid" role="radiogroup" aria-label="Tier">
+            {TIERS.map((option) => (
+              <button key={option.id} type="button" role="radio" aria-checked={tier === option.id} className={`term ${tier === option.id ? 'is-active' : ''}`} onClick={() => setTier(option.id)}>
+                <span className="term-top"><strong>{option.name}</strong><em>{option.weightBps / 10_000}x</em></span>
+                <small>{option.summary}</small>
               </button>
             ))}
           </div>
 
+          <div className="amount-field">
+            <div className="amount-field-head">
+              <label htmlFor="vault-amount">Amount</label>
+              <span className={insufficient ? 'is-error' : ''}>
+                {simulated || walletAddress ? `${formatAmount(state.walletBalance)} ${symbol}${simulated ? ' (simulated)' : ''} available` : 'Connect a wallet'}
+              </span>
+            </div>
+            <div className={`amount-input ${insufficient ? 'is-error' : ''}`}>
+              <input id="vault-amount" inputMode="decimal" autoComplete="off" placeholder="0" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))} />
+              <span>{symbol}</span>
+            </div>
+            <div className="chip-row">
+              {[25, 50, 75, 100].map((percent) => (
+                <button key={percent} type="button" className="chip" disabled={state.walletBalance <= 0} onClick={() => setAmount(String(Math.floor(((state.walletBalance * percent) / 100) * 10_000) / 10_000))}>
+                  {percent === 100 ? 'Max' : `${percent}%`}
+                </button>
+              ))}
+            </div>
+            {insufficient && <div className="field-error">That is more than you have available.</div>}
+          </div>
+
+          {tier !== 0 && (
+            <div className="commit-fields">
+              <div className="commit-field">
+                <span>Term (hard backstop)</span>
+                <div className="chip-row">
+                  {TERM_OPTIONS.map((days) => (
+                    <button key={days} type="button" className={`chip ${termDays === days ? 'is-active' : ''}`} onClick={() => setTermDays(days)}>{days === 365 ? '1 year' : `${days} days`}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="commit-field">
+                <span>ROI target</span>
+                <div className="chip-row">
+                  {TARGET_OPTIONS.map((bps) => (
+                    <button key={bps} type="button" className={`chip ${target === bps ? 'is-active' : ''}`} onClick={() => setTarget(bps)}>{formatBps(bps, true)}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="commit-field">
+                <span>Max loss {tier === 1 ? '(optional)' : '(required)'}</span>
+                <div className="chip-row">
+                  {tier === 1 && <button type="button" className={`chip ${maxLoss === 0 ? 'is-active' : ''}`} onClick={() => setMaxLoss(0)}>None</button>}
+                  {LOSS_OPTIONS.map((bps) => (
+                    <button key={bps} type="button" className={`chip ${maxLoss === bps ? 'is-active' : ''}`} onClick={() => setMaxLoss(bps)}>{formatBps(-bps, true)}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           <dl className="rows">
-            <div><dt>Unlocks</dt><dd>{unlockDate}</dd></div>
-            <div><dt>Paper-hands fee</dt><dd>{selectedTerm.maxFeeBps / 100}% today, falling to 0%</dd></div>
-            <div><dt>Reward weight</dt><dd>{selectedTerm.weightBps / 10_000}x your amount</dd></div>
-            <div><dt>If you break early</dt><dd>50% burned · 50% to holders</dd></div>
+            <div><dt>Reward weight</dt><dd>{tierMeta.weightBps / 10_000}x your amount</dd></div>
+            {tier === 0 && <div><dt>Leaving</dt><dd>Any time · up to 1% in the first 7 days</dd></div>}
+            {tier === 1 && <div><dt>Leaving early</dt><dd>Up to 10%, falling to 0% over {termDays} days</dd></div>}
+            {tier === 1 && <div><dt>Free exit when</dt><dd>{formatBps(target, true)} reached{maxLoss ? `, ${formatBps(-maxLoss, true)} hit` : ''} or term ends</dd></div>}
+            {tier === 2 && <div><dt>Withdrawal opens</dt><dd>At {formatBps(target, true)}, at {formatBps(-maxLoss, true)}, or after {termDays} days</dd></div>}
+            <div><dt>Rewards</dt><dd>Paid when the commitment completes</dd></div>
           </dl>
 
-          {renderActionStatus('form')}
-
-          <button
-            type="button"
-            className="btn btn--lime btn--block btn--lg"
-            disabled={!canTransact || !amountValid || busy}
-            onClick={() => void approveAndLock()}
-          >
-            {!walletAddress ? 'Connect a wallet to lock'
-              : !live ? 'Locking opens at launch'
-                : !onMainnet ? 'Switch to Robinhood Chain'
-                  : needsApproval && amountValid ? 'Approve & lock $WIF'
-                    : 'Lock $WIF'}
+          {renderTx('lock')}
+          <button type="button" className="btn btn--lime btn--block btn--lg" disabled={!canTransact || !amountValid || busy} onClick={() => void submitLock()}>
+            {lockButtonLabel()}
           </button>
-          {needsApproval && amountValid && canTransact && <p className="fine-print">Two wallet steps: approve this amount of $WIF, then lock it.</p>}
+          {!simulated && canTransact && <p className="fine-print">If needed, your wallet first asks to approve the amount, then to lock it.</p>}
         </section>
 
         <section className="card list-card my-locks">
           <header className="panel-head">
-            <div><small className="kicker">Your locks</small><h2>{formatWif(myLocked)} $WIF held</h2></div>
-            {myPending > 0 && <span className="tag tag--lime">+{formatWif(myPending)} earned</span>}
+            <div><small className="kicker">Your positions</small><h2>{formatAmount(lockedByMe)} {symbol} locked</h2></div>
+            {accrued > 0 && <span className="tag tag--lime">+{formatAmount(accrued)} accrued</span>}
           </header>
-          {action?.lockId !== undefined && !locks.some((row) => row.id === action.lockId) && renderActionStatus(action.lockId)}
-          {!walletAddress ? (
-            <div className="empty"><span>Connect a wallet to see your locks.</span></div>
-          ) : userStatus === 'loading' ? (
-            <div className="empty"><span className="spinner" aria-hidden="true" /><span>Reading Robinhood Chain…</span></div>
-          ) : userStatus === 'error' ? (
-            <div className="empty"><strong>Could not read your locks.</strong><span>The public RPC may be busy. Try again shortly.</span></div>
-          ) : locks.length === 0 ? (
-            <div className="empty"><strong>No open locks.</strong><span>Locks you open appear here with a live countdown and the fee you would pay to break them.</span></div>
+          {tx?.key.startsWith('exit:') && !state.positions.some((position) => `exit:${position.id}` === tx.key) && <TxNotice tx={tx} />}
+          {!simulated && !walletAddress ? (
+            <div className="empty"><span>Connect a wallet to see your positions.</span></div>
+          ) : state.status === 'loading' ? (
+            <div className="empty"><span className="spinner" aria-hidden="true" /></div>
+          ) : state.positions.length === 0 ? (
+            <div className="empty"><strong>No open positions.</strong><span>Your locks appear here with live ROI, unlock conditions and accrued rewards.</span></div>
           ) : (
             <ul className="lock-list">
-              {locks.map((row) => {
-                const remaining = row.unlocksAt - now
-                const progress = Math.min(100, Math.max(0, ((now - row.startedAt) / Math.max(1, row.unlocksAt - row.startedAt)) * 100))
-                const feeBps = currentFeeBps(row.term, row.startedAt, row.unlocksAt, now)
-                const fee = (row.amount * feeBps) / 10_000
-                const matured = remaining <= 0
-                const rowBusy = busy && action?.lockId === row.id
-                // With no other open lock there is nobody to pay, so the contract burns the whole fee.
-                const othersHolding = stats.status === 'ready' ? stats.openLocks > 1 : true
-                const toBurn = othersHolding ? fee / 2 : fee + row.pending
-                const toHolders = othersHolding ? fee / 2 + row.pending : 0
-                return (
-                  <li key={String(row.id)} className="lock-row">
-                    <div className="lock-row-top">
-                      <span className={`plan-badge ${matured ? 'is-matured' : ''}`}>{LOCK_TERMS[row.term]?.short}</span>
-                      <div className="lock-row-main">
-                        <strong>{formatWif(row.amount)} $WIF</strong>
-                        <span>{formatCountdown(remaining)} · lock #{String(row.id)}</span>
-                      </div>
-                      <div className="lock-row-side">
-                        <strong>{matured ? '0%' : `${(feeBps / 100).toFixed(2)}%`}</strong>
-                        <span>fee now</span>
-                      </div>
-                    </div>
-                    <span className="progress progress--sm"><i style={{ width: `${progress}%` }} /></span>
-                    <div className="lock-row-actions">
-                      <span className="lock-reward">{icon('coins', 14)} {formatWif(row.pending)} earned</span>
-                      <div>
-                        {row.pending > 0 && !matured && (
-                          <button type="button" className="btn btn--ghost btn--sm" disabled={!canTransact || busy} onClick={() => void send('claim', DIAMOND_ADDRESS, diamondInterface.encodeFunctionData('claim', [row.id]), row.id)}>Claim</button>
-                        )}
-                        {matured ? (
-                          <button type="button" className="btn btn--lime btn--sm" disabled={!canTransact || busy} onClick={() => void send('unlock', DIAMOND_ADDRESS, diamondInterface.encodeFunctionData('unlock', [row.id]), row.id)}>Unlock</button>
-                        ) : (
-                          <button type="button" className="btn btn--ghost btn--sm btn--paper" disabled={!canTransact || busy} onClick={() => setConfirmBreak(confirmBreak === row.id ? null : row.id)}>Paper hand</button>
-                        )}
-                      </div>
-                    </div>
-                    {confirmBreak === row.id && !matured && !rowBusy && action?.status !== 'confirmed' && (
-                      <div className="break-confirm">
-                        <dl className="rows">
-                          <div className="is-loss"><dt>Fee ({(feeBps / 100).toFixed(2)}%)</dt><dd>−{formatWif(fee)} $WIF</dd></div>
-                          <div><dt>Burned forever</dt><dd>{formatWif(toBurn)} $WIF</dd></div>
-                          <div><dt>Paid to holders</dt><dd>{formatWif(toHolders)} $WIF</dd></div>
-                          <div><dt>You get back</dt><dd>{formatWif(row.amount - fee)} $WIF</dd></div>
-                        </dl>
-                        {row.pending > 0 && <p className="fine-print">Your {formatWif(row.pending)} unclaimed $WIF reward is forfeited. Claim it first if you want it.</p>}
-                        {!othersHolding && <p className="fine-print">You hold the only open lock, so the whole fee is burned.</p>}
-                        <div className="btn-pair">
-                          <button type="button" className="btn btn--ghost" onClick={() => setConfirmBreak(null)}>Keep holding</button>
-                          <button type="button" className="btn btn--danger" onClick={() => { setConfirmBreak(null); void send('break', DIAMOND_ADDRESS, diamondInterface.encodeFunctionData('breakLock', [row.id]), row.id) }}>Break lock</button>
-                        </div>
-                      </div>
-                    )}
-                    {renderActionStatus(row.id)}
-                  </li>
-                )
-              })}
+              {state.positions.map((position) => (
+                <PositionRow
+                  key={position.id}
+                  position={position}
+                  symbol={symbol}
+                  now={state.now}
+                  currentPrice={state.price.value}
+                  confirming={confirmExit === position.id}
+                  disabled={!canTransact || busy}
+                  onToggle={() => setConfirmExit(confirmExit === position.id ? null : position.id)}
+                  onConfirm={() => { setConfirmExit(null); void actions.exit(position.id, position.status.feeBps) }}
+                  txNotice={renderTx(`exit:${position.id}`)}
+                />
+              ))}
             </ul>
           )}
         </section>
       </div>
 
-      <DiamondBoard history={history} walletAddress={walletAddress} />
+      <section className="card rewards-card">
+        <header className="panel-head">
+          <div><small className="kicker">Rewards</small><h2>Commitment reward pool</h2></div>
+          {icon('coins', 20)}
+        </header>
+        <div className="reward-stats">
+          <div><small>From early-exit fees</small><strong>{formatAmount(state.stats.poolFromFees)} {symbol}</strong></div>
+          <div><small>Funded by the community</small><strong>{formatAmount(state.stats.poolFunded)} {symbol}</strong></div>
+          <div><small>Paid to completed commitments</small><strong>{formatAmount(state.stats.rewardsPaid)} {symbol}</strong></div>
+          <div><small>Your accrued rewards</small><strong>{formatAmount(accrued)} {symbol}</strong></div>
+        </div>
+        <p className="fine-print">
+          The pool accrues to every open lock by weight (Flexible 1x, Committed 1.5x, Diamond Hands 3x). You receive your share when a lock completes: its term ends, its ROI target is reached, or a Flexible lock passes 7 days. Exiting early or at your max loss forfeits it to the remaining holders.
+        </p>
+      </section>
+
+      <section className="challenges">
+        <header className="panel-head">
+          <div><small className="kicker">Community challenges</small><h2>Hold together, earn together</h2></div>
+          {icon('trophy', 20)}
+        </header>
+        {state.challenges.length === 0 ? (
+          <div className="card empty"><span>{simulated || VAULT_ADDRESS ? 'No challenges yet. Sponsors create them by escrowing reward tokens in the vault.' : 'Challenges appear once the testnet vault is live.'}</span></div>
+        ) : (
+          <div className="challenge-grid">
+            {state.challenges.map((challenge) => (
+              <ChallengeCard
+                key={challenge.id}
+                challenge={challenge}
+                symbol={symbol}
+                now={state.now}
+                positions={state.positions}
+                joinChoice={joinChoice[challenge.id] ?? ''}
+                onChoose={(lockId) => setJoinChoice((current) => ({ ...current, [challenge.id]: lockId }))}
+                disabled={!canTransact || busy}
+                actions={actions}
+                txNotice={renderTx(`challenge:${challenge.id}`)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       <p className="fine-print fine-print--center">
-        {live
-          ? <>RixorDiamondHands <a href={explorerAddress(DIAMOND_ADDRESS)} target="_blank" rel="noreferrer">{shortAddr(DIAMOND_ADDRESS)}</a> on Robinhood Chain. No owner, no admin keys, no protocol fee. </>
-          : 'RixorDiamondHands has no owner, no admin keys and no protocol fee. '}
+        {simulated
+          ? 'Simulation mode. Nothing here is a real transaction or a real price.'
+          : 'Testnet only. No mainnet deployment and no real funds.'}{' '}
         $WIF comes with no promise of value or return.
       </p>
     </div>
   )
 }
 
-export function DiamondBoard({ history, walletAddress }: { history: ReturnType<typeof useDiamondHistory>; walletAddress?: string | null }) {
-  if (!DIAMOND_ADDRESS) return null
-  const me = walletAddress?.toLowerCase()
+function TxNotice({ tx }: { tx: TxState }) {
+  if (tx.status === 'failed') {
+    return <div className="notice notice--error" role="alert"><strong>{tx.simulated ? 'Simulation rejected this' : 'Transaction failed'}</strong><span>{tx.error}</span></div>
+  }
+  if (tx.status === 'confirmed') {
+    if (tx.simulated) {
+      return (
+        <div className="receipt receipt--sim">
+          <span className="receipt-check">{icon('check', 22)}</span>
+          <span className="receipt-copy"><small>Simulated</small><strong>Done. No transaction was sent.</strong></span>
+        </div>
+      )
+    }
+    return (
+      <a className="receipt" href={tx.hash ? vaultExplorerTx(tx.hash) : undefined} target="_blank" rel="noreferrer">
+        <span className="receipt-check">{icon('check', 22)}</span>
+        <span className="receipt-copy"><small>Confirmed on {VAULT_NETWORK.name}</small><strong>{tx.step ?? 'Transaction'} confirmed</strong></span>
+        <span className="receipt-link">Receipt {icon('arrowUpRight', 14)}</span>
+      </a>
+    )
+  }
+  return (
+    <div className="tx-progress" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <div>
+        <small>{tx.status === 'awaiting-wallet' ? 'Waiting for your wallet' : tx.simulated ? 'Simulating' : 'Confirming onchain'}</small>
+        <strong>{tx.step ?? 'Working…'}</strong>
+      </div>
+    </div>
+  )
+}
+
+function PositionRow(props: {
+  position: Position
+  symbol: string
+  now: number
+  currentPrice: number | null
+  confirming: boolean
+  disabled: boolean
+  onToggle: () => void
+  onConfirm: () => void
+  txNotice: ReactNode
+}) {
+  const { position, symbol, now, currentPrice, confirming, disabled, onToggle, onConfirm, txNotice } = props
+  const { status } = position
+  const tier = TIERS[position.tier]
+  const roi = status.roiBps
+  const value = currentPrice === null ? null : (position.amount * currentPrice) / position.entryPrice
+  const locked = status.reason === EXIT.Locked
+  const paysRewards = exitPaysRewards(status.reason)
+  const fee = (position.amount * status.feeBps) / 10_000
+  const remaining = position.endsAt - now
+
+  // ROI meter from the stop-loss (or −50%) on the left to the target on the right.
+  const floor = position.maxLossBps || 5_000
+  const meter = position.tier === 0 || roi === null
+    ? null
+    : Math.min(100, Math.max(0, ((roi + floor) / (position.roiTargetBps + floor)) * 100))
+
+  const eligibility = (() => {
+    if (status.reason === EXIT.EarlyWithFee) {
+      return position.tier === 0
+        ? `Early exit fee ${formatBps(status.feeBps)} now · free in ${formatDuration(remaining)}`
+        : `Early exit fee ${formatBps(status.feeBps)} now · free at ${formatBps(position.roiTargetBps, true)}${position.maxLossBps ? ` or ${formatBps(-position.maxLossBps, true)}` : ''} or in ${formatDuration(remaining)}`
+    }
+    if (locked) {
+      return `Locked · opens at ${formatBps(position.roiTargetBps, true)} or ${formatBps(-position.maxLossBps, true)}, or on ${formatDate(position.endsAt)}${status.priceFresh ? '' : ' (price feed stale)'}`
+    }
+    return `Withdraw now: ${exitReasonLabel(status.reason).toLowerCase()}`
+  })()
 
   return (
-    <div className="split">
-      <section className="card list-card">
-        <header className="panel-head">
-          <div><small className="kicker">Leaderboard</small><h2>Diamondest hands</h2></div>
-          {icon('trophy', 20)}
-        </header>
-        {history.status === 'loading' ? (
-          <div className="empty"><span className="spinner" aria-hidden="true" /></div>
-        ) : history.leaderboard.length === 0 ? (
-          <div className="empty"><span>No locks yet. The first holder takes the top spot.</span></div>
-        ) : (
-          <ol className="board">
-            {history.leaderboard.map((row, index) => (
-              <li key={row.owner} className={row.owner.toLowerCase() === me ? 'is-me' : ''}>
-                <span className="board-rank">{index + 1}</span>
-                <a href={explorerAddress(row.owner)} target="_blank" rel="noreferrer">{shortAddr(row.owner)}{row.owner.toLowerCase() === me ? ' (you)' : ''}</a>
-                <strong>{formatWif(row.locked, true)} $WIF</strong>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+    <li className="lock-row">
+      <div className="lock-row-top">
+        <span className={`plan-badge ${locked ? '' : 'is-matured'}`}>{tier.short}</span>
+        <div className="lock-row-main">
+          <strong>{formatAmount(position.amount)} {symbol}</strong>
+          <span>{tier.name} · #{position.id} · entry {position.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+        </div>
+        <div className="lock-row-side">
+          <strong className={roiClass(roi)}>{roi === null ? '—' : formatBps(roi, true)}</strong>
+          <span>{value === null ? 'ROI unavailable' : `≈ ${formatAmount(value)} value`}</span>
+        </div>
+      </div>
 
-      <section className="card list-card">
-        <header className="panel-head">
-          <div><small className="kicker">Live</small><h2>Diamonds & paper</h2></div>
-          {icon('flame', 20)}
-        </header>
-        {history.status === 'loading' ? (
-          <div className="empty"><span className="spinner" aria-hidden="true" /></div>
-        ) : history.events.length === 0 ? (
-          <div className="empty"><span>Every lock, claim and paper-hand exit shows up here.</span></div>
-        ) : (
-          <ul className="feed">
-            {history.events.map((event) => (
-              <li key={event.key}>
-                <span className={`feed-icon feed-icon--${event.kind}`}>
-                  {icon(event.kind === 'locked' ? 'lock' : event.kind === 'broken' ? 'flame' : event.kind === 'claimed' ? 'coins' : 'check', 16)}
-                </span>
-                <span className="feed-copy">
-                  <strong>
-                    {event.kind === 'locked' ? `Locked for ${LOCK_TERMS[event.term ?? 0]?.label}`
-                      : event.kind === 'broken' ? 'Paper-handed'
-                        : event.kind === 'claimed' ? 'Claimed rewards' : 'Unlocked'}
-                  </strong>
-                  <span>{shortAddr(event.owner)}</span>
-                </span>
-                <span className="feed-amount">
-                  <strong>{formatWif(event.amount, true)} $WIF</strong>
-                  {event.kind === 'broken'
-                    ? <span className="is-loss">{formatWif(event.burned, true)} burned</span>
-                    : <a href={explorerTx(event.txHash)} target="_blank" rel="noreferrer">Tx {icon('arrowUpRight', 12)}</a>}
-                </span>
-              </li>
-            ))}
-          </ul>
+      {meter !== null && (
+        <div className="roi-meter" aria-label="ROI progress between max loss and target">
+          <span className="progress progress--sm"><i style={{ width: `${meter}%` }} /></span>
+          <div className="roi-meter-labels">
+            <span>{position.maxLossBps ? `${formatBps(-position.maxLossBps, true)} max loss` : '−50%'}</span>
+            <span>{formatBps(position.roiTargetBps, true)} target</span>
+          </div>
+        </div>
+      )}
+
+      <p className={`eligibility ${locked ? '' : status.reason === EXIT.EarlyWithFee ? 'is-fee' : 'is-open'}`}>{eligibility}</p>
+
+      <div className="lock-row-actions">
+        <span className="lock-reward">
+          {icon('coins', 14)} {formatAmount(position.pendingReward)} accrued · {paysRewards ? 'paid if you withdraw now' : locked ? 'paid on completion' : 'forfeited if you leave now'}
+        </span>
+        <div>
+          <button type="button" className={`btn btn--sm ${locked ? 'btn--ghost' : status.reason === EXIT.EarlyWithFee ? 'btn--ghost btn--paper' : 'btn--lime'}`} disabled={disabled || locked} onClick={onToggle}>
+            {locked ? 'Locked' : status.reason === EXIT.EarlyWithFee ? 'Exit early' : 'Withdraw'}
+          </button>
+        </div>
+      </div>
+
+      {confirming && !locked && (
+        <div className={`break-confirm ${paysRewards ? 'is-calm' : ''}`}>
+          <dl className="rows">
+            <div><dt>Reason</dt><dd>{exitReasonLabel(status.reason)}</dd></div>
+            {status.feeBps > 0 && <div className="is-loss"><dt>Fee ({formatBps(status.feeBps)})</dt><dd>−{formatAmount(fee)} {symbol}</dd></div>}
+            {status.feeBps > 0 && <div><dt>Burned · to reward pool</dt><dd>{formatAmount(fee / 2)} · {formatAmount(fee / 2)}</dd></div>}
+            <div className={paysRewards ? '' : 'is-loss'}><dt>Accrued rewards</dt><dd>{paysRewards ? `+${formatAmount(position.pendingReward)}` : `forfeited (${formatAmount(position.pendingReward)})`}</dd></div>
+            <div><dt>You receive</dt><dd>{formatAmount(position.amount - fee + (paysRewards ? position.pendingReward : 0))} {symbol}</dd></div>
+          </dl>
+          <div className="btn-pair">
+            <button type="button" className="btn btn--ghost" onClick={onToggle}>Keep holding</button>
+            <button type="button" className={`btn ${paysRewards ? 'btn--lime' : 'btn--danger'}`} onClick={onConfirm}>Confirm withdrawal</button>
+          </div>
+        </div>
+      )}
+      {txNotice}
+    </li>
+  )
+}
+
+function ChallengeCard(props: {
+  challenge: ChallengeView
+  symbol: string
+  now: number
+  positions: Position[]
+  joinChoice: string
+  onChoose: (lockId: string) => void
+  disabled: boolean
+  actions: ReturnType<typeof useVault>['actions']
+  txNotice: ReactNode
+}) {
+  const { challenge, symbol, now, positions, joinChoice, onChoose, disabled, actions, txNotice } = props
+  const phase = challengePhase(challenge, now)
+  const eligibleLocks = positions.filter((position) => position.tier >= challenge.minTier && position.amount >= challenge.minAmount)
+  const progressBase = challenge.finalized ? challenge.qualifiedTotal : challenge.committedTotal
+  const progress = challenge.targetTotal > 0 ? Math.min(100, (progressBase / challenge.targetTotal) * 100) : null
+  const ranking = useMemo(() => [...challenge.ranking].sort((a, b) => (
+    challenge.kind === 1 ? (b.roiBps ?? -Infinity) - (a.roiBps ?? -Infinity) : b.amount - a.amount
+  )).slice(0, 5), [challenge])
+  const share = challenge.qualifiedCount > 0 ? challenge.rewardPool / challenge.qualifiedCount : challenge.rewardPool / Math.max(1, challenge.participants)
+  const joined = challenge.me.lockId !== null
+
+  const phaseLabel = {
+    joining: `Joining · closes in ${formatDuration(challenge.joinBy - now)}`,
+    running: `Running · ends in ${formatDuration(challenge.endsAt - now)}`,
+    'awaiting-final': 'Ended · waiting to be finalized',
+    qualifying: `Qualifying · ${formatDuration(challenge.claimEndsAt - now)} left`,
+    claimable: 'Rewards claimable',
+    refundable: 'Did not complete · refundable to sponsor',
+    closed: 'Closed',
+  }[phase]
+
+  return (
+    <article className="card challenge-card">
+      <header className="challenge-head">
+        <div>
+          <span className="tag">{challenge.kind === 0 ? 'Holding' : 'Performance'}</span>
+          <h3>{challenge.title}</h3>
+        </div>
+        <span className="challenge-pool"><small>Reward pool</small><strong>{formatAmount(challenge.rewardPool, true)} {symbol}</strong></span>
+      </header>
+
+      <p className="challenge-goal">
+        {challenge.kind === 0
+          ? `Keep a ${TIERS[challenge.minTier].name}-or-higher lock of at least ${formatAmount(challenge.minAmount)} ${symbol} open until ${formatDate(challenge.endsAt)}.`
+          : `Hold through ${formatDate(challenge.endsAt)} and finish at ${formatBps(challenge.roiTargetBps, true)} ROI or better.`}
+        {challenge.targetTotal > 0 && ` Community goal: ${formatAmount(challenge.targetTotal, true)} ${symbol} committed by qualifiers.`}
+      </p>
+
+      {progress !== null && (
+        <div className="challenge-progress">
+          <span className="progress"><i style={{ width: `${progress}%` }} /></span>
+          <small>{formatAmount(progressBase, true)} / {formatAmount(challenge.targetTotal, true)} {symbol} {challenge.finalized ? 'qualified' : 'committed'}</small>
+        </div>
+      )}
+
+      <dl className="rows">
+        <div><dt>Status</dt><dd>{phaseLabel}</dd></div>
+        <div><dt>Participants</dt><dd>{challenge.participants}{challenge.finalized ? ` · ${challenge.qualifiedCount} qualified` : ''}</dd></div>
+        <div><dt>Your share if you qualify</dt><dd>≈ {formatAmount(share)} {symbol}</dd></div>
+      </dl>
+
+      {ranking.length > 0 && (
+        <ol className="board board--compact">
+          {ranking.map((row, index) => (
+            <li key={row.who} className={row.isMe ? 'is-me' : ''}>
+              <span className="board-rank">{index + 1}</span>
+              <span>{row.isMe ? 'You' : row.who.startsWith('sim:') ? `${row.who.slice(4)} (sim)` : shortAddr(row.who)}{row.held ? '' : ' · left'}</span>
+              <strong className={challenge.kind === 1 ? roiClass(row.roiBps) : ''}>
+                {challenge.kind === 1 ? (row.roiBps === null ? '—' : formatBps(row.roiBps, true)) : `${formatAmount(row.amount, true)} ${symbol}`}
+              </strong>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {txNotice}
+
+      <div className="challenge-actions">
+        {phase === 'joining' && !joined && (
+          eligibleLocks.length === 0 ? (
+            <span className="fine-print">Open a {TIERS[challenge.minTier].name}-or-higher lock of at least {formatAmount(challenge.minAmount)} {symbol} to join.</span>
+          ) : (
+            <>
+              <select className="lock-select" value={joinChoice} onChange={(event) => onChoose(event.target.value)} aria-label="Lock to enter">
+                <option value="">Choose a lock</option>
+                {eligibleLocks.map((position) => (
+                  <option key={position.id} value={position.id}>#{position.id} · {TIERS[position.tier].name} · {formatAmount(position.amount)} {symbol}</option>
+                ))}
+              </select>
+              <button type="button" className="btn btn--lime btn--sm" disabled={disabled || !joinChoice} onClick={() => void actions.joinChallenge(challenge.id, joinChoice)}>Join</button>
+            </>
+          )
         )}
-      </section>
-    </div>
+        {joined && (phase === 'joining' || phase === 'running') && <span className="tag tag--lime">You're in with lock #{challenge.me.lockId}</span>}
+        {phase === 'awaiting-final' && <button type="button" className="btn btn--dark btn--sm" disabled={disabled} onClick={() => void actions.finalizeChallenge(challenge.id)}>Finalize results</button>}
+        {phase === 'qualifying' && joined && !challenge.me.qualified && <button type="button" className="btn btn--lime btn--sm" disabled={disabled} onClick={() => void actions.qualify(challenge.id)}>Prove I qualified</button>}
+        {phase === 'qualifying' && challenge.me.qualified && <span className="tag tag--lime">Qualified · claim opens in {formatDuration(challenge.claimEndsAt - now)}</span>}
+        {phase === 'claimable' && challenge.me.qualified && !challenge.me.claimed && (
+          <button type="button" className="btn btn--lime btn--sm" disabled={disabled} onClick={() => void actions.claimChallenge(challenge.id)}>Claim {formatAmount(share)} {symbol}</button>
+        )}
+        {phase === 'claimable' && challenge.me.claimed && <span className="tag tag--lime">Reward claimed</span>}
+        {phase === 'refundable' && <button type="button" className="btn btn--ghost btn--sm" disabled={disabled} onClick={() => void actions.refundChallenge(challenge.id)}>Return pool to sponsor</button>}
+      </div>
+    </article>
   )
 }

@@ -7,7 +7,8 @@ const root = process.cwd()
 // [source file, contract name, also copy the ABI artifact into the frontend?]
 const targets = [
   ['RixorSavings.sol', 'RixorSavings', true],
-  ['RixorDiamondHands.sol', 'RixorDiamondHands', true],
+  ['RixorConvictionVault.sol', 'RixorConvictionVault', true],
+  ['testnet/RixorMockPriceOracle.sol', 'RixorMockPriceOracle', true],
   ['test/MockBurnableToken.sol', 'MockBurnableToken', false],
 ]
 
@@ -24,6 +25,7 @@ const input = {
   settings: {
     optimizer: { enabled: true, runs: 200 },
     evmVersion: 'shanghai',
+    viaIR: true,
     outputSelection: {
       '*': {
         '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object'],

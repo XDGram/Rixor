@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { icon, networkGlyph } from './ui'
-import DiamondHands, { DiamondBoard } from './DiamondHands'
-import { DIAMOND_ADDRESS, LOCK_TERMS, ROBINHOOD_MAINNET, WIF_ADDRESS, explorerAddress, formatWif, shortAddr, useDiamondHistory, useDiamondStats } from './wif'
+import DiamondHands from './DiamondHands'
+import { WIF_ADDRESS, explorerAddress } from './wif'
+import { TIERS, formatAmount } from './vault/model'
+import { VAULT_ADDRESS, VAULT_NETWORK, vaultExplorerAddress } from './vault/onchain'
+import { useVaultSummary } from './vault/useVault'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
 import { Interface, decodeBytes32String, encodeBytes32String, formatEther, formatUnits } from 'ethers'
 
@@ -124,8 +127,7 @@ export default function App() {
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
   const [nativeBalanceStatus, setNativeBalanceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [nativeBalanceError, setNativeBalanceError] = useState('')
-  const diamondStats = useDiamondStats()
-  const diamondHistory = useDiamondHistory()
+  const vaultSummary = useVaultSummary()
   const [deployStatus, setDeployStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [deployTxHash, setDeployTxHash] = useState('')
   const [deployError, setDeployError] = useState('')
@@ -255,15 +257,6 @@ export default function App() {
   }
 
   const evmNetworks = [
-    {
-      id: ROBINHOOD_MAINNET.id,
-      hexId: ROBINHOOD_MAINNET.hexId,
-      name: ROBINHOOD_MAINNET.name,
-      shortName: ROBINHOOD_MAINNET.shortName,
-      rpcUrl: ROBINHOOD_MAINNET.rpcUrl,
-      balanceRpcUrls: [ROBINHOOD_MAINNET.rpcUrl],
-      explorerUrl: ROBINHOOD_MAINNET.explorerUrl,
-    },
     {
       id: 11155111,
       hexId: '0xaa36a7',
@@ -2611,7 +2604,7 @@ export default function App() {
               provider={connectedEvmProvider}
               chainId={evmChainId}
               switching={networkSwitching !== null}
-              onSwitchToMainnet={() => void switchEvmNetwork(ROBINHOOD_MAINNET.id)}
+              onSwitchNetwork={(id) => void switchEvmNetwork(id)}
             />
           )}
         </div>
@@ -2651,8 +2644,8 @@ export default function App() {
     if (walletSession) setDashboardView(true)
     else openWalletFor('dashboard')
   }
-  const diamondLive = Boolean(DIAMOND_ADDRESS)
-  const liveValue = (value: number) => (diamondStats.status === 'ready' ? formatWif(value, true) : diamondStats.status === 'not-deployed' ? '—' : '…')
+  const vaultLive = Boolean(VAULT_ADDRESS)
+  const liveValue = (value: number | undefined) => (vaultSummary ? formatAmount(value ?? 0, true) : vaultLive ? '…' : '—')
   const sepoliaSavingsUrl = sepoliaContractUrl
 
   return (
@@ -2666,8 +2659,8 @@ export default function App() {
           </button>
           <nav className="site-links" aria-label="Sections">
             <button type="button" onClick={() => scrollToSection('flywheel')}>Flywheel</button>
-            <button type="button" onClick={() => scrollToSection('terms')}>Terms</button>
-            <button type="button" onClick={() => scrollToSection('leaderboard')}>Leaderboard</button>
+            <button type="button" onClick={() => scrollToSection('terms')}>Tiers</button>
+            <button type="button" onClick={() => scrollToSection('leaderboard')}>Challenges</button>
             <button type="button" onClick={() => scrollToSection('security')}>Security</button>
           </nav>
           <button type="button" className="btn btn--dark btn--sm" onClick={launchApp}>
@@ -2680,16 +2673,16 @@ export default function App() {
         <div className="container hero-grid">
           <div className="hero-copy">
             <span className="tag tag--outline">
-              <span className={diamondLive ? 'dot-live' : 'dot-soon'} />
-              {diamondLive ? 'Live on Robinhood Chain' : 'Built on Robinhood Chain'} · $WIF
+              <span className={vaultLive ? 'dot-live' : 'dot-soon'} />
+              {vaultLive ? `Live on ${VAULT_NETWORK.name}` : 'Testnet preview'} · built for $WIF
             </span>
             <h1 id="hero-title">Diamond hands, <span>enforced onchain.</span></h1>
             <p>
-              Lock $WIF for a week or a year. Selling early costs a paper-hands fee that shrinks every second. Half of it is burned, the other half is paid to everyone still holding.
+              Pick Flexible, Committed or Diamond Hands. Set an ROI target and a max loss, watch your live ROI, and earn from everyone who leaves early. Join community challenges for extra rewards.
             </p>
             <div className="hero-actions">
               <button type="button" className="btn btn--lime btn--lg" onClick={launchApp}>
-                Lock $WIF {icon('arrowRight')}
+                Try it {icon('arrowRight')}
               </button>
               <button type="button" className="btn btn--ghost btn--lg" onClick={() => scrollToSection('flywheel')}>How it works</button>
             </div>
@@ -2700,9 +2693,9 @@ export default function App() {
             <div className="phone">
               <div className="phone-screen">
                 <div className="phone-status"><span>9:41</span><span className="phone-notch" /><span>●●●</span></div>
-                <div className="mock-head"><span>Your lock · 90 days</span></div>
+                <div className="mock-head"><span>Committed · 90 days</span></div>
                 <div className="mock-balance">1,250,000 <em>$WIF</em></div>
-                <div className="mock-delta">▲ 4,820 $WIF earned from paper hands</div>
+                <div className="mock-delta">▲ 4,820 $WIF accrued from early exits</div>
                 <div className="mock-ring">
                   <svg viewBox="0 0 120 120">
                     <circle cx="60" cy="60" r="50" className="mock-ring-track" />
@@ -2711,20 +2704,20 @@ export default function App() {
                   <span><b>64%</b><small>held</small></span>
                 </div>
                 <div className="mock-list">
-                  <div className="mock-row"><span className="mock-badge">FEE</span><span className="mock-row-copy"><b>Paper-hands fee today</b><i style={{ width: '36%' }} /></span><span className="mock-amount">5.4%</span></div>
-                  <div className="mock-row"><span className="mock-badge">32D</span><span className="mock-row-copy"><b>Until unlock</b><i style={{ width: '64%' }} /></span><span className="mock-amount">0% fee</span></div>
+                  <div className="mock-row"><span className="mock-badge">ROI</span><span className="mock-row-copy"><b>Live ROI · target +50%</b><i style={{ width: '62%' }} /></span><span className="mock-amount">+18.4%</span></div>
+                  <div className="mock-row"><span className="mock-badge">FEE</span><span className="mock-row-copy"><b>Early exit fee today</b><i style={{ width: '36%' }} /></span><span className="mock-amount">3.6%</span></div>
                 </div>
-                <div className="mock-actions"><span className="is-lime">Claim</span><span className="is-paper">Paper hand</span></div>
+                <div className="mock-actions"><span className="is-lime">Join challenge</span><span className="is-paper">Exit early</span></div>
               </div>
             </div>
             <div className="float-card float-card--fee">
-              <small>Paper hand exits</small>
+              <small>Early exit fees</small>
               <strong>50% burned</strong>
-              <span>through $WIF's own burn()</span>
+              <span>through the token's own burn()</span>
             </div>
             <div className="float-card float-card--ok">
               <span className="receipt-check">{icon('coins', 16)}</span>
-              <span><small>The other 50%</small><strong>paid to diamond hands</strong></span>
+              <span><small>The other 50%</small><strong>paid to completed commitments</strong></span>
             </div>
           </div>
         </div>
@@ -2733,14 +2726,14 @@ export default function App() {
       <section className="live-strip" aria-label="Live flywheel stats">
         <div className="container">
           <div className="live-strip-head">
-            <span className={diamondLive ? 'dot-live' : 'dot-soon'} />
-            {diamondLive ? 'Live from Robinhood Chain' : 'Live stats appear here once the lock contract is deployed'}
+            <span className={vaultLive ? 'dot-live' : 'dot-soon'} />
+            {vaultLive ? `Live from ${VAULT_NETWORK.name} · test tokens` : 'Live stats appear here once the testnet vault is deployed'}
           </div>
           <div className="live-grid">
-            <div><small>$WIF locked</small><strong>{liveValue(diamondStats.totalLocked)}</strong></div>
-            <div><small>Burned by paper hands</small><strong>{liveValue(diamondStats.totalBurned)}</strong></div>
-            <div><small>Paid to holders</small><strong>{liveValue(diamondStats.totalDistributed)}</strong></div>
-            <div><small>Open locks</small><strong>{diamondStats.status === 'ready' ? diamondStats.openLocks.toLocaleString() : diamondStats.status === 'not-deployed' ? '—' : '…'}</strong></div>
+            <div><small>Locked</small><strong>{liveValue(vaultSummary?.stats.totalLocked)}</strong></div>
+            <div><small>Reward pool so far</small><strong>{liveValue(vaultSummary ? vaultSummary.stats.poolFromFees + vaultSummary.stats.poolFunded : undefined)}</strong></div>
+            <div><small>Burned by early exits</small><strong>{liveValue(vaultSummary?.stats.totalBurned)}</strong></div>
+            <div><small>Commitments completed</small><strong>{vaultSummary ? vaultSummary.stats.completedLocks.toLocaleString() : vaultLive ? '…' : '—'}</strong></div>
           </div>
         </div>
       </section>
@@ -2751,10 +2744,10 @@ export default function App() {
           <h2 id="flywheel-title" className="section-title">Patience gets paid. Panic gets burned.</h2>
           <div className="loop">
             {[
-              ['lock', 'Lock', 'Commit $WIF for 7 days to 1 year. Longer locks earn up to 3x reward weight.'],
-              ['flame', 'Someone paper-hands', 'Breaking a lock early costs up to 25%, shrinking to 0% as the unlock nears.'],
-              ['coins', 'Burn + reward', 'Half the fee is burned forever. Half is shared with every open lock, by weight.'],
-              ['loop', 'Claim & relock', 'Holders claim $WIF anytime and lock again for a bigger share. Supply keeps shrinking.'],
+              ['lock', 'Pick a tier', 'Flexible, Committed or Diamond Hands, with your own ROI target and max loss. Stronger commitments earn up to 3x weight.'],
+              ['flame', 'Someone leaves early', 'Early exits from Flexible and Committed locks pay a fee that shrinks as the term runs down.'],
+              ['coins', 'Burn + reward', 'Half the fee is burned. Half joins the reward pool, paid out when commitments complete.'],
+              ['trophy', 'Challenge together', 'Join holding and performance challenges with sponsored reward pools, then relock for more.'],
             ].map(([glyph, title, copy], index) => (
               <article key={title} className="loop-step">
                 <span className="loop-index">0{index + 1}</span>
@@ -2776,12 +2769,12 @@ export default function App() {
           </div>
           <div className="lime-copy">
             <p className="eyebrow eyebrow--onlime">Split</p>
-            <h2 id="split-title" className="section-title">Every paper-hands fee splits 50/50</h2>
+            <h2 id="split-title" className="section-title">Every early-exit fee splits 50/50</h2>
             <p>
-              Half is burned through $WIF's own burn function, so total supply drops with every early exit. The other half, plus any rewards the seller forfeits, is streamed to everyone still locked. If nobody else is holding, the whole fee is burned.
+              Half is burned through the token's own burn function, so supply drops with every early exit. The other half, plus any rewards the leaver forfeits, goes to the reward pool for holders who complete their commitment. If nobody else is holding, the whole fee is burned.
             </p>
-            <button type="button" className="info-link" onClick={() => scrollToSection('terms')}>{icon('info', 14)} See fees and weights for each term</button>
-            <button type="button" className="btn btn--dark btn--lg" onClick={launchApp}>Lock $WIF</button>
+            <button type="button" className="info-link" onClick={() => scrollToSection('terms')}>{icon('info', 14)} Compare the three tiers</button>
+            <button type="button" className="btn btn--dark btn--lg" onClick={launchApp}>Try it</button>
           </div>
         </div>
       </section>
@@ -2794,19 +2787,19 @@ export default function App() {
               <table>
                 <thead>
                   <tr>
-                    <th scope="col">Lock</th>
+                    <th scope="col">Tier</th>
                     <th scope="col" className="is-rixor">Reward weight</th>
-                    <th scope="col">Max paper-hands fee</th>
-                    <th scope="col">Fee at halfway</th>
+                    <th scope="col">Leaving early</th>
+                    <th scope="col">Free withdrawal</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {LOCK_TERMS.map((option) => (
+                  {TIERS.map((option) => (
                     <tr key={option.id}>
-                      <th scope="row">{option.label}</th>
+                      <th scope="row">{option.name}</th>
                       <td className="is-rixor">{option.weightBps / 10_000}x</td>
-                      <td>{option.maxFeeBps / 100}%</td>
-                      <td>{option.maxFeeBps / 200}%</td>
+                      <td>{option.id === 0 ? 'Up to 1% in the first 7 days' : option.id === 1 ? 'Up to 10%, falling over the term' : 'Not allowed'}</td>
+                      <td>{option.id === 0 ? 'After 7 days' : option.id === 1 ? 'Target, max loss or term end' : 'Target, max loss or term end'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2814,25 +2807,37 @@ export default function App() {
             </div>
           </div>
           <p className="compare-note">
-            The fee falls in a straight line from its maximum on day one to 0% at unlock. After unlock you withdraw your $WIF plus rewards with no fee. Rewards come only from other holders' exit fees; nothing is minted.
+            Every term is 30 to 365 days, so even Diamond Hands can always withdraw at the end of the term, and if the price feed stops for 7 days. Rewards come only from exit fees and community funding; nothing is minted.
           </p>
         </div>
       </section>
 
       <section className="board-section" id="leaderboard" aria-labelledby="board-title">
         <div className="container">
-          <p className="eyebrow">Leaderboard</p>
-          <h2 id="board-title" className="section-title">Who has the diamondest hands?</h2>
-          {diamondLive ? (
-            <div className="board-wrap"><DiamondBoard history={diamondHistory} walletAddress={walletSession?.address} /></div>
+          <p className="eyebrow">Community challenges</p>
+          <h2 id="board-title" className="section-title">Hold together, earn together</h2>
+          {vaultSummary && vaultSummary.challenges.length > 0 ? (
+            <div className="board-wrap">
+              <section className="card list-card">
+                <ol className="board">
+                  {vaultSummary.challenges.slice(0, 5).map((challenge, index) => (
+                    <li key={challenge.id}>
+                      <span className="board-rank">{index + 1}</span>
+                      <span>{challenge.title} · {challenge.kind === 0 ? 'Holding' : 'Performance'} · {challenge.participants} joined</span>
+                      <strong>{formatAmount(challenge.rewardPool, true)} {vaultSummary.tokenSymbol}</strong>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
           ) : (
             <div className="board-teaser">
               <span className="loop-icon">{icon('trophy', 22)}</span>
               <div>
-                <strong>The board opens with the first lock.</strong>
-                <span>Every lock, claim and paper-hand exit is read from contract events on Robinhood Chain. No database.</span>
+                <strong>{vaultLive ? 'No challenges yet.' : 'Challenges go live with the testnet vault.'}</strong>
+                <span>Sponsors escrow a reward pool; holders join with a lock, hold through the end or hit an ROI target, and split the pool. Try it now in Simulation.</span>
               </div>
-              <button type="button" className="btn btn--lime" onClick={launchApp}>Be first</button>
+              <button type="button" className="btn btn--lime" onClick={launchApp}>Try challenges</button>
             </div>
           )}
         </div>
@@ -2901,7 +2906,7 @@ export default function App() {
         <div className="container">
           <h2 id="security-title" className="section-title section-title--center">Rixor Commitments</h2>
           <div className="commitments-cta">
-            <a className="btn btn--outline-light" href={diamondLive ? explorerAddress(DIAMOND_ADDRESS) : 'https://github.com/XDGram/Rixor/blob/main/contracts/RixorDiamondHands.sol'} target="_blank" rel="noreferrer">Read the contract</a>
+            <a className="btn btn--outline-light" href={vaultLive ? vaultExplorerAddress(VAULT_ADDRESS) : 'https://github.com/XDGram/Rixor/blob/main/contracts/RixorConvictionVault.sol'} target="_blank" rel="noreferrer">Read the contract</a>
           </div>
           <div className="commitment-grid">
             <article>
@@ -2934,7 +2939,7 @@ export default function App() {
                 <path d="M60 28c14 6 24 7 27 7-1 28-9 50-27 61-18-11-26-33-27-61 3 0 13-1 27-7Z" />
               </svg>
               <h3>Honest about risk</h3>
-              <p>$WIF has no promise of value or return. The contract is open source and tested, but not audited. Lock only what you can leave alone.</p>
+              <p>Rixor runs on testnet with test tokens and a hand-set test price. $WIF has no promise of value or return. The contract is tested, not audited.</p>
             </article>
           </div>
         </div>
@@ -2944,11 +2949,11 @@ export default function App() {
         <div className="container footer-grid">
           <div>
             {renderRixorBrand()}
-            <p>Diamond hands for $WIF, and ETH savings with clear terms.</p>
+            <p>Tiered conviction locks, challenges and rewards, built for $WIF. Testnet preview.</p>
           </div>
           <div className="footer-links">
             <a href={explorerAddress(WIF_ADDRESS)} target="_blank" rel="noreferrer">$WIF token {icon('arrowUpRight', 12)}</a>
-            {diamondLive && <a href={explorerAddress(DIAMOND_ADDRESS)} target="_blank" rel="noreferrer">Lock contract {shortAddr(DIAMOND_ADDRESS)} {icon('arrowUpRight', 12)}</a>}
+            {vaultLive && <a href={vaultExplorerAddress(VAULT_ADDRESS)} target="_blank" rel="noreferrer">Vault ({VAULT_NETWORK.name}) {icon('arrowUpRight', 12)}</a>}
             <a href={sepoliaSavingsUrl} target="_blank" rel="noreferrer">Savings contract (Sepolia) {icon('arrowUpRight', 12)}</a>
             <a href={robinhoodContractUrl} target="_blank" rel="noreferrer">Savings contract (Robinhood Chain Testnet) {icon('arrowUpRight', 12)}</a>
           </div>
