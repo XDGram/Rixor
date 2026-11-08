@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { icon, networkGlyph } from './ui'
+import DiamondHands, { DiamondBoard } from './DiamondHands'
+import { DIAMOND_ADDRESS, LOCK_TERMS, ROBINHOOD_MAINNET, WIF_ADDRESS, explorerAddress, formatWif, shortAddr, useDiamondHistory, useDiamondStats } from './wif'
 import rixorSavingsArtifact from './contracts/RixorSavingsArtifact.json'
 import { Interface, decodeBytes32String, encodeBytes32String, formatEther, formatUnits } from 'ethers'
 
@@ -48,15 +51,6 @@ type ActivePlan = {
   accruedReward: number
   status: 'active' | 'matured'
   txHash?: string
-}
-
-type WalletToken = {
-  address: string
-  name: string
-  symbol: string
-  decimals: number
-  rawBalance: string
-  balance: string
 }
 
 type ActivityItem = {
@@ -120,7 +114,7 @@ export default function App() {
   const [walletError, setWalletError] = useState('')
   const [walletSession, setWalletSession] = useState<WalletSession | null>(null)
   const [dashboardView, setDashboardView] = useState(true)
-  const [dashboardNavTab, setDashboardNavTab] = useState<'home' | 'diamond'>('home')
+  const [dashboardNavTab, setDashboardNavTab] = useState<'home' | 'diamond'>('diamond')
   const [pendingWalletAction, setPendingWalletAction] = useState<'dashboard' | 'start-plan' | null>(null)
   const [pendingPlanTerm, setPendingPlanTerm] = useState<'flexible' | '30' | '90' | '180' | '365' | null>(null)
   const [detectedWallets, setDetectedWallets] = useState<DetectedWallet[]>([])
@@ -130,8 +124,8 @@ export default function App() {
   const [nativeBalance, setNativeBalance] = useState<string>('0.0000')
   const [nativeBalanceStatus, setNativeBalanceStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [nativeBalanceError, setNativeBalanceError] = useState('')
-  const [diamondTokens, setDiamondTokens] = useState<WalletToken[]>([])
-  const [diamondTokensStatus, setDiamondTokensStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const diamondStats = useDiamondStats()
+  const diamondHistory = useDiamondHistory()
   const [deployStatus, setDeployStatus] = useState<'idle' | 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'>('idle')
   const [deployTxHash, setDeployTxHash] = useState('')
   const [deployError, setDeployError] = useState('')
@@ -262,6 +256,15 @@ export default function App() {
 
   const evmNetworks = [
     {
+      id: ROBINHOOD_MAINNET.id,
+      hexId: ROBINHOOD_MAINNET.hexId,
+      name: ROBINHOOD_MAINNET.name,
+      shortName: ROBINHOOD_MAINNET.shortName,
+      rpcUrl: ROBINHOOD_MAINNET.rpcUrl,
+      balanceRpcUrls: [ROBINHOOD_MAINNET.rpcUrl],
+      explorerUrl: ROBINHOOD_MAINNET.explorerUrl,
+    },
+    {
       id: 11155111,
       hexId: '0xaa36a7',
       name: 'Sepolia',
@@ -274,7 +277,7 @@ export default function App() {
       id: 46630,
       hexId: '0xb626',
       name: 'Robinhood Chain Testnet',
-      shortName: 'Robinhood Testnet',
+      shortName: 'Robinhood Chain Testnet',
       rpcUrl: 'https://rpc.testnet.chain.robinhood.com',
       balanceRpcUrls: [
         'https://rpc.testnet.chain.robinhood.com',
@@ -286,18 +289,7 @@ export default function App() {
   ] as const
 
   const currentEvmNetwork = evmNetworks.find((network) => network.id === evmChainId)
-  const renderChainIcon = (chainId?: number | null) => chainId === 46630 ? (
-    <span className="chain-mark chain-mark--robinhood" aria-hidden="true">
-      <img src="/images/robinhood-chain-feather.jpg" alt="" />
-    </span>
-  ) : (
-    <span className="chain-mark chain-mark--sepolia" aria-hidden="true">
-      <svg viewBox="0 0 32 52" role="presentation">
-        <path d="M16 0 0 26.5 16 36 32 26.5 16 0Z" fill="currentColor" opacity=".92" />
-        <path d="M16 38.8 0 29.6 16 52 32 29.6 16 38.8Z" fill="currentColor" opacity=".58" />
-      </svg>
-    </span>
-  )
+  const renderChainIcon = (chainId?: number | null) => networkGlyph(chainId)
 
   const renderRixorBrand = () => (
     <span className="brand" aria-label="Rixor">
@@ -318,83 +310,6 @@ export default function App() {
       ? deployedRobinhoodTestnetAddress
       : undefined
 
-  const isLikelyMemeToken = (token: { name?: string | null; symbol?: string | null }) => {
-    const symbol = (token.symbol || '').trim().toUpperCase()
-    const name = (token.name || '').trim().toLowerCase()
-    const memeSymbols = new Set([
-      'DOGE', 'SHIB', 'PEPE', 'BONK', 'WIF', 'FLOKI', 'MOG', 'BRETT', 'POPCAT', 'MEW',
-      'TURBO', 'NEIRO', 'PONKE', 'BABYDOGE', 'MEME', 'WOJAK', 'COQ', 'MYRO', 'BOME', 'SLERF',
-    ])
-    const memeNameHints = [
-      'doge', 'shib', 'pepe', 'bonk', 'dogwif', 'floki', 'mog', 'brett', 'popcat', 'cat',
-      'meme', 'wojak', 'frog', 'inu', 'baby doge', 'ponke', 'neiro', 'turbo',
-    ]
-
-    return memeSymbols.has(symbol) || memeNameHints.some((hint) => name.includes(hint))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadDiamondTokens = async () => {
-      if (walletSession?.kind !== 'evm' || evmChainId !== 46630) {
-        setDiamondTokens([])
-        setDiamondTokensStatus('idle')
-        return
-      }
-
-      setDiamondTokensStatus('loading')
-      try {
-        const response = await fetch(`https://explorer.testnet.chain.robinhood.com/api/v2/addresses/${walletSession.address}/token-balances`)
-        if (!response.ok) throw new Error('Could not read wallet token balances.')
-
-        const payload = await response.json() as Array<{
-          token?: {
-            address_hash?: string
-            decimals?: string | null
-            name?: string | null
-            symbol?: string | null
-            type?: string | null
-          }
-          value?: string | null
-        }>
-
-        const tokens = payload
-          .filter((item) => (
-            item.token?.type === 'ERC-20'
-            && item.token.address_hash
-            && item.value
-            && BigInt(item.value) > 0n
-            && isLikelyMemeToken(item.token)
-          ))
-          .map((item) => {
-            const decimals = Number(item.token?.decimals ?? '18')
-            const rawBalance = item.value!
-            return {
-              address: item.token!.address_hash!,
-              name: item.token?.name || item.token?.symbol || 'Token',
-              symbol: item.token?.symbol || 'TOKEN',
-              decimals,
-              rawBalance,
-              balance: formatUnits(BigInt(rawBalance), decimals),
-            }
-          })
-
-        if (!cancelled) {
-          setDiamondTokens(tokens)
-          setDiamondTokensStatus('ready')
-        }
-      } catch {
-        if (!cancelled) {
-          setDiamondTokens([])
-          setDiamondTokensStatus('error')
-        }
-      }
-    }
-
-    void loadDiamondTokens()
-    return () => { cancelled = true }
-  }, [walletSession?.address, walletSession?.kind, evmChainId])
   const addMoneyParsed = Number(addMoneyAmount || 0)
   const addMoneyValid = addMoneyParsed > 0 && addMoneyParsed <= Number(nativeBalance)
   const addMoneyInsufficient = addMoneyParsed > Number(nativeBalance) && addMoneyParsed > 0
@@ -1608,31 +1523,6 @@ export default function App() {
 
   const selectedGoal = savingsGoals.find((goal) => goal.id === startPlanGoal) ?? savingsGoals[0]
 
-  const iconPaths = {
-    arrowRight: 'M5 12h14M13 6l6 6-6 6',
-    arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
-    arrowUpRight: 'M7 17 17 7M8 7h9v9',
-    arrowDown: 'M12 5v14M6 13l6 6 6-6',
-    arrowUp: 'M12 19V5M6 11l6-6 6 6',
-    plus: 'M12 5v14M5 12h14',
-    close: 'M6 6l12 12M18 6 6 18',
-    check: 'M5 12.5l4.5 4.5L19 7',
-    info: 'M12 11v5M12 8v.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
-    refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',
-    sun: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
-    moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z',
-    home: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9.5Z',
-    diamond: 'M6 4h12l3 5-9 11L3 9l3-5ZM3 9h18M10 4 8 9l4 11 4-11-2-5',
-    lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5V11Z',
-    clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
-  } as const
-
-  const icon = (name: keyof typeof iconPaths, size = 18) => (
-    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={iconPaths[name]} />
-    </svg>
-  )
-
   const fmtEth = (value: number, digits = 4) => (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -1926,7 +1816,7 @@ export default function App() {
             ['Lands in', 'Your Rixor available balance'],
           ])}
 
-          {!currentEvmNetwork && <div className="notice">Switch to Sepolia or Robinhood Testnet before continuing.</div>}
+          {!currentEvmNetwork && <div className="notice">Switch to Sepolia or Robinhood Chain Testnet before continuing.</div>}
 
           <button
             type="button"
@@ -1980,8 +1870,8 @@ export default function App() {
     })
   }
 
-  const renderOutlineNumeral = (text: string, label: string) => (
-    <svg className="outline-numeral" viewBox="0 0 560 320" role="img" aria-label={label}>
+  const renderOutlineNumeral = (text: string, label: string, width = 560) => (
+    <svg className="outline-numeral" viewBox={`0 0 ${width} 320`} role="img" aria-label={label}>
       {Array.from({ length: 22 }, (_, index) => 22 - index).map((depth) => (
         <text key={depth} x={70 - depth * 1.7} y={250 + depth * 1.7} className={depth === 22 ? 'num-back' : 'num-mid'}>{text}</text>
       ))}
@@ -2492,8 +2382,8 @@ export default function App() {
             </button>
 
             <nav className="seg seg--nav" aria-label="Dashboard sections">
-              <button type="button" aria-current={dashboardNavTab === 'home' ? 'page' : undefined} className={dashboardNavTab === 'home' ? 'is-active' : ''} onClick={() => switchDashboardSection('home')}>Savings</button>
               <button type="button" aria-current={dashboardNavTab === 'diamond' ? 'page' : undefined} className={dashboardNavTab === 'diamond' ? 'is-active' : ''} onClick={() => switchDashboardSection('diamond')}>Diamond Hands</button>
+              <button type="button" aria-current={dashboardNavTab === 'home' ? 'page' : undefined} className={dashboardNavTab === 'home' ? 'is-active' : ''} onClick={() => switchDashboardSection('home')}>ETH Savings</button>
             </nav>
 
             <div className="app-bar-actions">
@@ -2538,7 +2428,7 @@ export default function App() {
                           disabled={networkSwitching !== null}
                         >
                           {renderChainIcon(network.id)}
-                          <span>{networkSwitching === network.id ? 'Switching…' : network.id === 46630 ? 'Robinhood' : 'Sepolia'}</span>
+                          <span>{networkSwitching === network.id ? 'Switching…' : network.shortName}</span>
                         </button>
                       ))}
                     </div>
@@ -2716,67 +2606,38 @@ export default function App() {
               </p>
             </div>
           ) : (
-            <div className="view" key="diamond">
-              <section className="diamond-hero">
-                <p className="eyebrow">Diamond Hands</p>
-                <h1>Conviction without the sell button.</h1>
-                <p>Lock meme coins you already hold on Robinhood Chain and commit to your own long-term thesis.</p>
-                {evmChainId === 46630 ? (
-                  <span className="tag tag--lime">{renderChainIcon(46630)} Robinhood Chain</span>
-                ) : (
-                  <button type="button" className="btn btn--lime" onClick={() => void switchEvmNetwork(46630)} disabled={!isEvm}>Switch to Robinhood Chain</button>
-                )}
-              </section>
-
-              <section className="card list-card">
-                <header className="panel-head">
-                  <div><small className="kicker">Your meme bag</small><h2>Ready to diamond-hand</h2></div>
-                </header>
-                {evmChainId !== 46630 ? (
-                  <div className="empty"><strong>Robinhood Chain only.</strong><span>Switch networks to see meme coins this wallet already holds.</span></div>
-                ) : diamondTokensStatus === 'loading' ? (
-                  <div className="empty"><span className="spinner" aria-hidden="true" /><strong>Checking your wallet…</strong></div>
-                ) : diamondTokensStatus === 'error' ? (
-                  <div className="empty"><strong>Could not read your holdings.</strong><span>Refresh the page or try again in a moment.</span></div>
-                ) : diamondTokens.length === 0 ? (
-                  <div className="empty"><strong>No recognized meme coins found.</strong><span>Only meme coins you already hold appear here. Tokenized stocks and other ERC-20s stay out.</span></div>
-                ) : (
-                  <div className="token-grid">
-                    {diamondTokens.map((token) => {
-                      const numericBalance = Number(token.balance)
-                      const displayBalance = Number.isFinite(numericBalance)
-                        ? numericBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })
-                        : token.balance
-                      return (
-                        <div className="token-card" key={token.address}>
-                          <div className="token-card-top">
-                            <span className="token-mark">{token.symbol.slice(0, 2).toUpperCase()}</span>
-                            <span className="tag">In wallet</span>
-                          </div>
-                          <strong>{token.symbol}</strong>
-                          <span>{token.name}</span>
-                          <p className="figure figure--sm">{displayBalance}</p>
-                          <small>{shortAddress(token.address)}</small>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </section>
-              <p className="fine-print fine-print--center">Only meme coins already in the connected wallet appear here. The lock contract for Diamond Hands is not live yet.</p>
-            </div>
+            <DiamondHands
+              walletAddress={isEvm ? walletSession.address : null}
+              provider={connectedEvmProvider}
+              chainId={evmChainId}
+              switching={networkSwitching !== null}
+              onSwitchToMainnet={() => void switchEvmNetwork(ROBINHOOD_MAINNET.id)}
+            />
           )}
         </div>
 
         <nav className="tabbar" aria-label="Dashboard sections">
-          <button type="button" className={dashboardNavTab === 'home' ? 'is-active' : ''} aria-current={dashboardNavTab === 'home' ? 'page' : undefined} onClick={() => switchDashboardSection('home')}>
-            {icon('home', 20)}<span>Savings</span>
-          </button>
-          <button type="button" className="tabbar-cta" onClick={openAddMoney} aria-label="Add money">
-            {icon('plus', 22)}
-          </button>
           <button type="button" className={dashboardNavTab === 'diamond' ? 'is-active' : ''} aria-current={dashboardNavTab === 'diamond' ? 'page' : undefined} onClick={() => switchDashboardSection('diamond')}>
             {icon('diamond', 20)}<span>Diamond</span>
+          </button>
+          <button
+            type="button"
+            className="tabbar-cta"
+            aria-label={dashboardNavTab === 'diamond' ? 'New lock' : 'Add money'}
+            onClick={() => {
+              if (dashboardNavTab === 'home') {
+                openAddMoney()
+                return
+              }
+              const field = document.getElementById('wif-amount')
+              field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              window.setTimeout(() => field?.focus({ preventScroll: true }), 400)
+            }}
+          >
+            {icon('plus', 22)}
+          </button>
+          <button type="button" className={dashboardNavTab === 'home' ? 'is-active' : ''} aria-current={dashboardNavTab === 'home' ? 'page' : undefined} onClick={() => switchDashboardSection('home')}>
+            {icon('home', 20)}<span>Savings</span>
           </button>
         </nav>
       </main>
@@ -2785,14 +2646,14 @@ export default function App() {
 
   const feeCurveY = (feePercent: number) => 132 - (feePercent / 8) * 104
   const showcaseMax = selectedPlan.earlyExitMax
-  const showcaseCta = walletSession ? 'Open dashboard' : 'Connect wallet'
-  const compareRows: Array<[string, string, string, string]> = [
-    ['Choose a lock term', 'Flexible to 1 year', 'No', 'Some products'],
-    ['Exit fee shown before you sign', 'Yes', '—', 'Varies'],
-    ['Exit fee at maturity', '0%', '—', 'Varies'],
-    ['Who signs withdrawals', 'You', 'You', 'The bank'],
-    ['Where your history lives', 'Public chain', 'Public chain', 'Bank records'],
-  ]
+  const launchApp = () => {
+    setDashboardNavTab('diamond')
+    if (walletSession) setDashboardView(true)
+    else openWalletFor('dashboard')
+  }
+  const diamondLive = Boolean(DIAMOND_ADDRESS)
+  const liveValue = (value: number) => (diamondStats.status === 'ready' ? formatWif(value, true) : diamondStats.status === 'not-deployed' ? '—' : '…')
+  const sepoliaSavingsUrl = sepoliaContractUrl
 
   return (
     <main className="site">
@@ -2804,13 +2665,13 @@ export default function App() {
             {renderRixorBrand()}
           </button>
           <nav className="site-links" aria-label="Sections">
-            <button type="button" onClick={() => scrollToSection('compare')}>Compare</button>
-            <button type="button" onClick={() => scrollToSection('plans')}>Plans</button>
-            <button type="button" onClick={() => scrollToSection('how-it-works')}>How it works</button>
+            <button type="button" onClick={() => scrollToSection('flywheel')}>Flywheel</button>
+            <button type="button" onClick={() => scrollToSection('terms')}>Terms</button>
+            <button type="button" onClick={() => scrollToSection('leaderboard')}>Leaderboard</button>
             <button type="button" onClick={() => scrollToSection('security')}>Security</button>
           </nav>
-          <button type="button" className="btn btn--dark btn--sm" onClick={() => (walletSession ? setDashboardView(true) : openWalletFor('dashboard'))}>
-            {walletSession ? 'Open app' : 'Connect wallet'}
+          <button type="button" className="btn btn--dark btn--sm" onClick={launchApp}>
+            {walletSession ? 'Open app' : 'Launch app'}
           </button>
         </div>
       </header>
@@ -2818,75 +2679,134 @@ export default function App() {
       <section className="hero" aria-labelledby="hero-title">
         <div className="container hero-grid">
           <div className="hero-copy">
-            <span className="tag tag--outline"><span className="dot-live" /> Live on Sepolia & Robinhood Chain Testnet</span>
-            <h1 id="hero-title">Save onchain. <span>On terms you can read.</span></h1>
-            <p>Put ETH aside in a plan, choose how long it stays, and see every exit fee before you sign. Your balance, plans and history come straight from the chain.</p>
+            <span className="tag tag--outline">
+              <span className={diamondLive ? 'dot-live' : 'dot-soon'} />
+              {diamondLive ? 'Live on Robinhood Chain' : 'Built on Robinhood Chain'} · $WIF
+            </span>
+            <h1 id="hero-title">Diamond hands, <span>enforced onchain.</span></h1>
+            <p>
+              Lock $WIF for a week or a year. Selling early costs a paper-hands fee that shrinks every second. Half of it is burned, the other half is paid to everyone still holding.
+            </p>
             <div className="hero-actions">
-              <button type="button" className="btn btn--lime btn--lg" onClick={() => (walletSession ? setDashboardView(true) : openWalletFor('dashboard'))}>
-                Start saving {icon('arrowRight')}
+              <button type="button" className="btn btn--lime btn--lg" onClick={launchApp}>
+                Lock $WIF {icon('arrowRight')}
               </button>
-              <button type="button" className="btn btn--ghost btn--lg" onClick={() => scrollToSection('how-it-works')}>How it works</button>
+              <button type="button" className="btn btn--ghost btn--lg" onClick={() => scrollToSection('flywheel')}>How it works</button>
             </div>
-            <p className="hero-note">{icon('info', 14)} Testnet build. Use test ETH only.</p>
+            <p className="hero-note">{icon('info', 14)} No owner, no admin keys, no protocol fee.</p>
           </div>
 
           <div className="hero-visual" aria-hidden="true">
             <div className="phone">
               <div className="phone-screen">
                 <div className="phone-status"><span>9:41</span><span className="phone-notch" /><span>●●●</span></div>
-                <div className="mock-head"><span>Available in Rixor</span></div>
-                <div className="mock-balance">2.4180 <em>ETH</em></div>
-                <div className="mock-delta">▲ 1.2500 ETH saved in plans</div>
-                <div className="mock-actions"><span className="is-lime">Add money</span><span>Start a plan</span></div>
-                <div className="mock-list">
-                  {[
-                    ['90D', 'School fees', '0.8000', 62],
-                    ['1Y', 'Long-term', '0.4500', 18],
-                    ['Flex', 'Emergency fund', '0.0000', 100],
-                  ].map(([badge, goal, amount, progress]) => (
-                    <div className="mock-row" key={String(goal)}>
-                      <span className="mock-badge">{badge}</span>
-                      <span className="mock-row-copy"><b>{goal}</b><i style={{ width: `${progress}%` }} /></span>
-                      <span className="mock-amount">{amount}</span>
-                    </div>
-                  ))}
+                <div className="mock-head"><span>Your lock · 90 days</span></div>
+                <div className="mock-balance">1,250,000 <em>$WIF</em></div>
+                <div className="mock-delta">▲ 4,820 $WIF earned from paper hands</div>
+                <div className="mock-ring">
+                  <svg viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="50" className="mock-ring-track" />
+                    <circle cx="60" cy="60" r="50" className="mock-ring-fill" strokeDasharray="314" strokeDashoffset="113" />
+                  </svg>
+                  <span><b>64%</b><small>held</small></span>
                 </div>
+                <div className="mock-list">
+                  <div className="mock-row"><span className="mock-badge">FEE</span><span className="mock-row-copy"><b>Paper-hands fee today</b><i style={{ width: '36%' }} /></span><span className="mock-amount">5.4%</span></div>
+                  <div className="mock-row"><span className="mock-badge">32D</span><span className="mock-row-copy"><b>Until unlock</b><i style={{ width: '64%' }} /></span><span className="mock-amount">0% fee</span></div>
+                </div>
+                <div className="mock-actions"><span className="is-lime">Claim</span><span className="is-paper">Paper hand</span></div>
               </div>
             </div>
             <div className="float-card float-card--fee">
-              <small>Exit fee today</small>
-              <strong>2.31%</strong>
-              <span>falls to 0% at maturity</span>
+              <small>Paper hand exits</small>
+              <strong>50% burned</strong>
+              <span>through $WIF's own burn()</span>
             </div>
             <div className="float-card float-card--ok">
-              <span className="receipt-check">{icon('check', 16)}</span>
-              <span><small>Plan confirmed</small><strong>0.8000 ETH · 90 days</strong></span>
+              <span className="receipt-check">{icon('coins', 16)}</span>
+              <span><small>The other 50%</small><strong>paid to diamond hands</strong></span>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="compare" id="compare" aria-labelledby="compare-title">
+      <section className="live-strip" aria-label="Live flywheel stats">
         <div className="container">
-          <h2 id="compare-title" className="section-title section-title--center">A clearer way to hold ETH</h2>
+          <div className="live-strip-head">
+            <span className={diamondLive ? 'dot-live' : 'dot-soon'} />
+            {diamondLive ? 'Live from Robinhood Chain' : 'Live stats appear here once the lock contract is deployed'}
+          </div>
+          <div className="live-grid">
+            <div><small>$WIF locked</small><strong>{liveValue(diamondStats.totalLocked)}</strong></div>
+            <div><small>Burned by paper hands</small><strong>{liveValue(diamondStats.totalBurned)}</strong></div>
+            <div><small>Paid to holders</small><strong>{liveValue(diamondStats.totalDistributed)}</strong></div>
+            <div><small>Open locks</small><strong>{diamondStats.status === 'ready' ? diamondStats.openLocks.toLocaleString() : diamondStats.status === 'not-deployed' ? '—' : '…'}</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="flywheel" id="flywheel" aria-labelledby="flywheel-title">
+        <div className="container">
+          <p className="eyebrow">The flywheel</p>
+          <h2 id="flywheel-title" className="section-title">Patience gets paid. Panic gets burned.</h2>
+          <div className="loop">
+            {[
+              ['lock', 'Lock', 'Commit $WIF for 7 days to 1 year. Longer locks earn up to 3x reward weight.'],
+              ['flame', 'Someone paper-hands', 'Breaking a lock early costs up to 25%, shrinking to 0% as the unlock nears.'],
+              ['coins', 'Burn + reward', 'Half the fee is burned forever. Half is shared with every open lock, by weight.'],
+              ['loop', 'Claim & relock', 'Holders claim $WIF anytime and lock again for a bigger share. Supply keeps shrinking.'],
+            ].map(([glyph, title, copy], index) => (
+              <article key={title} className="loop-step">
+                <span className="loop-index">0{index + 1}</span>
+                <span className="loop-icon">{icon(glyph as 'lock', 22)}</span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+              </article>
+            ))}
+            <span className="loop-center" aria-hidden="true">{icon('loop', 28)}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="lime-band" aria-labelledby="split-title">
+        <div className="container lime-grid">
+          <div className="lime-art">
+            {renderOutlineNumeral('50/50', 'Fifty fifty', 900)}
+            <span className="lime-art-label">every exit fee</span>
+          </div>
+          <div className="lime-copy">
+            <p className="eyebrow eyebrow--onlime">Split</p>
+            <h2 id="split-title" className="section-title">Every paper-hands fee splits 50/50</h2>
+            <p>
+              Half is burned through $WIF's own burn function, so total supply drops with every early exit. The other half, plus any rewards the seller forfeits, is streamed to everyone still locked. If nobody else is holding, the whole fee is burned.
+            </p>
+            <button type="button" className="info-link" onClick={() => scrollToSection('terms')}>{icon('info', 14)} See fees and weights for each term</button>
+            <button type="button" className="btn btn--dark btn--lg" onClick={launchApp}>Lock $WIF</button>
+          </div>
+        </div>
+      </section>
+
+      <section className="compare" id="terms" aria-labelledby="terms-title">
+        <div className="container">
+          <h2 id="terms-title" className="section-title section-title--center">Pick how diamond your hands are</h2>
           <div className="compare-card">
             <div className="compare-scroll">
               <table>
                 <thead>
                   <tr>
-                    <th scope="col"><span className="sr-only">Feature</span></th>
-                    <th scope="col" className="is-rixor">{renderRixorBrand()}</th>
-                    <th scope="col">Wallet only</th>
-                    <th scope="col">Bank savings</th>
+                    <th scope="col">Lock</th>
+                    <th scope="col" className="is-rixor">Reward weight</th>
+                    <th scope="col">Max paper-hands fee</th>
+                    <th scope="col">Fee at halfway</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {compareRows.map(([feature, rixor, wallet, bank]) => (
-                    <tr key={feature}>
-                      <th scope="row">{feature}</th>
-                      <td className="is-rixor">{rixor}</td>
-                      <td>{wallet}</td>
-                      <td>{bank}</td>
+                  {LOCK_TERMS.map((option) => (
+                    <tr key={option.id}>
+                      <th scope="row">{option.label}</th>
+                      <td className="is-rixor">{option.weightBps / 10_000}x</td>
+                      <td>{option.maxFeeBps / 100}%</td>
+                      <td>{option.maxFeeBps / 200}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2894,27 +2814,27 @@ export default function App() {
             </div>
           </div>
           <p className="compare-note">
-            Comparison is general and for illustration. Bank products and wallets vary. Rixor is a testnet build: ETH principal and plan rules are enforced by the contract, and $RIXOR rewards are not live yet.
+            The fee falls in a straight line from its maximum on day one to 0% at unlock. After unlock you withdraw your $WIF plus rewards with no fee. Rewards come only from other holders' exit fees; nothing is minted.
           </p>
-          <button type="button" className="info-link info-link--center" onClick={() => scrollToSection('security')}>{icon('info', 14)} What Rixor does and does not do</button>
         </div>
       </section>
 
-      <section className="lime-band" aria-labelledby="fee-title">
-        <div className="container lime-grid">
-          <div className="lime-art">
-            {renderOutlineNumeral('0%', 'Zero percent')}
-            <span className="lime-art-label">at maturity</span>
-          </div>
-          <div className="lime-copy">
-            <p className="eyebrow eyebrow--onlime">Exit</p>
-            <h2 id="fee-title" className="section-title">Zero exit fee once your plan matures</h2>
-            <p>
-              Each locked plan starts with a maximum early-exit fee, from 2% on 30 days to 8% on one year, and it falls every second until it reaches zero at maturity. Flexible plans never pay one. You see the exact fee in ETH and dollars before you sign.
-            </p>
-            <button type="button" className="info-link" onClick={() => scrollToSection('plans')}>{icon('info', 14)} See the fee for each plan</button>
-            <button type="button" className="btn btn--dark btn--lg" onClick={() => openWalletFor('start-plan', planTerm)}>Start a plan</button>
-          </div>
+      <section className="board-section" id="leaderboard" aria-labelledby="board-title">
+        <div className="container">
+          <p className="eyebrow">Leaderboard</p>
+          <h2 id="board-title" className="section-title">Who has the diamondest hands?</h2>
+          {diamondLive ? (
+            <div className="board-wrap"><DiamondBoard history={diamondHistory} walletAddress={walletSession?.address} /></div>
+          ) : (
+            <div className="board-teaser">
+              <span className="loop-icon">{icon('trophy', 22)}</span>
+              <div>
+                <strong>The board opens with the first lock.</strong>
+                <span>Every lock, claim and paper-hand exit is read from contract events on Robinhood Chain. No database.</span>
+              </div>
+              <button type="button" className="btn btn--lime" onClick={launchApp}>Be first</button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -2942,8 +2862,8 @@ export default function App() {
                 </svg>
                 <div className="mock-axis"><span>Day 0</span><span>{planTerm === 'flexible' ? 'Any day' : `Day ${selectedPlan.days}`}</span></div>
                 <div className="mock-range">
-                  {planOptions.map((option) => (
-                    <span key={option.id} className={option.id === planTerm ? 'is-active' : ''}>{termShort[planOptions.indexOf(option)]}</span>
+                  {planOptions.map((option, index) => (
+                    <span key={option.id} className={option.id === planTerm ? 'is-active' : ''}>{termShort[index]}</span>
                   ))}
                 </div>
                 <div className="mock-foot"><span>Access</span><b>{selectedPlan.access}</b></div>
@@ -2952,9 +2872,9 @@ export default function App() {
           </div>
 
           <div className="showcase-copy">
-            <p className="eyebrow">Plans</p>
-            <h2 id="plans-title" className="section-title">Pick a timeline that fits the goal</h2>
-            <p>Emergency fund, school fees, rent or something long-term. Choose Flexible access or lock for 30, 90, 180 days or a year. You can top up or extend a plan at any time.</p>
+            <p className="eyebrow">Also in Rixor · testnet</p>
+            <h2 id="plans-title" className="section-title">ETH savings plans with exit fees you can read</h2>
+            <p>The same idea for everyday saving: put testnet ETH toward a goal, choose Flexible or a 30-day to 1-year lock, and see the exact early-exit fee before you sign. Runs on Sepolia and Robinhood Chain Testnet.</p>
 
             <div className="seg seg--wrap" role="radiogroup" aria-label="Plan term">
               {planOptions.map((option) => (
@@ -2968,38 +2888,12 @@ export default function App() {
               ['Access', selectedPlan.access],
               ['Max early-exit fee', showcaseMax ? `${showcaseMax}%, falling to 0%` : 'None'],
               ['Matures', maturityDate],
-              ['Illustrative rate', `${selectedPlan.apy}%`],
             ])}
 
-            <button type="button" className="info-link" onClick={() => scrollToSection('security')}>{icon('info', 14)} Rates are illustrative and not paid on testnet</button>
-            <button type="button" className="btn btn--lime btn--lg" onClick={() => openWalletFor('start-plan', planTerm)}>
-              {walletSession ? `Start a ${selectedPlan.label.toLowerCase()} plan` : showcaseCta}
+            <button type="button" className="btn btn--ghost btn--lg" onClick={() => openWalletFor('start-plan', planTerm)}>
+              {walletSession ? `Start a ${selectedPlan.label.toLowerCase()} plan` : 'Try ETH savings'}
             </button>
           </div>
-        </div>
-      </section>
-
-      <section className="steps" id="how-it-works" aria-labelledby="how-title">
-        <div className="container">
-          <p className="eyebrow">How it works</p>
-          <h2 id="how-title" className="section-title">One balance. Your timeline.</h2>
-          <ol className="step-list">
-            <li>
-              <span className="step-index">01</span>
-              <h3>Add money</h3>
-              <p>Deposit test ETH from your wallet into your Rixor balance with one signature.</p>
-            </li>
-            <li>
-              <span className="step-index">02</span>
-              <h3>Start a plan</h3>
-              <p>Move part of that balance into a Flexible, 30, 90, 180-day or 1-year plan with a goal attached.</p>
-            </li>
-            <li>
-              <span className="step-index">03</span>
-              <h3>Withdraw on your terms</h3>
-              <p>Take your available balance back any time. Exit a plan after seeing the exact fee, if there is one.</p>
-            </li>
-          </ol>
         </div>
       </section>
 
@@ -3007,7 +2901,7 @@ export default function App() {
         <div className="container">
           <h2 id="security-title" className="section-title section-title--center">Rixor Commitments</h2>
           <div className="commitments-cta">
-            <a className="btn btn--outline-light" href={sepoliaContractUrl} target="_blank" rel="noreferrer">Read the contract</a>
+            <a className="btn btn--outline-light" href={diamondLive ? explorerAddress(DIAMOND_ADDRESS) : 'https://github.com/XDGram/Rixor/blob/main/contracts/RixorDiamondHands.sol'} target="_blank" rel="noreferrer">Read the contract</a>
           </div>
           <div className="commitment-grid">
             <article>
@@ -3015,32 +2909,32 @@ export default function App() {
                 <path d="M60 14 102 38v44L60 106 18 82V38Z" /><path d="M18 38l42 24 42-24M60 62v44" />
                 <path d="M39 26l42 24M81 26 39 50M32 59v24M88 59v24M46 67v24M74 67v24" />
               </svg>
-              <h3>Your keys stay yours</h3>
-              <p>Rixor only asks for your public address. Every movement of funds is a transaction you sign.</p>
+              <h3>No admin keys</h3>
+              <p>The lock contract has no owner, no upgrade path and no protocol fee. Only you can move your $WIF.</p>
             </article>
             <article>
               <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
                 <path d="M30 16h46l18 18v70H30Z" /><path d="M76 16v18h18" />
                 <path d="M42 50h40M42 62h40M42 74h22" /><circle cx="78" cy="84" r="14" /><path d="m71 84 5 5 9-10" />
               </svg>
-              <h3>Review before you sign</h3>
-              <p>Amounts, destination, maturity and any early-exit fee are shown before your wallet opens.</p>
+              <h3>See the cost first</h3>
+              <p>The exact fee, what gets burned, what goes to holders and what you get back are shown before your wallet opens.</p>
             </article>
             <article>
               <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
                 <path d="M60 18 98 36 60 54 22 36Z" /><path d="M22 36v14l38 18 38-18V36" />
                 <path d="M22 58v14l38 18 38-18V58" /><path d="M22 80v14l38 18 38-18V80" />
               </svg>
-              <h3>Rules live onchain</h3>
-              <p>Plan terms and fees are enforced by the contract. Your history is rebuilt from public events, not a private database.</p>
+              <h3>Burns are real</h3>
+              <p>Burned $WIF goes through the token's own burn function, so total supply drops onchain. Nothing is minted.</p>
             </article>
             <article>
               <svg viewBox="0 0 120 120" className="line-art" aria-hidden="true">
                 <path d="M60 12c22 10 36 10 40 10 0 40-12 70-40 86C32 92 20 62 20 22c4 0 18 0 40-10Z" />
                 <path d="M60 28c14 6 24 7 27 7-1 28-9 50-27 61-18-11-26-33-27-61 3 0 13-1 27-7Z" />
               </svg>
-              <h3>Honest about what is live</h3>
-              <p>This is a testnet build. ETH savings are real contract behavior; $RIXOR rewards and displayed rates are not.</p>
+              <h3>Honest about risk</h3>
+              <p>$WIF has no promise of value or return. The contract is open source and tested, but not audited. Lock only what you can leave alone.</p>
             </article>
           </div>
         </div>
@@ -3050,14 +2944,16 @@ export default function App() {
         <div className="container footer-grid">
           <div>
             {renderRixorBrand()}
-            <p>Onchain savings with clear terms. Testnet only.</p>
+            <p>Diamond hands for $WIF, and ETH savings with clear terms.</p>
           </div>
           <div className="footer-links">
-            <a href={sepoliaContractUrl} target="_blank" rel="noreferrer">Sepolia contract {icon('arrowUpRight', 12)}</a>
-            <a href={robinhoodContractUrl} target="_blank" rel="noreferrer">Robinhood Testnet contract {icon('arrowUpRight', 12)}</a>
+            <a href={explorerAddress(WIF_ADDRESS)} target="_blank" rel="noreferrer">$WIF token {icon('arrowUpRight', 12)}</a>
+            {diamondLive && <a href={explorerAddress(DIAMOND_ADDRESS)} target="_blank" rel="noreferrer">Lock contract {shortAddr(DIAMOND_ADDRESS)} {icon('arrowUpRight', 12)}</a>}
+            <a href={sepoliaSavingsUrl} target="_blank" rel="noreferrer">Savings contract (Sepolia) {icon('arrowUpRight', 12)}</a>
+            <a href={robinhoodContractUrl} target="_blank" rel="noreferrer">Savings contract (Robinhood Chain Testnet) {icon('arrowUpRight', 12)}</a>
           </div>
           <p className="footer-legal">
-            Rixor runs on public testnets and holds no real funds. Do not send mainnet assets. Displayed rates are illustrative and are not paid by the current contract. $RIXOR is not a live token.
+            Rixor is an independent project built for the world is flat hackathon. It is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. $WIF comes with no promise of value or return. ETH savings run on public testnets only, and their displayed rates are illustrative.
           </p>
         </div>
       </footer>

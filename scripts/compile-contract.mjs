@@ -3,16 +3,27 @@ import path from 'node:path'
 import solc from 'solc'
 
 const root = process.cwd()
-const sourcePath = path.join(root, 'contracts', 'RixorSavings.sol')
-const source = fs.readFileSync(sourcePath, 'utf8')
+
+// [source file, contract name, also copy the ABI artifact into the frontend?]
+const targets = [
+  ['RixorSavings.sol', 'RixorSavings', true],
+  ['RixorDiamondHands.sol', 'RixorDiamondHands', true],
+  ['test/MockBurnableToken.sol', 'MockBurnableToken', false],
+]
+
+const sources = Object.fromEntries(
+  [...new Set(targets.map(([file]) => file))].map((file) => [
+    file,
+    { content: fs.readFileSync(path.join(root, 'contracts', file), 'utf8') },
+  ]),
+)
 
 const input = {
   language: 'Solidity',
-  sources: {
-    'RixorSavings.sol': { content: source },
-  },
+  sources,
   settings: {
     optimizer: { enabled: true, runs: 200 },
+    evmVersion: 'shanghai',
     outputSelection: {
       '*': {
         '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object'],
@@ -31,29 +42,21 @@ for (const item of errors) {
 
 if (fatal.length) process.exit(1)
 
-const contract = output.contracts['RixorSavings.sol'].RixorSavings
 const artifactsDir = path.join(root, 'artifacts')
-fs.mkdirSync(artifactsDir, { recursive: true })
-
-const artifact = {
-  contractName: 'RixorSavings',
-  abi: contract.abi,
-  bytecode: `0x${contract.evm.bytecode.object}`,
-  deployedBytecode: `0x${contract.evm.deployedBytecode.object}`,
-}
-
-const serializedArtifact = JSON.stringify(artifact, null, 2)
-
-fs.writeFileSync(
-  path.join(artifactsDir, 'RixorSavings.json'),
-  serializedArtifact,
-)
-
 const frontendArtifactDir = path.join(root, 'src', 'contracts')
+fs.mkdirSync(artifactsDir, { recursive: true })
 fs.mkdirSync(frontendArtifactDir, { recursive: true })
-fs.writeFileSync(
-  path.join(frontendArtifactDir, 'RixorSavingsArtifact.json'),
-  serializedArtifact,
-)
 
-console.log('Compiled RixorSavings -> artifacts/RixorSavings.json + src/contracts/RixorSavingsArtifact.json')
+for (const [file, name, frontend] of targets) {
+  const contract = output.contracts[file][name]
+  const artifact = {
+    contractName: name,
+    abi: contract.abi,
+    bytecode: `0x${contract.evm.bytecode.object}`,
+    deployedBytecode: `0x${contract.evm.deployedBytecode.object}`,
+  }
+  const serialized = JSON.stringify(artifact, null, 2)
+  fs.writeFileSync(path.join(artifactsDir, `${name}.json`), serialized)
+  if (frontend) fs.writeFileSync(path.join(frontendArtifactDir, `${name}Artifact.json`), serialized)
+  console.log(`Compiled ${name}${frontend ? ' (+ frontend artifact)' : ''}`)
+}

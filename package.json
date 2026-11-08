@@ -9,7 +9,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "contract:compile": "node scripts/compile-contract.mjs",
     "contract:deploy": "node scripts/deploy-contract.mjs",
-    "contract:test": "npm run contract:compile && node scripts/test-contract.mjs"
+    "contract:test": "npm run contract:compile && node scripts/test-contract.mjs && node scripts/test-diamond-hands.mjs",
+    "contract:deploy:diamond": "node scripts/deploy-diamond-hands.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

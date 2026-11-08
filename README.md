@@ -4,15 +4,51 @@
 
 # Rixor
 
-**Onchain savings with clear terms, wallet-native control, and testnet-first execution.**
+**Diamond hands for $WIF, enforced onchain on Robinhood Chain.**
 
-Rixor is a wallet-connected savings experience built around a simple idea: a user should be able to move testnet ETH into an onchain balance, place part of that balance into a savings plan, understand the lock and early-exit rules before signing, and see the resulting activity directly from contract state and events.
+Rixor lets holders lock $WIF for 7 days to 1 year. Breaking a lock early costs a paper-hands fee that falls every second until it reaches zero at unlock. Every fee splits 50/50: half is **burned** through $WIF's own `burn()`, half is **paid to everyone still locked**, weighted by how long they committed. Patience gets paid, panic gets burned.
 
-The current build supports **Sepolia** and **Robinhood Chain Testnet**. It is a testnet product and should not be treated as a production mainnet savings protocol.
+Rixor also includes ETH savings plans on Sepolia and Robinhood Chain Testnet (described further below).
 
-![Rixor homepage](docs/screenshots/home.png)
+## Diamond Hands ($WIF)
 
-## What is working
+Contract: `contracts/RixorDiamondHands.sol` · token: $WIF `0x5173b8eA6923c2d40267890D45C46a3480954773` on Robinhood Chain (chain ID 4663).
+
+| Lock | Reward weight | Max paper-hands fee |
+| --- | ---: | ---: |
+| 7 days | 1x | 5% |
+| 30 days | 1.25x | 10% |
+| 90 days | 1.5x | 15% |
+| 180 days | 2x | 20% |
+| 1 year | 3x | 25% |
+
+- `lock(amount, term)`: lock $WIF (after `approve`).
+- `claim(lockId)`: collect rewards earned from other holders' exits, anytime.
+- `unlock(lockId)`: after the term, withdraw principal plus rewards with no fee.
+- `breakLock(lockId)`: exit early. Pays the current fee and forfeits unclaimed rewards. Half the fee is burned; the rest (plus the forfeit) goes to open locks. If no one else is locked, all of it is burned.
+
+**The flywheel:** locking takes $WIF out of circulation → paper hands burn supply and fund holders → holders come back to claim and relock for a bigger share → more $WIF locked.
+
+**Trust model:** no owner, no admin, no upgrade path, no protocol fee. Rewards come only from exit fees; nothing is minted. Tested (`npm run contract:test`), not audited.
+
+The app reads live totals, your locks, a leaderboard and a feed of locks and paper-hand exits straight from the contract through the public Robinhood Chain RPC. There is no backend.
+
+### Deploying Diamond Hands
+
+```bash
+npm run contract:compile
+npm run contract:deploy:diamond -- robinhood-mainnet   # needs RIXOR_DEPLOYER_PRIVATE_KEY with a little ETH for gas
+```
+
+Then set `VITE_RIXOR_DIAMOND_ADDRESS` and `VITE_RIXOR_DIAMOND_FROM_BLOCK` (printed by the script) in Vercel and redeploy. Until the address is set, the app shows Diamond Hands in a "not deployed yet" state and never sends transactions.
+
+## ETH savings (testnet)
+
+The original Rixor flow: move testnet ETH into an onchain balance, place part of it into a savings plan, understand the lock and early-exit rules before signing, and see activity reconstructed from contract events. Runs on **Sepolia** and **Robinhood Chain Testnet** only.
+
+Rixor is an independent project and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. $WIF comes with no promise of value or return.
+
+### What is working
 
 - Connect an injected EVM wallet.
 - Switch between Sepolia and Robinhood Chain Testnet.
