@@ -1,0 +1,15 @@
+{
+  "name": "rixor-fork-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Persistent Robinhood Chain mainnet-fork demo backend for Rixor. Fork only: never sends anything to a live network.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@foundry-rs/anvil": "1.7.1",
+    "ethers": "6.15.0"
+  }
+}

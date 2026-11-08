@@ -16,7 +16,10 @@
     "forge": "node node_modules/@foundry-rs/forge/bin.mjs",
     "test:contracts": "node node_modules/@foundry-rs/forge/bin.mjs test --no-match-path 'test/fork/*'",
     "test:fork": "node node_modules/@foundry-rs/forge/bin.mjs test --match-path 'test/fork/*' -vv",
-    "vet:token": "node scripts/vet-token.mjs"
+    "vet:token": "node scripts/vet-token.mjs",
+    "demo:artifacts": "node scripts/export-demo-artifacts.mjs",
+    "demo:backend": "cd demo/fork-backend && npm ci && STATE_DIR=./data npm start",
+    "demo:e2e": "node demo/e2e/journey.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

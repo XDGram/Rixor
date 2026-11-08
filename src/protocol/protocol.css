@@ -1,0 +1,109 @@
+/* ==========================================================================
+   Rixor protocol app: layout additions only.
+   Uses the existing design tokens from styles.css. No new colours are introduced.
+   ========================================================================== */
+
+/* Five-slot mobile tab bar (same styling as .tabbar, wider grid). */
+.tabbar.tabbar--five { grid-template-columns: 1fr 1fr auto 1fr 1fr; width: min(440px, calc(100% - 24px)); gap: 2px; }
+.tabbar.tabbar--five > button { flex-direction: column; gap: 2px; min-height: 52px; font-size: 10.5px; padding: 0 2px; min-width: 0; }
+.tabbar.tabbar--five > .tabbar-cta { width: 52px; height: 52px; }
+
+/* Environment strip: always visible, never mistaken for mainnet. */
+.demo-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-mute);
+}
+.demo-strip .tag { flex: none; min-height: 26px; font-size: 12px; }
+
+/* Explore */
+.explore-hero { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.explore-hero .action-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.explore-hero .action-row .btn { flex: 1 1 200px; }
+.explore-hero .section-title { font-size: clamp(26px, 6.4vw, 44px); }
+.challenge-link {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color .18s ease, transform .18s ease;
+}
+.challenge-link:hover { border-color: var(--ink-mute); }
+.challenge-link:active { transform: scale(.995); }
+.challenge-link .chip-row { gap: 6px; }
+
+.token-list { display: grid; margin-bottom: 12px; }
+.token-list li + li { border-top: 1px solid var(--line); }
+.token-line {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+}
+.token-line-copy, .token-line-side { display: grid; min-width: 0; }
+.token-line-copy strong, .token-line-side strong { font-weight: 600; }
+.token-line-copy span, .token-line-side span { font-size: 12.5px; color: var(--ink-mute); }
+.token-line-side { justify-items: end; font-variant-numeric: tabular-nums; }
+
+/* Forms */
+.field { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }
+.field small { font-weight: 400; color: var(--ink-mute); }
+.field input, .field textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+  outline: 0;
+  resize: vertical;
+}
+.field input:focus, .field textarea:focus { border-color: var(--ink); background: var(--surface); }
+.amount-input--sm { min-height: 56px; }
+.amount-input--sm input { font-size: 22px; }
+.commit-field small { font-weight: 400; color: var(--ink-mute); }
+
+/* Position chooser for joining a challenge */
+.choice-list { display: grid; gap: 8px; }
+.choice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  text-align: left;
+}
+.choice > span { display: grid; gap: 1px; min-width: 0; }
+.choice > span:last-child { justify-items: end; text-align: right; }
+.choice small { font-size: 12px; color: var(--ink-mute); }
+.choice .is-loss { color: var(--loss); }
+.choice.is-active { border-color: var(--ink); }
+.choice:disabled { opacity: .55; }
+
+.board-note { margin-left: 6px; font-size: 11.5px; color: var(--ink-mute); }
+.feed-amount small { font-size: 11.5px; color: var(--ink-mute); }
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .92em; overflow-wrap: anywhere; }
+.rows dd.mono { text-align: right; }
+
+.setup-card { display: grid; gap: 16px; max-width: 640px; margin: 0 auto; width: 100%; }
+.back-btn { justify-self: start; }
+
+@media (max-width: 380px) {
+  .demo-strip { font-size: 11.5px; }
+  .challenge-pool strong { font-size: 17px; }
+}
