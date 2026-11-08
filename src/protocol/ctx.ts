@@ -1,4 +1,4 @@
-import type { JsonRpcProvider } from 'ethers'
+import type { JsonRpcApiProvider } from 'ethers'
 import type { ConnectedWallet, Contracts } from './chain'
 import type { useTx } from './components'
 import type { Manifest } from './env'
@@ -15,9 +15,8 @@ export type Route =
   | { name: 'activity' }
 
 export type Ctx = {
-  backend: string
   manifest: Manifest
-  provider: JsonRpcProvider
+  provider: JsonRpcApiProvider
   snapshot: Snapshot
   now: number
   wallet: ConnectedWallet | null

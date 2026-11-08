@@ -93,12 +93,12 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
   return (
     <div className="view">
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Demo wallet · fork balances</small><h2>Your portfolio</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">Demo wallet · simulated balances</small><h2>Your portfolio</h2></div></header>
         <div className="stat-grid">
-          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>Fork {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>not a real balance</span></div>)}
+          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>Demo {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>not a real balance</span></div>)}
           <div className="stat"><small>Open positions</small><strong>{open.length}</strong><span>{closed.length} closed</span></div>
           <div className="stat"><small>Challenges joined</small><strong>{snapshot.challenges.filter((c) => c.me.entry).length}</strong><span>{snapshot.challenges.filter((c) => c.me.contribution > 0n).length} sponsored</span></div>
-          <div className="stat"><small>Rewards claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>fork {wif?.symbol ?? 'WIF'}</span></div>
+          <div className="stat"><small>Rewards claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>demo {wif?.symbol ?? 'WIF'}</span></div>
         </div>
       </section>
 

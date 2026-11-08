@@ -23,3 +23,4 @@ reports/
 # Fork demo backend state and throwaway keys
 demo/fork-backend/data/
 !demo/fork-backend/artifacts/
+!src/protocol/sim/artifacts/

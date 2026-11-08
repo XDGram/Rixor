@@ -71,7 +71,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
         <div className="amount-field">
           <div className="amount-field-head">
             <label htmlFor="lock-amount">Amount</label>
-            <span className={problem && amount !== null ? 'is-error' : ''}>{wallet ? `${fmtToken(token.balance, token.decimals)} fork ${token.symbol} in demo wallet` : 'Connect the demo wallet'}</span>
+            <span className={problem && amount !== null ? 'is-error' : ''}>{wallet ? `${fmtToken(token.balance, token.decimals)} demo ${token.symbol} in your demo wallet` : 'Connect the demo wallet'}</span>
           </div>
           <div className={`amount-input ${problem && amount !== null ? 'is-error' : ''}`}>
             <input id="lock-amount" inputMode="decimal" autoComplete="off" placeholder="0" value={amountText} onChange={(e) => setAmountText(e.target.value.replace(/[^0-9.]/g, ''))} />
@@ -114,7 +114,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
         ) : (
           <button type="button" className="btn btn--lime btn--block btn--lg" onClick={ctx.openWallet}>Connect demo wallet</button>
         )}
-        {wallet && token.allowanceLocker < (amount ?? 0n) && <p className="fine-print">Two fork transactions: approve, then lock.</p>}
+        {wallet && token.allowanceLocker < (amount ?? 0n) && <p className="fine-print">Two simulated transactions: approve, then lock.</p>}
       </section>
     </div>
   )

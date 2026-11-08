@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Contract, type JsonRpcProvider, type Log } from 'ethers'
+import { Contract, type JsonRpcApiProvider, type Log } from 'ethers'
 import { challengesIface, contractsFor, ERC20_ABI, lockerIface } from './chain'
-import { fetchHealth, type Health, type Manifest } from './env'
+import type { Manifest } from './env'
+
+export type Health = { ok: boolean; block: number; timestamp: number; chainNow: number }
+export type HealthFn = () => Promise<Health>
 import type { Challenge, Entry, Position, TokenInfo } from './model'
 
 export type ActivityItem = {
@@ -71,11 +74,11 @@ function parseActivity(logs: Log[], manifest: Manifest): { items: ActivityItem[]
   return { items: items.reverse(), descriptions }
 }
 
-export async function loadSnapshot(backend: string, manifest: Manifest, provider: JsonRpcProvider, account: string | null): Promise<Snapshot> {
+export async function loadSnapshot(readHealth: HealthFn, manifest: Manifest, provider: JsonRpcApiProvider, account: string | null): Promise<Snapshot> {
   const { locker, challenges } = contractsFor(manifest, provider)
   const me = account ?? ZERO
   const [health, paused, emergencyAt, listed, nextId, ethBalance, positionIds] = await Promise.all([
-    fetchHealth(backend),
+    readHealth(),
     locker.paused() as Promise<boolean>,
     locker.emergencyActivatedAt() as Promise<bigint>,
     locker.listedTokens() as Promise<string[]>,
@@ -139,25 +142,25 @@ export async function loadSnapshot(backend: string, manifest: Manifest, provider
   return { health, loadedAt: Date.now(), paused, emergencyAt: Number(emergencyAt), tokens, ethBalance, positions, challenges: list, activity: recent, descriptions }
 }
 
-export function useProtocol(backend: string | null, manifest: Manifest | null, provider: JsonRpcProvider | null, account: string | null) {
+export function useProtocol(health: HealthFn | null, manifest: Manifest | null, provider: JsonRpcApiProvider | null, account: string | null) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const seq = useRef(0)
 
   const refresh = useCallback(async () => {
-    if (!backend || !manifest || !provider) return
+    if (!health || !manifest || !provider) return
     const mine = ++seq.current
     setLoading(true)
     try {
-      const snap = await loadSnapshot(backend, manifest, provider, account)
+      const snap = await loadSnapshot(health, manifest, provider, account)
       if (mine === seq.current) { setSnapshot(snap); setError(null) }
     } catch (e) {
       if (mine === seq.current) setError(e instanceof Error ? e.message : String(e))
     } finally {
       if (mine === seq.current) setLoading(false)
     }
-  }, [backend, manifest, provider, account])
+  }, [health, manifest, provider, account])
 
   useEffect(() => {
     void refresh()
@@ -168,7 +171,7 @@ export function useProtocol(backend: string | null, manifest: Manifest | null, p
   return { snapshot, error, loading, refresh }
 }
 
-/** Live chain clock: the backend's chainNow plus wall time elapsed since it was read. */
+/** Live chain clock: the simulation's chainNow plus wall time elapsed since it was read. */
 export function useChainNow(snapshot: Snapshot | null) {
   const [tick, setTick] = useState(() => Date.now())
   useEffect(() => {
@@ -188,7 +191,7 @@ export type Standing = {
 }
 
 /** Leaderboard for one challenge: every participant, their points and whether their position still counts. */
-export async function loadStandings(manifest: Manifest, provider: JsonRpcProvider, c: Challenge): Promise<Standing[]> {
+export async function loadStandings(manifest: Manifest, provider: JsonRpcApiProvider, c: Challenge): Promise<Standing[]> {
   const { locker, challenges } = contractsFor(manifest, provider)
   const addrs = (await challenges.participants(c.id, 0, 200)) as string[]
   const rows = await Promise.all(addrs.map(async (address) => {

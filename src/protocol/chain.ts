@@ -1,7 +1,7 @@
-import { BrowserProvider, Contract, Interface, JsonRpcProvider, NonceManager, Wallet, type Eip1193Provider, type Signer } from 'ethers'
+import { Contract, Interface, NonceManager, Wallet, type JsonRpcApiProvider, type Signer } from 'ethers'
 import lockerAbi from './abi/RixorLocker.json'
 import challengesAbi from './abi/RixorChallenges.json'
-import { safeStorage, type Manifest } from './env'
+import type { Manifest } from './env'
 
 export const ERC20_ABI = [
   'function symbol() view returns (string)', 'function decimals() view returns (uint8)',
@@ -13,17 +13,9 @@ export const CHALLENGES_ABI = challengesAbi
 export const lockerIface = new Interface(lockerAbi)
 export const challengesIface = new Interface(challengesAbi)
 
-export function makeProvider(backend: string, manifest: Manifest) {
-  return new JsonRpcProvider(`${backend}/rpc`, { chainId: manifest.chainId, name: 'rixor-fork-demo' }, {
-    staticNetwork: true,
-    batchMaxCount: 20,
-    pollingInterval: 1500,
-  })
-}
-
 export type Contracts = { locker: Contract; challenges: Contract; wif: Contract }
 
-export function contractsFor(manifest: Manifest, runner: JsonRpcProvider | Signer): Contracts {
+export function contractsFor(manifest: Manifest, runner: JsonRpcApiProvider | Signer): Contracts {
   return {
     locker: new Contract(manifest.contracts.locker, LOCKER_ABI, runner),
     challenges: new Contract(manifest.contracts.challenges, CHALLENGES_ABI, runner),
@@ -33,60 +25,17 @@ export function contractsFor(manifest: Manifest, runner: JsonRpcProvider | Signe
 
 // ------------------------------------------------------------------ wallets
 
-export type WalletKind = 'demo' | 'browser'
+export type WalletKind = 'demo'
 export type ConnectedWallet = { kind: WalletKind; address: string; signer: Signer; resetNonce?: () => void }
 
-const demoKey = (chainId: number) => `rixor.demo.wallet.${chainId}`
-
 /**
- * A throwaway key generated in this browser for the fork demo. It only ever signs for the demo chain id
- * (which differs from Robinhood Chain mainnet), holds only fork assets, and never leaves the device.
+ * The visitor's demo wallet: a throwaway key generated on this device for the browser simulation only.
+ * It signs for the simulation's chain id (not Robinhood Chain), holds only demo assets, and is never shown.
  */
-export function demoWallet(manifest: Manifest, provider: JsonRpcProvider, create: boolean): ConnectedWallet | null {
-  let key = safeStorage.get(demoKey(manifest.chainId))
-  if (!key && !create) return null
-  if (!key) {
-    key = Wallet.createRandom().privateKey
-    safeStorage.set(demoKey(manifest.chainId), key)
-  }
+export function demoWalletFrom(key: string, provider: JsonRpcApiProvider): ConnectedWallet {
   const wallet = new Wallet(key, provider)
-  // Track nonces locally: consecutive transactions (approve, then lock) must not reuse a cached nonce.
   const signer = new NonceManager(wallet)
   return { kind: 'demo', address: wallet.address, signer, resetNonce: () => signer.reset() }
-}
-
-export function forgetDemoWallet(manifest: Manifest) {
-  safeStorage.remove(demoKey(manifest.chainId))
-}
-
-type InjectedWindow = Window & { ethereum?: Eip1193Provider }
-
-export const hasBrowserWallet = () => typeof window !== 'undefined' && Boolean((window as InjectedWindow).ethereum)
-
-/** Connects an injected wallet on the demo network only. Never proceeds on a real chain id. */
-export async function connectBrowserWallet(manifest: Manifest, backend: string): Promise<ConnectedWallet> {
-  const eth = (window as InjectedWindow).ethereum
-  if (!eth) throw new Error('No browser wallet found.')
-  const chainHex = '0x' + manifest.chainId.toString(16)
-  await eth.request({ method: 'eth_requestAccounts' })
-  try {
-    await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainHex }] })
-  } catch {
-    await eth.request({
-      method: 'wallet_addEthereumChain',
-      params: [{
-        chainId: chainHex,
-        chainName: 'Rixor Fork Demo (not mainnet)',
-        nativeCurrency: { name: 'Fork ETH', symbol: 'ETH', decimals: 18 },
-        rpcUrls: [`${backend}/rpc`],
-      }],
-    })
-  }
-  const provider = new BrowserProvider(eth)
-  const network = await provider.getNetwork()
-  if (Number(network.chainId) !== manifest.chainId) throw new Error('Your wallet is not on the Rixor fork demo network.')
-  const signer = await provider.getSigner()
-  return { kind: 'browser', address: await signer.getAddress(), signer }
 }
 
 // ------------------------------------------------------------------ errors
@@ -150,6 +99,6 @@ export function describeError(error: unknown): string {
     }
   }
   const msg = e?.shortMessage ?? e?.message ?? 'Something went wrong.'
-  if (/insufficient funds/i.test(msg)) return 'This demo wallet has no fork ETH for gas. Use "Get demo funds".'
+  if (/insufficient funds/i.test(msg)) return 'This demo wallet cannot pay for that. Use "Get demo WIF".'
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg
 }

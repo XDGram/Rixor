@@ -1,94 +1,95 @@
-# Rixor fork demo
+# Rixor demo: isolated in-browser EVM
 
-A reviewable, mobile-accessible demo of the Gate 1 contracts running against **a private copy of Robinhood Chain
-mainnet state**. Nothing in the demo touches Robinhood Chain mainnet: no deployment, no transaction, no real asset.
+The reviewable demo runs **Rixor's actual Gate 1 contracts inside the visitor's browser**, on an isolated
+chain started from a verified snapshot of Robinhood Chain mainnet state. There is no server, no hosting cost,
+no real network access and no deposit.
 
 ```
- Phone / browser ──https──►  Vercel preview (static React app)
-        │
-        └────────https──►  Rixor fork backend (Node + private anvil)  ── reads mainnet state ONCE at first boot
-                            /rpc  /manifest  /health  /faucet  /time/advance
+ Vercel (static)                       Visitor's browser
+ ───────────────                       ────────────────────────────────────────────────────────────
+ index.html, JS, CSS     ──────►       React app ──JSON-RPC──► SimChain (@ethereumjs/vm 10.1.3, Prague rules)
+ /demo/robinhood-snapshot.json ──►                               ├─ real WIF code + storage (mainnet snapshot)
+                                                                 ├─ Safe v1.5.0 singleton / factory / handler
+                                                                 ├─ RixorLocker + RixorChallenges (compiled bytecode)
+                                                                 └─ journal of operations ──► IndexedDB (this device)
 ```
 
-## 1. How the demo chain is built
+## 1. The snapshot (`public/demo/robinhood-snapshot.json`)
 
-On first boot the backend (`demo/fork-backend`):
+`npm run demo:snapshot` (`scripts/build-browser-snapshot.mjs`) is read-only. It:
 
-1. Starts a **local, private** anvil fork of Robinhood Chain mainnet at the latest block.
-2. On that fork only, moves about 58M WIF from three large holders to a demo faucet by impersonation. Their real
-   balances are untouched; impersonation exists only inside the private fork.
-3. Copies the real **WIF** contract code plus every storage slot its ERC-20 functions read (found with
-   `eth_createAccessList`), and the canonical **Safe v1.5.0** contracts.
-4. Starts a **standalone** demo chain from that genesis.
-   - Chain id **466399**, deliberately different from mainnet 4663 and testnet 46630, so demo signatures cannot be
-     replayed on a real network.
-   - It is persisted to disk every 10 seconds and on shutdown. The public RPC keeps only about 10–35 minutes of
-     state, so the demo must not depend on the upstream after boot.
-5. On the demo chain, as ordinary transactions:
-   - deploys two 2-of-3 Safes (throwaway keys) as Locker owner and guardian;
-   - deploys `RixorLocker` (WIF only; unit 7,500 WIF and cap 50M WIF are **provisional demo values**) and
-     `RixorChallenges` (`minHold` = 1 hour, **demo value**; production is 24 hours);
-   - creates two **labelled demo seed challenges**: a community challenge funded by a demo sponsor wallet, and a
-     Season challenge funded by the demo owner Safe through a 2-of-3 Safe transaction;
-   - three labelled **demo bots** lock and join, so the screens are not empty.
+1. Pins the latest Robinhood Chain mainnet block.
+2. Uses a throwaway **local** anvil fork only to *discover* touched accounts and storage slots with
+   `eth_createAccessList`. It traces the full WIF ERC-20 surface (including transfers out of three large holders,
+   which back the demo faucet), and a Safe v1.5.0 proxy creation plus `execTransaction`.
+3. Reads every account's code and every discovered slot **directly from the upstream RPC at the pinned block**,
+   and records keccak256 code hashes.
+4. Verifies that the required contracts have code and that code is unchanged on re-read.
 
-Later boots resume the same chain from the state directory. Chain time never moves backwards across restarts.
+The current snapshot is block **109,291,187**: 7 accounts, 12 WIF storage slots, 72.5 KB.
 
-## 2. Security boundaries
+## 2. Verification (`npm run demo:verify`)
 
-| Concern | How it is handled |
-|---|---|
-| Real network | The upstream is read only at first boot, through anvil's fork backend. The demo never broadcasts to Robinhood Chain. |
-| Replay | Demo chain id 466399 ≠ 4663 / 46630. |
-| Privileged RPC | Anvil listens on 127.0.0.1 only. `/rpc` allowlists read methods and `eth_sendRawTransaction`. `anvil_*`, `evm_*`, `debug_*`, `hardhat_*`, `eth_sendTransaction` and `eth_sign` are rejected, and `eth_accounts` returns `[]`. |
-| Keys | Throwaway keys (deployer, faucet, Safe signers, demo bots) are generated on the server and stored only in the state directory (mode 600). The frontend contains no keys. |
-| Reviewer wallet | A throwaway key generated in the reviewer's browser, used only for chain 466399. Reviewers never share keys or seed phrases. |
-| Abuse | Rate limits on RPC (600/min/IP), raw transactions (60/min/IP), the faucet (1 per address per 10 min, 10 per IP per hour) and time control (30 per IP per hour, at most 31 days per call). Request bodies are limited to 128 KB, batches to 25, and log ranges to 200k blocks. |
-| Shared time control | `/time/advance` moves the shared demo clock. It is a demo affordance with no real-network equivalent, and is labelled as such in the app. Disable it with `TIME_CONTROL=off`. |
+`scripts/verify-browser-evm.mjs` bundles the **same engine code the browser runs** and checks:
 
-## 3. Hosting the backend (requires approval: paid service)
+- boot from the snapshot and first-visit setup (Safes, Locker, Challenges, seed activity);
+- real WIF behaviour (symbol, total supply, balances);
+- the complete journey against the actual bytecode: faucet, lock, create, join, sponsor, settle (with `NotEnded`
+  enforced first), claim, failed goal then refund, sweep, the Diamond `StillLocked` rule, exit after term, and the
+  lane rule;
+- a **runtime dependency audit**: every message call with calldata must target an address that has code
+  (precompiles excepted), so a missing snapshot dependency fails loudly instead of silently succeeding;
+- **deterministic replay**: the saved journal re-executes to the identical chain (head hash, balances, events).
 
-The frontend is static and goes on Vercel. The backend is a long-running process with a persistent disk, which
-Vercel cannot host. Vercel Sandbox sessions are capped at 45 minutes on Hobby and have per-session URLs. Any
-container host with a persistent volume works. The image is `demo/fork-backend/Dockerfile`, and it needs about
-512 MB of RAM and a 1 GB volume at `/data`.
+Latest result: 21/21 checks pass.
 
-| Option | Approx. cost (Nov 2026, check before buying) | Setup |
-|---|---|---|
-| **Fly.io** (recommended) | shared-cpu-1x 512 MB ≈ $3.7/month, plus a 1 GB volume ≈ $0.15/month | `fly launch` from `demo/fork-backend`, `fly volumes create rixor_data --size 1`, mount at `/data` |
-| Railway | Hobby $5/month, which includes $5 of usage; this service should fit or slightly exceed it; volumes $0.15/GB-month | "Deploy from GitHub repo", root directory `demo/fork-backend`, add a volume at `/data`, generate a domain |
-| Render | Starter about $7/month, plus a disk at about $0.25/GB-month | Docker web service, root `demo/fork-backend`, disk at `/data` |
+## 3. How a visit works
 
-Each option needs an account created and paid for by the project owner. Claude cannot create accounts or enter
-payment details. Once the service has an https URL:
+- **First visit:** the app downloads the snapshot, starts the EVM, and performs setup as real signed
+  transactions (about 2.6 s on a desktop-class CPU, about 7 s with 4× CPU throttling). Setup deploys two 2-of-3
+  Safes and the Gate 1 contracts, plus labelled **demo seed** challenges and **demo bot** lockers.
+- **Every action** (lock, create, join, sponsor, settle, claim, refund, sweep, exit) is an ethers-signed transaction
+  from the visitor's demo wallet, executed by the EVM. Receipts and events come from that execution.
+- **Persistence:** the operation journal (signed raw transactions, faucet transfers and time changes) is saved in
+  IndexedDB and re-executed on the next visit (about 0.9 s, or 4 s throttled, for a full journey). Nothing is
+  stored as a precomputed result.
+- **Demo faucet:** moves copied WIF from large mainnet holders *inside the isolated chain*, like anvil
+  impersonation. Real balances are never touched. Gas is free in the simulation.
+- **Simulation time:** "+1h / +1d / +7d / +31d" moves this device's chain clock so deadlines, claim windows and
+  Diamond terms can be reached.
+- **Reset:** Wallet → "Reset the whole simulation" erases this device's state and starts fresh.
 
-1. Open the preview with `?backend=https://<service-host>` once; the phone remembers it. Or set
-   `VITE_RIXOR_FORK_BACKEND` for Preview builds in Vercel.
-2. Optionally set `ALLOWED_ORIGINS` on the backend to the preview domain(s), for example
-   `https://rixor-*.vercel.app` (`*.` patterns are supported).
+## 4. Safety boundaries
 
-Environment variables (all optional): `PORT`, `STATE_DIR` (default `/data`), `UPSTREAM_RPC`, `DEMO_CHAIN_ID`,
-`ALLOWED_ORIGINS`, `FAUCET_WIF`, `FAUCET_ETH`, `TIME_CONTROL`, `DEMO_MIN_HOLD`, `DEMO_WIF_UNIT`, `DEMO_WIF_CAP`.
+- No network calls except loading the static app and snapshot from the same origin. No RPC, no backend.
+- Simulation chain id 466399 (not 4663 or 46630). The engine refuses to start with a real Robinhood Chain id.
+- The demo wallet key is generated on the device, stored only in IndexedDB, and never displayed or sent anywhere.
+  Setup keys (deployer, Safe signers, bots) are discarded after setup. Replay needs only the signed transactions.
+- Every balance is labelled demo or simulated, and a persistent strip reads "Browser simulation · Not live
+  Robinhood Chain".
 
-To reset the demo, stop the service and delete the volume contents. The next boot builds a fresh genesis from the
-latest mainnet block.
+## 5. Limitations
 
-## 4. Reviewing on a phone
+- **Per-device state:** each visitor has their own isolated chain; nobody sees anyone else's actions. Leaderboards
+  show the visitor and the demo bots.
+- **Engine fidelity:** `@ethereumjs/vm` with Prague rules, not Robinhood Chain's ArbOS. Gate 1 contracts and WIF
+  use standard EVM opcodes. Gas accounting differs slightly from ArbOS, and gas is priced at zero here.
+- **Snapshot scope:** WIF storage is limited to slots the traced operations touch. Balances of other mainnet
+  holders read as zero inside the simulation.
+- **Replay time** grows with the journal: roughly 20 ms per operation unthrottled.
+- **Private browsing** that blocks IndexedDB falls back to memory; the app says so, and state resets on close.
+- **Browser wallets** (MetaMask and similar) cannot connect: the chain lives inside the page.
 
-1. Open the Vercel preview URL. Vercel asks you to sign in, because preview protection is on.
-2. If no backend is configured, paste the backend https URL on the setup screen.
-3. Tap **Wallet → Create demo wallet**, then **Get … fork WIF**.
-4. **Lock**: choose a tier, amount and term → **Lock WIF**. This sends two fork transactions, approve then lock.
-5. **Explore → New**: create a challenge, for example a 1 h join window with the minimum hold. Open it and **Join**
-   with your position. Optionally **Sponsor**.
-6. **Wallet → +1d** moves demo time past the end. Then **Settle challenge** → **Claim**.
-7. For refunds, create a challenge with a large collective goal, join, advance time, settle, then **Refund**.
-8. **Portfolio** shows positions, exit rules and claims. **Activity** shows every on-chain event.
+## 6. Optional: shared server-hosted chain
 
-## 5. Local development
+`demo/fork-backend` (Docker, anvil) remains in the repository for a future **shared** demo chain on paid
+hosting. It is not used by the current app.
+
+## 7. Commands
 
 ```bash
-npm run demo:backend          # first boot ~10 s; state in demo/fork-backend/data
-npm run dev                   # open http://localhost:5173/?backend=http://localhost:8080
-npm run demo:e2e -- http://localhost:5173 http://localhost:8080   # mobile end-to-end journey (Playwright)
+npm run demo:snapshot   # rebuild the snapshot (read-only; ~10 s)
+npm run demo:verify     # headless verification of snapshot + engine + full journey
+npm run build && npx vite preview --port 4173
+npm run demo:e2e -- http://127.0.0.1:4173 ./shots      # mobile (iPhone 13) journey; THROTTLE=4 for slow CPU
 ```

@@ -39,7 +39,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
     if (pool === null) out.push('Enter a pool amount.')
     else if (pool < MIN_POOL) out.push('The minimum pool is 100,000 WIF.')
     else if (pool > MAX_POOL) out.push('The maximum pool is 10,000,000 WIF.')
-    else if (wallet && wif && pool > wif.balance) out.push('That is more fork WIF than this wallet holds.')
+    else if (wallet && wif && pool > wif.balance) out.push('That is more demo WIF than this wallet holds.')
     return out
   }, [title, description, maxP, joinWindow, hold, pool, wallet, wif]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,7 +100,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
         <label className="field"><span>Maximum participants</span><input inputMode="numeric" value={maxParticipants} onChange={(e) => setMaxParticipants(e.target.value.replace(/[^0-9]/g, ''))} /></label>
 
         <div className="amount-field">
-          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif?.balance ?? 0n)} fork WIF available</span></div>
+          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif?.balance ?? 0n)} demo WIF available</span></div>
           <div className="amount-input"><input id="pool" inputMode="decimal" value={poolText} onChange={(e) => setPoolText(e.target.value.replace(/[^0-9.]/g, ''))} /><span>WIF</span></div>
         </div>
 

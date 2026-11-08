@@ -29,7 +29,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
     <div className="view">
       <section className="card">
         <header className="panel-head">
-          <div><small className="kicker">On-chain activity · fork demo chain</small><h2>{mine ? 'Your transactions' : 'Everything happening'}</h2></div>
+          <div><small className="kicker">Contract events · browser simulation</small><h2>{mine ? 'Your transactions' : 'Everything happening'}</h2></div>
           <div className="seg">
             <button type="button" className={!mine ? 'is-active' : ''} onClick={() => setMine(false)}>All</button>
             <button type="button" className={mine ? 'is-active' : ''} onClick={() => setMine(true)} disabled={!ctx.wallet}>Mine</button>
@@ -55,7 +55,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
             })}
           </ul>
         )}
-        <p className="fine-print">Read from RixorLocker and RixorChallenges events on the private demo chain. These are not Robinhood Chain mainnet transactions.</p>
+        <p className="fine-print">Read from RixorLocker and RixorChallenges events emitted inside this browser simulation. These are not Robinhood Chain transactions.</p>
       </section>
     </div>
   )

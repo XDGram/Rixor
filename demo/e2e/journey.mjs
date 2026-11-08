@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// End-to-end journey through the real UI against a running fork-demo backend, in a mobile browser.
-//   node demo/e2e/journey.mjs <appUrl> <backendUrl> [screenshotDir]
+// End-to-end journey through the real UI in a mobile browser (iPhone 13 emulation).
+//   node demo/e2e/journey.mjs <appUrl> [screenshotDir]
+//   THROTTLE=4 node demo/e2e/journey.mjs ...   # emulate a slower phone CPU (Chrome DevTools throttling)
+//   PRELOAD_URL=<vercel share link> ...        # visit first to pass Vercel preview protection
 // Every step clicks the interface a reviewer would use; the assertions read what the UI shows after the
-// transactions are mined on the demo chain. No step talks to a real network.
+// transactions execute in the isolated in-browser EVM. No step talks to a real network.
 import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -10,9 +12,9 @@ import { join } from 'node:path'
 const require = createRequire(import.meta.url)
 const { chromium, devices } = require('playwright')
 
-const [appUrl, backendUrl, shotDir = './demo-e2e-shots'] = process.argv.slice(2)
-if (!appUrl || !backendUrl) {
-  console.error('usage: node demo/e2e/journey.mjs <appUrl> <backendUrl> [screenshotDir]')
+const [appUrl, shotDir = './demo-e2e-shots'] = process.argv.slice(2)
+if (!appUrl) {
+  console.error('usage: node demo/e2e/journey.mjs <appUrl> [screenshotDir]')
   process.exit(1)
 }
 mkdirSync(shotDir, { recursive: true })
@@ -35,6 +37,12 @@ const step = async (name, fn) => {
 const browser = await chromium.launch()
 const context = await browser.newContext({ ...devices['iPhone 13'] })
 const page = await context.newPage()
+const throttle = Number(process.env.THROTTLE || 1)
+if (throttle > 1) {
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle })
+}
+const metrics = {}
 const errors = []
 page.on('pageerror', (e) => errors.push(e.message))
 
@@ -46,25 +54,27 @@ const closeSheet = async () => { await page.locator('.sheet .icon-btn[aria-label
 const advance = async (label) => {
   await openWallet()
   await page.locator('.sheet .chip', { hasText: label }).click()
-  await page.locator('.notice', { hasText: 'Demo chain time moved forward' }).waitFor({ timeout: 30_000 })
+  await page.locator('.notice', { hasText: 'Simulation time moved forward' }).waitFor({ timeout: 30_000 })
   await closeSheet()
 }
 
 try {
-  await step('open app with fork backend', async () => {
+  await step('open app: isolated browser EVM boots from the snapshot', async () => {
     // Optional: a Vercel share link for a protected preview. Visiting it sets the access cookie.
     if (process.env.PRELOAD_URL) await page.goto(process.env.PRELOAD_URL)
-    await page.goto(`${appUrl}/?backend=${encodeURIComponent(backendUrl)}`)
-    await page.locator('.demo-strip', { hasText: 'Not mainnet' }).waitFor({ timeout: 30_000 })
-    await page.locator('.challenge-link').first().waitFor()
+    const t0 = Date.now()
+    await page.goto(`${appUrl}/`)
+    await page.locator('.demo-strip', { hasText: 'Not live Robinhood Chain' }).waitFor({ timeout: 120_000 })
+    await page.locator('.challenge-link').first().waitFor({ timeout: 60_000 })
+    metrics.firstVisitBootMs = Date.now() - t0
     await shot('01-explore')
   })
 
-  await step('create demo wallet and get fork funds', async () => {
+  await step('create demo wallet and get demo WIF from the faucet', async () => {
     await openWallet()
     await page.getByRole('button', { name: 'Create demo wallet' }).click()
-    await page.locator('.sheet', { hasText: 'Demo balances, not real ones' }).waitFor()
-    await page.locator('.sheet button', { hasText: 'fork WIF' }).click()
+    await page.locator('.sheet', { hasText: 'Simulated balances, not real ones' }).waitFor()
+    await page.locator('.sheet button', { hasText: 'demo WIF' }).click()
     await page.locator('.notice', { hasText: 'Added' }).waitFor({ timeout: 30_000 })
     await shot('02-wallet-funded')
     await closeSheet()
@@ -121,6 +131,18 @@ try {
     await claim.click()
     await receipt('Claimed')
     await shot('06-claimed')
+  })
+
+  await step('reload: state persists in IndexedDB and is re-executed', async () => {
+    const t0 = Date.now()
+    await page.reload()
+    await page.locator('.demo-strip').waitFor({ timeout: 120_000 })
+    metrics.reloadReplayMs = Date.now() - t0
+    await go('#/portfolio')
+    await page.locator('.lock-row', { hasText: '75,000 WIF' }).waitFor({ timeout: 30_000 })
+    await go('#/activity')
+    await page.locator('.seg button', { hasText: 'Mine' }).click()
+    await page.locator('.feed li', { hasText: 'You claimed' }).first().waitFor({ timeout: 15_000 })
   })
 
   await step('create a challenge with an unreachable goal and join it', async () => {
@@ -183,6 +205,6 @@ try {
   await shot('zz-final').catch(() => {})
   await browser.close()
   const failed = results.filter((r) => !r.ok)
-  console.log(JSON.stringify({ passed: results.length - failed.length, failed: failed.length, pageErrors: errors, results }, null, 2))
+  console.log(JSON.stringify({ passed: results.length - failed.length, failed: failed.length, cpuThrottle: throttle, metrics, pageErrors: errors, results }, null, 2))
   process.exit(failed.length || errors.length ? 1 : 0)
 }
