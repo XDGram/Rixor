@@ -11,3 +11,11 @@ artifacts/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Foundry
+out/
+cache/
+broadcast/
+
+# Generated token vetting reports
+reports/

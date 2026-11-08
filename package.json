@@ -12,13 +12,20 @@
     "contract:test": "npm run contract:compile && node scripts/test-contract.mjs && node scripts/test-conviction-vault.mjs",
     "contract:deploy:vault": "node scripts/deploy-conviction-vault.mjs",
     "test:pricing": "node scripts/test-pricing.mjs",
-    "check:live-price": "node scripts/test-pricing.mjs --live"
+    "check:live-price": "node scripts/test-pricing.mjs --live",
+    "forge": "node node_modules/@foundry-rs/forge/bin.mjs",
+    "test:contracts": "node node_modules/@foundry-rs/forge/bin.mjs test --no-match-path 'test/fork/*'",
+    "test:fork": "node node_modules/@foundry-rs/forge/bin.mjs test --match-path 'test/fork/*' -vv",
+    "vet:token": "node scripts/vet-token.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@foundry-rs/anvil": "1.7.1",
+    "@foundry-rs/cast": "1.7.1",
+    "@foundry-rs/forge": "1.7.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
