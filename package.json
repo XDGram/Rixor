@@ -13,15 +13,16 @@
     "contract:deploy:vault": "node scripts/deploy-conviction-vault.mjs",
     "test:pricing": "node scripts/test-pricing.mjs",
     "check:live-price": "node scripts/test-pricing.mjs --live",
-    "forge": "node node_modules/@foundry-rs/forge/bin.mjs",
-    "test:contracts": "node node_modules/@foundry-rs/forge/bin.mjs test --no-match-path 'test/fork/*'",
-    "test:fork": "node node_modules/@foundry-rs/forge/bin.mjs test --match-path 'test/fork/*' -vv",
+    "forge": "node scripts/forge.mjs",
+    "test:contracts": "node scripts/forge.mjs test --no-match-path 'test/fork/*'",
+    "test:fork": "node scripts/forge.mjs test --match-path 'test/fork/*' -vv",
     "vet:token": "node scripts/vet-token.mjs",
     "demo:artifacts": "node scripts/export-demo-artifacts.mjs",
     "demo:backend": "cd demo/fork-backend && npm ci && STATE_DIR=./data npm start",
     "demo:e2e": "node demo/e2e/journey.mjs",
     "demo:snapshot": "node scripts/build-browser-snapshot.mjs",
-    "demo:verify": "node scripts/verify-browser-evm.mjs"
+    "demo:verify": "node scripts/verify-browser-evm.mjs",
+    "deploy:local-fork": "node scripts/deploy-local-fork.mjs"
   },
   "dependencies": {
     "@ethereumjs/block": "10.1.3",

@@ -56,8 +56,19 @@ const KNOWN = {
 const INFRASTRUCTURE = new Set(Object.keys(KNOWN))
 const POOL_MANAGER = '0x8366a39cc670b4001a1121b8f6a443a643e40951'
 const POSITION_MANAGER = '0x58daec3116aae6d93017baaea7749052e8a04fa7'
-const PONS_LOCKER = '0x267444d099b10fb5ed7c3cc7b7c767adca574952'
 const DEAD = '0x000000000000000000000000000000000000dead'
+// LP custodians reviewed from verified source (Nov 2026): no function removes liquidity, so positions they hold are
+// locked by code. Adding an entry requires the same source review (docs/TOKEN_VETTING.md).
+const CODE_LOCKED = {
+  '0x267444d099b10fb5ed7c3cc7b7c767adca574952': 'Pons launch locker (no withdrawal function)',
+  '0xeff166aaf189323c58dc27ed1206eb2c37faacdf': 'Uniswap FeeSplitter (fee collection only)',
+  '0x7891ea889899928afe637e4cca8106188427776a': 'TorchFactory (no negative liquidity delta)',
+}
+// Hooks reviewed from verified source whose beforeRemoveLiquidity reverts any real removal.
+const NO_REMOVE_HOOKS = {
+  '0x5a2f8ce3332f9cd909dd80c32dfa2835214ac200': 'NoRemoveHook (removals revert)',
+}
+const NATIVE_ETH = '0x0000000000000000000000000000000000000000'
 
 const RISKY = {
   'mint(address,uint256)': 'mint', 'mint(uint256)': 'mint', 'pause()': 'pause', 'unpause()': 'pause',
@@ -165,21 +176,23 @@ async function streamLogs(provider, filter, from, to, onLog, stats) {
 }
 
 async function findFirstTransfer(provider, token, from, head) {
-  // Probe chunks in order; within the first non-empty chunk, binary-search down to a small range.
+  // A query that errors (>10k results) proves the range contains transfers, so bisection keeps narrowing until a
+  // query succeeds instead of giving up on high-volume tokens.
+  const q = (a, b) => provider.getLogs({ address: token, topics: [TRANSFER], fromBlock: a, toBlock: b }).then((l) => ({ ok: true, l }), () => ({ ok: false }))
   for (let f = from; f <= head; f += 10_000_000) {
     let lo = f
     let hi = Math.min(head, f + 9_999_999)
-    const probe = await provider.getLogs({ address: token, topics: [TRANSFER], fromBlock: lo, toBlock: hi }).catch(() => null)
-    if (probe !== null && probe.length === 0) continue
-    if (probe && probe.length) return probe[0]
-    while (hi - lo > 50_000) {
+    const probe = await q(lo, hi)
+    if (probe.ok && probe.l.length === 0) continue
+    if (probe.ok) return probe.l[0]
+    for (;;) {
       const mid = Math.floor((lo + hi) / 2)
-      const l = await provider.getLogs({ address: token, topics: [TRANSFER], fromBlock: lo, toBlock: mid }).catch(() => null)
-      if (l === null || l.length) hi = mid
-      else lo = mid + 1
+      const left = await q(lo, mid)
+      if (left.ok && left.l.length === 0) { lo = mid + 1; continue }
+      if (left.ok) return left.l[0]
+      if (mid === lo) throw new Error(`cannot isolate first transfer near block ${lo}`)
+      hi = mid
     }
-    const l = await provider.getLogs({ address: token, topics: [TRANSFER], fromBlock: lo, toBlock: hi }).catch(() => [])
-    if (l.length) return l[0]
   }
   return null
 }
@@ -250,6 +263,24 @@ async function replayHolders(provider, address, from, head, totalSupplyRaw) {
       firstTx.set(toA, l.transactionHash)
     }
   }, stats)
+  // Long replays can outlive the RPC's state window. Re-pin to a fresh block and replay the gap.
+  let pinnedHead = head
+  for (let i = 0; i < 3; i++) {
+    const fresh = await provider.getBlockNumber()
+    if (fresh <= pinnedHead) break
+    await streamLogs(provider, { address, topics: [TRANSFER] }, pinnedHead + 1, fresh, (l) => {
+      if (l.topics.length !== 3 || l.data.length < 66) return
+      stats.transfers++
+      const fromA = '0x' + l.topics[1].slice(26)
+      const toA = '0x' + l.topics[2].slice(26)
+      const v = BigInt(l.data.slice(0, 66))
+      credit(fromA, -v)
+      credit(toA, v)
+      if (!firstSource.has(toA)) { firstSource.set(toA, fromA); firstBlock.set(toA, l.blockNumber); firstTx.set(toA, l.transactionHash) }
+    }, stats)
+    pinnedHead = fresh
+  }
+  totalSupplyRaw = (await new Contract(address, ERC20, provider).totalSupply({ blockTag: pinnedHead })).toString()
   const zero = '0x0000000000000000000000000000000000000000'
   let circulating = 0n
   let holders = 0
@@ -262,7 +293,7 @@ async function replayHolders(provider, address, from, head, totalSupplyRaw) {
     } else if (v < 0n) negative++
   }
   const sorted = [...balances.entries()].filter(([a, v]) => a !== zero && v > 0n).sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0))
-  return { stats, holders, negative, circulatingFromReplay: circulating.toString(), supplyMatches: circulating === BigInt(totalSupplyRaw), sorted, firstSource, firstBlock, firstTx }
+  return { stats, holders, negative, circulatingFromReplay: circulating.toString(), supplyMatches: circulating === BigInt(totalSupplyRaw), sorted, firstSource, firstBlock, firstTx, pinnedHead, totalSupplyRaw }
 }
 
 async function labelHolders(provider, address, sorted, totalSupplyRaw, decimals, head, topN = 25) {
@@ -470,8 +501,8 @@ async function v4Pools(provider, address, from, head) {
   for (const log of inits) {
     const a = PM_IFACE.parseLog(log).args
     const poolSlot = BigInt(keccak256(coder.encode(['bytes32', 'uint256'], [a.id, 6n])))
-    const slot0 = BigInt(await pm.extsload(toBeHex(poolSlot, 32), { blockTag: head }))
-    const liquidity = BigInt(await pm.extsload(toBeHex(poolSlot + 3n, 32), { blockTag: head })) & ((1n << 128n) - 1n)
+    const slot0 = BigInt(await pm.extsload(toBeHex(poolSlot, 32), { blockTag: 'latest' }))
+    const liquidity = BigInt(await pm.extsload(toBeHex(poolSlot + 3n, 32), { blockTag: 'latest' })) & ((1n << 128n) - 1n)
     const tick = Number(BigInt.asIntN(24, (slot0 >> 160n) & 0xffffffn))
     // Attribute live LP positions: sum liquidityDelta per (sender, salt, range).
     const positions = new Map()
@@ -491,27 +522,47 @@ async function v4Pools(provider, address, from, head) {
       let tokenId = null
       if (p.sender === POSITION_MANAGER) {
         tokenId = BigInt(p.salt).toString()
-        owner = await posm.ownerOf(tokenId, { blockTag: head }).then((o) => o.toLowerCase()).catch(() => 'burned/unknown')
+        owner = await posm.ownerOf(tokenId, { blockTag: 'latest' }).then((o) => o.toLowerCase()).catch(() => 'burned/unknown')
       }
       const inRange = p.tickLower <= tick && tick < p.tickUpper
+      const hookLock = NO_REMOVE_HOOKS[a.hooks.toLowerCase()]
+      const holder = owner ?? p.sender
+      const custody = hookLock ? `locked by hook: ${hookLock}`
+        : owner === DEAD ? 'burned (0x…dEaD)'
+          : CODE_LOCKED[holder] ? `locked by code: ${CODE_LOCKED[holder]}`
+            : owner ? 'wallet/contract (withdrawable)' : 'non-PositionManager (inspect)'
       owners.push({
-        manager: KNOWN[p.sender] ?? p.sender, tokenId, owner: owner ? (KNOWN[owner] ?? owner) : null,
-        custody: owner === DEAD ? 'burned (0x…dEaD)' : owner === PONS_LOCKER ? 'Pons launch locker' : owner ? 'wallet/contract (withdrawable)' : 'non-PositionManager (inspect)',
+        manager: KNOWN[p.sender] ?? p.sender, tokenId, owner: owner ? (KNOWN[owner] ?? owner) : null, holder,
+        custody, locked: custody.startsWith('burned') || custody.startsWith('locked'),
         inRange, shareOfInRangePct: inRange && inRangeTotal > 0n ? Number((p.liquidity * 10_000n) / inRangeTotal) / 100 : 0,
         tickLower: p.tickLower, tickUpper: p.tickUpper,
       })
     }
     owners.sort((x, y) => y.shareOfInRangePct - x.shareOfInRangePct)
+    const HOOK_FLAGS = ['afterRemoveLiquidityReturnDelta', 'afterAddLiquidityReturnDelta', 'afterSwapReturnDelta', 'beforeSwapReturnDelta', 'afterDonate', 'beforeDonate', 'afterSwap', 'beforeSwap', 'afterRemoveLiquidity', 'beforeRemoveLiquidity', 'afterAddLiquidity', 'beforeAddLiquidity', 'afterInitialize', 'beforeInitialize']
+    const bits = Number(BigInt(a.hooks) & 0x3fffn)
+    const hookPermissions = HOOK_FLAGS.filter((_, i) => bits & (1 << i))
     pools.push({
+      hookPermissions,
       poolId: a.id, currency0: a.currency0, currency1: a.currency1, fee: Number(a.fee), tickSpacing: Number(a.tickSpacing),
       hooks: a.hooks, hasHook: a.hooks !== '0x0000000000000000000000000000000000000000', createdBlock: log.blockNumber,
       currentTick: tick, activeLiquidity: liquidity.toString(), livePositions: live.length,
-      lockedOrBurnedInRangePct: owners.filter((o) => o.custody !== 'wallet/contract (withdrawable)' && o.custody !== 'non-PositionManager (inspect)').reduce((s, o) => s + o.shareOfInRangePct, 0),
+      lockedOrBurnedInRangePct: owners.filter((o) => o.locked).reduce((s, o) => s + o.shareOfInRangePct, 0),
+      // In-range virtual ETH depth for native-ETH pools (ETH is always currency0 in v4): L × 2^96 / sqrtPriceX96.
+      // An upper bound for concentrated positions; comparable across ETH pools, unlike raw liquidity across pairs.
+      ethPaired: a.currency0.toLowerCase() === NATIVE_ETH,
+      virtualEthDepth: a.currency0.toLowerCase() === NATIVE_ETH && (slot0 & ((1n << 160n) - 1n)) > 0n
+        ? Number((liquidity << 96n) / (slot0 & ((1n << 160n) - 1n))) / 1e18 : 0,
       positions: owners.slice(0, 10), logStats: mstats,
     })
   }
-  pools.sort((x, y) => (BigInt(y.activeLiquidity) > BigInt(x.activeLiquidity) ? 1 : -1))
-  return { pools, logStats: stats }
+  // Main pool = deepest NATIVE-ETH pool. Token/token pools follow, ordered by raw liquidity (not comparable).
+  pools.sort((x, y) => (x.ethPaired !== y.ethPaired ? (x.ethPaired ? -1 : 1)
+    : x.ethPaired ? y.virtualEthDepth - x.virtualEthDepth : (BigInt(y.activeLiquidity) > BigInt(x.activeLiquidity) ? 1 : -1)))
+  const eth = pools.filter((p) => p.ethPaired)
+  const totalEthDepth = eth.reduce((s, p) => s + p.virtualEthDepth, 0)
+  const lockedEthDepth = eth.reduce((s, p) => s + (p.virtualEthDepth * p.lockedOrBurnedInRangePct) / 100, 0)
+  return { pools, logStats: stats, totalEthDepth, lockedEthDepthPct: totalEthDepth > 0 ? (lockedEthDepth * 100) / totalEthDepth : 0 }
 }
 
 // ------------------------------------------------------------------ local fork behaviour tests
@@ -530,7 +581,10 @@ async function freePort() {
 async function behaviourTests(rpc, address, holder, decimals, hasBurn, head) {
   const port = await freePort()
   const anvilBin = join(ROOT, 'node_modules', '@foundry-rs', 'anvil', 'bin.mjs')
-  const child = spawn(process.execPath, [anvilBin, '--fork-url', rpc, '--fork-block-number', String(head), '--port', String(port), '--chain-id', String(CHAIN_ID), '--silent'], {
+  // Fork at the latest block: a long replay can push the pinned head out of the public RPC's state window, and
+  // transfer behaviour does not depend on the pinned block. (`head` is kept for the report.)
+  void head
+  const child = spawn(process.execPath, [anvilBin, '--fork-url', rpc, '--port', String(port), '--chain-id', String(CHAIN_ID), '--silent'], {
     env: { ...process.env, SSL_CERT_FILE: process.env.SSL_CERT_FILE || '/root/.ccr/ca-bundle.crt' },
     stdio: 'ignore',
   })
@@ -586,6 +640,16 @@ async function behaviourTests(rpc, address, holder, decimals, hasBurn, head) {
       return exact(eoa, b, amount / 8n)
     })
     await run('toBurnAddress', async () => { const d = '0x000000000000000000000000000000000000dEaD'; const b = await tk.balanceOf(d); await (await tk.transfer(d, amount / 16n)).wait(); return exact(d, b, amount / 16n) })
+    // Buy/sell legs at the token level: a transfer tax or pool-specific restriction shows up here.
+    const PMGR = '0x8366a39cc670b4001a1121b8f6a443a643e40951'
+    await run('sellLegToPoolManager', async () => { const b = await tk.balanceOf(PMGR); await (await tk.transfer(PMGR, amount / 16n)).wait(); return exact(PMGR, b, amount / 16n) })
+    await run('buyLegFromPoolManager', async () => {
+      await fork.send('anvil_impersonateAccount', [PMGR]); await fund(PMGR)
+      const pt = new Contract(address, ERC20, await fork.getSigner(PMGR))
+      const b = await tk.balanceOf(eoa)
+      await (await pt.transfer(eoa, amount / 32n)).wait()
+      return exact(eoa, b, amount / 32n)
+    })
     await run('zeroAmountTransfer', async () => { await (await tk.transfer(eoa, 0n)).wait(); return 'ok' })
     await run('repeatedTransfersStable', async () => {
       for (let i = 0; i < 3; i++) {
@@ -663,18 +727,33 @@ function checklist(r) {
     add('top10-concentration', t10 < 30 ? 'PASS' : t10 < 50 ? 'WARN' : 'FAIL', `Top-10 non-infrastructure holders ${t10}% of supply`)
   }
   if (r.liquidity) {
-    const main = r.liquidity.pools[0]
-    add('liquidity-exists', main && BigInt(main.activeLiquidity) > 0n ? 'PASS' : 'FAIL', main ? `${r.liquidity.pools.length} v4 pool(s); deepest ${main.poolId.slice(0, 12)}… active liquidity ${main.activeLiquidity}` : 'No Uniswap v4 pool found')
+    const main = r.liquidity.pools.find((p) => p.ethPaired)
+    const depth = r.liquidity.totalEthDepth
+    add('eth-liquidity', depth >= 50 ? 'PASS' : depth >= 20 ? 'WARN' : 'FAIL',
+      main ? `${r.liquidity.pools.filter((p) => p.ethPaired).length} native-ETH pool(s) of ${r.liquidity.pools.length}; ~${depth.toFixed(1)} ETH virtual depth; deepest ${main.poolId.slice(0, 12)}… ${main.virtualEthDepth.toFixed(1)} ETH` : 'No native-ETH Uniswap v4 pool found')
     if (main) {
-      add('main-pool-no-hook', main.hasHook ? 'WARN' : 'PASS', main.hasHook ? `Hook ${main.hooks}: review hook code and ownership` : 'No hook')
-      const lp = main.lockedOrBurnedInRangePct
-      add('lp-custody', lp >= 80 ? 'PASS' : lp >= 50 ? 'WARN' : 'FAIL', `${lp.toFixed(1)}% of in-range liquidity in burned or locker-held positions (do not call it "permanently locked" without reviewing the locker)`)
+      const permissions = main.hookPermissions?.length ? ` (${main.hookPermissions.join(', ')})` : ''
+      add('main-pool-hook', !main.hasHook ? 'PASS' : NO_REMOVE_HOOKS[main.hooks.toLowerCase()] ? 'PASS' : 'WARN',
+        !main.hasHook ? 'Main ETH pool has no hook' : `Hook ${main.hooks}${permissions}: ${NO_REMOVE_HOOKS[main.hooks.toLowerCase()] ?? 'review hook code and ownership'}`)
+      const lp = r.liquidity.lockedEthDepthPct
+      add('lp-custody', lp >= 90 ? 'PASS' : lp >= 50 ? 'WARN' : 'FAIL',
+        `${lp.toFixed(1)}% of native-ETH depth is burned or locked by code (reviewed custodians/hooks only; unknown contracts count as withdrawable)`)
     }
   }
   if (r.behaviour) {
+    // Wallet and contract legs decide Locker compatibility. Pool legs only reveal market costs (e.g. a buy tax).
+    const POOL_LEGS = ['sellLegToPoolManager', 'buyLegFromPoolManager']
     const vals = Object.entries(r.behaviour.tests)
-    const bad = vals.filter(([, v]) => !['exact', 'ok'].includes(v))
-    add('transfer-behaviour', r.behaviour.error ? 'WARN' : bad.length ? 'FAIL' : 'PASS', r.behaviour.error ? `Fork tests did not run: ${r.behaviour.error}` : bad.length ? bad.map(([k, v]) => `${k}: ${v}`).join('; ') : `${vals.length} local-fork transfer tests exact`)
+    const core = vals.filter(([k]) => !POOL_LEGS.includes(k))
+    const bad = core.filter(([, v]) => !['exact', 'ok'].includes(v))
+    add('transfer-behaviour', r.behaviour.error ? 'WARN' : bad.length ? 'FAIL' : 'PASS', r.behaviour.error ? `Fork tests did not run: ${r.behaviour.error}` : bad.length ? bad.map(([k, v]) => `${k}: ${v}`).join('; ') : `${core.length} wallet/contract transfer tests exact (Locker-compatible)`)
+    const pool = vals.filter(([k]) => POOL_LEGS.includes(k))
+    const poolBad = pool.filter(([, v]) => v !== 'exact')
+    if (!r.behaviour.error && pool.length) {
+      add('pool-transfer-tax', poolBad.length ? 'WARN' : 'PASS', poolBad.length
+        ? `Pool transfers are not exact (${poolBad.map(([k, v]) => `${k}: ${v}`).join('; ')}): a buy/sell tax or pool rule. A market cost for traders; disclose it. Locker transfers are covered by transfer-behaviour.`
+        : 'Transfers into and out of the PoolManager are exact (no buy/sell tax)')
+    }
   }
   return items
 }
@@ -695,7 +774,7 @@ function markdown(r) {
   if (r.liquidity?.pools.length) {
     lines.push('', '## Uniswap v4 pools', '')
     for (const p of r.liquidity.pools.slice(0, 5)) {
-      lines.push(`- \`${p.poolId}\` fee ${p.fee} hook ${p.hasHook ? p.hooks : 'none'}; active liquidity ${p.activeLiquidity}; ${p.livePositions} live positions; locked/burned in-range ${p.lockedOrBurnedInRangePct.toFixed(1)}%`)
+      lines.push(`- \`${p.poolId}\` ${p.ethPaired ? `ETH pool, ~${p.virtualEthDepth.toFixed(1)} ETH virtual depth` : `token/token pool (${p.currency0} / ${p.currency1})`}; fee ${p.fee}; hook ${p.hasHook ? p.hooks : 'none'}; ${p.livePositions} live positions; locked/burned in-range ${p.lockedOrBurnedInRangePct.toFixed(1)}%`)
       for (const o of p.positions.slice(0, 5)) lines.push(`  - tokenId ${o.tokenId ?? '-'} owner ${o.owner ?? o.manager}: ${o.custody}, ${o.inRange ? `${o.shareOfInRangePct}% of in-range` : 'out of range'}`)
     }
   }
@@ -711,7 +790,7 @@ async function vet(address, args) {
   const provider = new JsonRpcProvider(args.rpc, CHAIN_ID, { staticNetwork: true, batchMaxCount: 1 })
   const chainId = Number(await provider.send('eth_chainId', []))
   if (chainId !== CHAIN_ID) throw new Error(`RPC is chain ${chainId}, expected ${CHAIN_ID}`)
-  const head = await provider.getBlockNumber()
+  let head = await provider.getBlockNumber()
   const r = { generatedAt: new Date().toISOString(), rpc: args.rpc.replace(/\/\/.*@/, '//***@'), head, limitations: [] }
   r.limitations.push(
     'Public RPC is not an archive node: state reads use the pinned head block and must finish within roughly 10-35 minutes.',
@@ -720,7 +799,7 @@ async function vet(address, args) {
     'Signer clustering identifies wallets whose first tokens arrived in a transaction signed by another account. Independent signers funded with gas by one entity are not detected (native-transfer tracing needs an indexer this RPC lacks).',
     'Cluster heuristics only look one hop back (first funding sender) and at balance similarity; funding through intermediaries, CEX withdrawals or swaps defeats them.',
     'Holder labels distinguish EOA, contract and known infrastructure only. Exchange, team, bridge and multi-wallet clusters are not identified; a single entity may control many addresses (Sybil).',
-    'LP attribution covers Uniswap v4 PoolManager positions only. Other DEXes or v3-style pools are not scanned. "Locked" means owned by the Pons locker, whose ownership controls must be reviewed separately (docs/SECURITY_REVIEW.md).',
+    'LP attribution covers Uniswap v4 PoolManager positions only. Other DEXes or v3-style pools are not scanned. "Locked by code" covers only the custodians and hooks reviewed in docs/TOKEN_VETTING.md; any other contract counts as withdrawable. ETH depth is in-range virtual depth (an upper bound for concentrated positions).',
   )
   process.stderr.write(`[vet] ${address} at block ${head}\n`)
   r.metadata = await metadata(provider, address, head)
@@ -741,6 +820,10 @@ async function vet(address, args) {
   if (first) {
     process.stderr.write('[vet] replaying full Transfer history\n')
     const replay = await replayHolders(provider, address, first.blockNumber, head, r.metadata.totalSupplyRaw)
+    // Subsequent state reads use the re-pinned block.
+    head = replay.pinnedHead
+    r.head = head
+    r.metadata.totalSupplyRaw = replay.totalSupplyRaw
     const labels = await labelHolders(provider, address, replay.sorted, r.metadata.totalSupplyRaw, r.metadata.decimals, head)
     process.stderr.write('[vet] first-receipt signer analysis\n')
     const signers = await signerClusters(provider, replay.sorted, replay.firstTx, r.metadata.totalSupplyRaw)

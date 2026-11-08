@@ -44,6 +44,19 @@ contract RixorLockerTest is RixorBase {
         _deploy(address(ownerSafe), alice, address(pepe), PEPE_UNIT, PEPE_CAP);
     }
 
+    function test_roles_rejectEip7702DelegatedEoa() public {
+        // A 7702-delegated EOA has 23 bytes of code (0xef0100 || delegate) but one private key controls it.
+        address delegated = makeAddr("delegated-eoa");
+        vm.etch(delegated, abi.encodePacked(hex"ef0100", address(ownerSafe)));
+        assertEq(delegated.code.length, 23);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotContract.selector, delegated));
+        _deploy(delegated, address(guardianSafe), address(pepe), PEPE_UNIT, PEPE_CAP);
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotContract.selector, delegated));
+        asOwner(abi.encodeCall(RixorLocker.transferOwnership, (delegated)));
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.NotContract.selector, delegated));
+        asOwner(abi.encodeCall(RixorLocker.setGuardian, (delegated)));
+    }
+
     function test_constructor_noRewardTokenRequired() public {
         // V2: no token is mandatory. A Locker can start empty or with only community meme tokens.
         RixorLocker empty = new RixorLocker(address(ownerSafe), address(guardianSafe), new RixorLocker.Listing[](0));

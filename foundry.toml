@@ -22,6 +22,8 @@ skip = [
   "contracts/test/*",
 ]
 remappings = ["forge-std/=lib/forge-std/src/"]
+# Deployment scripts read deploy/config and write deployments/ manifests. Nothing else is accessible.
+fs_permissions = [{ access = "read", path = "./deploy" }, { access = "read-write", path = "./deployments" }]
 
 [profile.default.fuzz]
 runs = 1000

@@ -24,3 +24,6 @@ reports/
 demo/fork-backend/data/
 !demo/fork-backend/artifacts/
 !src/protocol/sim/artifacts/
+
+# Deployment manifests from local fork dry runs (real deployments are recorded deliberately)
+deployments/31337.json

@@ -732,9 +732,16 @@ contract RixorLocker is IRixorLocker {
         }
     }
 
+    /// @dev Owner and guardian must be real contracts (Safes). An EIP-7702-delegated EOA has 23 bytes of "code"
+    ///      (0xef0100 || delegate) but is still controlled by a single private key, so it is rejected too.
     function _requireContract(address account) internal view {
         if (account == address(0)) revert ZeroAddress();
-        if (account.code.length == 0) revert NotContract(account);
+        uint256 size = account.code.length;
+        if (size == 0) revert NotContract(account);
+        if (size == 23) {
+            bytes memory c = account.code;
+            if (c[0] == 0xef && c[1] == 0x01 && c[2] == 0x00) revert NotContract(account);
+        }
     }
 
     /// @dev Pulls exactly `amount`; rejects fee-on-transfer, rebasing-on-transfer and false-returning tokens.

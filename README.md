@@ -4,9 +4,34 @@
 
 # Rixor
 
-**Tiered conviction locks, ROI targets, commitment rewards and community challenges, built for $WIF on Robinhood Chain. Testnet first.**
+**Lock the meme tokens you already hold on Robinhood Chain, earn $WIF from prefunded reward streams, and take part in community challenges. No WIF is needed to lock.**
 
-## Conviction vault
+## Rixor V2 (current)
+
+Status: contracts, tests, deployment scripts and an in-browser demo. **Nothing is deployed on Robinhood Chain
+testnet or mainnet, and no token is approved for production listing.**
+
+| Piece | Where |
+|---|---|
+| Contracts | `contracts/RixorLocker.sol`, `contracts/RixorRewards.sol`, `contracts/RixorChallenges.sol` |
+| Design | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Token vetting and current candidates | [`docs/TOKEN_VETTING.md`](docs/TOKEN_VETTING.md) |
+| Security review | [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md) |
+| Deployment runbook (not executed) | [`docs/LAUNCH_RUNBOOK.md`](docs/LAUNCH_RUNBOOK.md) |
+| Demo (in-browser EVM + read-only wallet detection) | [`docs/DEMO.md`](docs/DEMO.md) |
+
+```bash
+npm ci && git submodule update --init --recursive
+npm run test:contracts      # unit, fuzz, invariant
+npm run test:fork           # local mainnet fork: HOOKR, TORCH, WIF
+npm run deploy:local-fork   # deployment dry run on a local fork
+npm run demo:verify && npm run build
+```
+
+Everything below this point describes **legacy** prototypes (the conviction vault and the savings app). Their
+contracts are excluded from the Foundry build and their screens are no longer mounted.
+
+## Legacy: Conviction vault
 
 Contract: `contracts/RixorConvictionVault.sol`. It works with any burnable ERC-20 and has no owner or admin functions.
 

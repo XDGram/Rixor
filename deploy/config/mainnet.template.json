@@ -1,0 +1,6 @@
+{
+  "_note": "TEMPLATE. Mainnet deployment is NOT authorised. Listings stay empty until each token is approved in writing; tokens are then listed through the 48-hour timelock (proposeListing / executeListing).",
+  "wif": "0x5173b8eA6923c2d40267890D45C46a3480954773",
+  "minHoldSeconds": 86400,
+  "listings": []
+}

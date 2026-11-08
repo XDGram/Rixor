@@ -1,0 +1,6 @@
+{
+  "_note": "TEMPLATE for Robinhood Chain testnet (46630). Fill in TEST token addresses deployed for the testnet demo (clearly named TEST); never real-token names. Testnet deployment is NOT yet authorised.",
+  "wif": "0x0000000000000000000000000000000000000000",
+  "minHoldSeconds": 3600,
+  "listings": []
+}
