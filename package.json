@@ -10,7 +10,9 @@
     "contract:compile": "node scripts/compile-contract.mjs",
     "contract:deploy": "node scripts/deploy-contract.mjs",
     "contract:test": "npm run contract:compile && node scripts/test-contract.mjs && node scripts/test-conviction-vault.mjs",
-    "contract:deploy:vault": "node scripts/deploy-conviction-vault.mjs"
+    "contract:deploy:vault": "node scripts/deploy-conviction-vault.mjs",
+    "test:pricing": "node scripts/test-pricing.mjs",
+    "check:live-price": "node scripts/test-pricing.mjs --live"
   },
   "dependencies": {
     "react": "^19.1.1",

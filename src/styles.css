@@ -1283,9 +1283,17 @@ a { color: inherit; }
 .sim-price small, .sim-price span { font-size: 12px; color: var(--ink-mute); }
 .sim-price strong { font-family: var(--display); font-size: 26px; font-weight: 400; font-variant-numeric: tabular-nums; }
 
-.wif-card { display: grid; gap: 10px; }
-@media (min-width: 860px) { .wif-card { grid-template-columns: auto 1fr; align-items: center; gap: 28px; } }
+.wif-card { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .wif-card { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; gap: 28px; } }
 .wif-card .figure { margin-top: 4px; }
+.wif-card-note { grid-column: 1 / -1; }
+.market-price { display: grid; gap: 10px; padding: 16px; border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
+.market-price-head { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag--market { background: var(--ink); color: var(--paper); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.market-price-figure { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.market-price-figure strong { font-family: var(--display); font-size: clamp(30px, 6vw, 40px); font-weight: 300; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.market-price-figure span { font-size: 13px; font-weight: 600; color: var(--ink-mute); }
+.market-price .rows > div { padding: 9px 0; font-size: 13px; }
 
 .tier-grid { grid-template-columns: 1fr !important; }
 @media (min-width: 560px) { .tier-grid { grid-template-columns: repeat(3, 1fr) !important; } }

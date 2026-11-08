@@ -61,7 +61,8 @@ const expectRevert = async (action, errorName, label) => {
   }
   assert.fail(`${label}: expected revert`)
 }
-const setPrice = (multiplier) => send(oracle.setPrice((PRICE * BigInt(Math.round(multiplier * 1000))) / 1000n))
+// Explicit gas: Ganache's estimate for this storage write occasionally comes out too low.
+const setPrice = (multiplier) => send(oracle.setPrice((PRICE * BigInt(Math.round(multiplier * 1000))) / 1000n, { gasLimit: 200_000 }))
 const balanceOf = async (signer) => token.balanceOf(await signer.getAddress())
 const lastLockId = async (signer) => {
   const ids = await vault.getOwnerLockIds(await signer.getAddress())

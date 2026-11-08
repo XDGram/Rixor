@@ -22,6 +22,9 @@ import {
 } from './vault/model'
 import { VAULT_ADDRESS, VAULT_NETWORK, VAULT_USES_MOCK_ORACLE, vaultExplorerAddress, vaultExplorerTx } from './vault/onchain'
 import { simulationControls } from './vault/simulation'
+import { formatUsdPrice } from './pricing/math'
+import { ETH_USDG_V3_POOL, MAINNET_EXPLORER, PONS_WIF_ETH_POOL } from './pricing/sources'
+import { useLiveWifPrice } from './pricing/useLiveWifPrice'
 import { onchainAvailable, useVault, type TxState } from './vault/useVault'
 
 type Provider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
@@ -40,6 +43,7 @@ export default function DiamondHands({ walletAddress, provider, chainId, switchi
   const [mode, setMode] = useState<VaultMode>(onchainAvailable ? 'onchain' : 'simulation')
   const { state, actions, tx, canTransact, onWrongChain } = useVault({ mode, walletAddress, provider, chainId })
   const wif = useWifBalance(walletAddress)
+  const market = useLiveWifPrice()
   const simulated = mode === 'simulation'
   const symbol = state.tokenSymbol
 
@@ -63,7 +67,8 @@ export default function DiamondHands({ walletAddress, provider, chainId, switchi
   const tierMeta = TIERS[tier]
   const accrued = state.positions.reduce((total, position) => total + position.pendingReward, 0)
   const lockedByMe = state.positions.reduce((total, position) => total + position.amount, 0)
-  const priceText = state.price.value === null ? 'unavailable' : state.price.value.toLocaleString(undefined, { maximumFractionDigits: 6 })
+  // Decision price: the price the vault (or simulation) uses for ROI and exits. Never the live market display price.
+  const priceText = state.price.value === null ? 'unavailable' : formatUsdPrice(state.price.value)
 
   const submitLock = async () => {
     const ok = await actions.lock({ amount, tier, termDays, roiTargetBps: target, maxLossBps: tier === 0 ? 0 : maxLoss })
@@ -121,7 +126,7 @@ export default function DiamondHands({ walletAddress, provider, chainId, switchi
           </div>
           <div className="sim-controls">
             <div className="sim-price">
-              <small>Simulated price</small>
+              <small>Simulated decision price (USD)</small>
               <strong>{priceText}</strong>
               <span className={state.price.fresh ? '' : 'is-loss'}>{state.price.fresh ? 'feed live' : 'feed stalled'}</span>
             </div>
@@ -143,7 +148,7 @@ export default function DiamondHands({ walletAddress, provider, chainId, switchi
       ) : (
         <>
           <div className="notice">
-            <strong>{VAULT_NETWORK.name} · price {priceText}</strong>
+            <strong>{VAULT_NETWORK.name} · vault decision price {priceText}</strong>
             <span>
               {state.price.source}.{VAULT_USES_MOCK_ORACLE ? ' ROI and exits use this hand-set test price, not a market price.' : ''}{' '}
               Vault <a href={vaultExplorerAddress(VAULT_ADDRESS)} target="_blank" rel="noreferrer">{shortAddr(VAULT_ADDRESS)}</a>
@@ -160,15 +165,51 @@ export default function DiamondHands({ walletAddress, provider, chainId, switchi
       )}
 
       <section className="card wif-card">
-        <div>
+        <div className="wif-card-balance">
           <small className="kicker">Your $WIF on {ROBINHOOD_MAINNET.name} · live, read-only</small>
           <p className="figure figure--sm">
             {!walletAddress ? '—' : wif.status === 'ready' ? formatAmount(wif.balance) : wif.status === 'error' ? 'Unavailable' : '…'} <em>$WIF</em>
           </p>
+          {walletAddress && wif.status === 'ready' && market.data && (
+            <span className="figure-sub">≈ {formatUsdPrice(wif.balance * market.data.wifUsd)} at the live market price</span>
+          )}
         </div>
-        <p className="fine-print">
+
+        <div className="market-price" aria-live="polite">
+          <div className="market-price-head">
+            <span className="tag tag--market"><span className="dot-live" /> Live market data</span>
+            <span className="tag tag--outline">Display only</span>
+          </div>
+          {market.status === 'loading' ? (
+            <p className="fine-print">Reading Robinhood Chain…</p>
+          ) : !market.data ? (
+            <p className="fine-print">Live price unavailable right now. {market.error}</p>
+          ) : (
+            <>
+              <div className="market-price-figure">
+                <strong>{formatUsdPrice(market.data.wifUsd)}</strong>
+                {market.data.change24hUsd !== null ? (
+                  <span className={market.data.change24hUsd >= 0 ? 'is-gain' : 'is-loss'}>
+                    {market.data.change24hUsd >= 0 ? '▲' : '▼'} {formatBps(Math.round(Math.abs(market.data.change24hUsd) * 100))} 24h
+                  </span>
+                ) : <span>24h change unavailable</span>}
+              </div>
+              <dl className="rows">
+                <div><dt>WIF / ETH (Pons pool, spot)</dt><dd>{market.data.wifEth.toExponential(4)} ETH</dd></div>
+                <div><dt>ETH / USD (30-min TWAP)</dt><dd>{formatUsdPrice(market.data.ethUsd)}</dd></div>
+                {market.data.change24hEth !== null && <div><dt>24h in ETH terms</dt><dd>{formatBps(Math.round(market.data.change24hEth * 100), true)}</dd></div>}
+                <div><dt>Pool depth (in range)</dt><dd>≈ {formatAmount(market.data.inRangeEth)} ETH per side</dd></div>
+                <div><dt>Read at block</dt><dd>{market.data.blockNumber.toLocaleString()} · {new Date(market.data.blockTime * 1000).toLocaleTimeString()}</dd></div>
+              </dl>
+            </>
+          )}
+        </div>
+
+        <p className="fine-print wif-card-note">
           Official token <a href={explorerAddress(WIF_ADDRESS)} target="_blank" rel="noreferrer">{shortAddr(WIF_ADDRESS)}</a>, verified onchain.
-          $WIF exists only on mainnet, so it cannot be locked until a mainnet vault and a real price oracle are in place.
+          Price from the Pons V2 WIF/ETH pool on Uniswap V4 (<a href={`${MAINNET_EXPLORER}/address/${PONS_WIF_ETH_POOL.poolManager}`} target="_blank" rel="noreferrer">PoolManager</a>, pool {shortAddr(PONS_WIF_ETH_POOL.poolId)}),
+          converted with the official Uniswap V3 WETH/USDG pool's 30-minute TWAP (<a href={`${MAINNET_EXPLORER}/address/${ETH_USDG_V3_POOL.address}`} target="_blank" rel="noreferrer">{shortAddr(ETH_USDG_V3_POOL.address)}</a>), treating USDG as $1.
+          The 24h change compares against the last pool swap before 24 hours ago. This price is never used for vault withdrawals, ROI eligibility or challenge results.
         </p>
       </section>
 
@@ -417,7 +458,7 @@ function PositionRow(props: {
         <span className={`plan-badge ${locked ? '' : 'is-matured'}`}>{tier.short}</span>
         <div className="lock-row-main">
           <strong>{formatAmount(position.amount)} {symbol}</strong>
-          <span>{tier.name} · #{position.id} · entry {position.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+          <span>{tier.name} · #{position.id} · entry {formatUsdPrice(position.entryPrice)}</span>
         </div>
         <div className="lock-row-side">
           <strong className={roiClass(roi)}>{roi === null ? '—' : formatBps(roi, true)}</strong>

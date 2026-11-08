@@ -31,6 +31,16 @@ The vault reads `IRixorPriceOracle.latestPrice()`. **No verified $WIF price feed
 
 The official token is `0x5173b8eA6923c2d40267890D45C46a3480954773` on Robinhood Chain mainnet (chain 4663). I verified it onchain: "World is Flat", WIF, 18 decimals, burnable, no owner. It is **not deployed on Robinhood Chain Testnet**. The app shows your real $WIF balance live and read-only; locking real $WIF needs a mainnet vault and a real oracle, which are deliberately not part of this build.
 
+### Live $WIF price (display only)
+
+The Diamond Hands screen shows the real $WIF price, labelled **LIVE MARKET DATA · DISPLAY ONLY**:
+
+- **WIF/ETH:** spot price of the Pons V2 pool on the official Uniswap V4 PoolManager (`0x8366…0951`, pool `0x71ef…8c79`). The pool id is recomputed from its key on every read.
+- **ETH/USD:** 30-minute TWAP from the official Uniswap V3 WETH/USDG 0.01% pool (`0x52e6…71Ca`), treating USDG as $1.
+- **24h change:** compares against the last pool swap before 24 hours ago, using the ETH/USD TWAP from that time.
+
+This price never reaches the vault, ROI eligibility or challenge results. The future decision oracle is designed in [docs/ORACLE_DESIGN.md](docs/ORACLE_DESIGN.md) and is not built. Run `npm run test:pricing` for the math tests, and `npm run check:live-price` for a read-only mainnet check.
+
 ### App modes
 
 - **Testnet:** real transactions against a deployed vault on Robinhood Chain Testnet. This mode is on only when `VITE_RIXOR_VAULT_ADDRESS` is set.
