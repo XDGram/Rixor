@@ -63,6 +63,8 @@ export function createApi({ config, anvilUrl, provider, manifest, keys, clock, l
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'content-type')
     res.setHeader('Access-Control-Max-Age', '86400')
+    // Chrome Private Network Access preflight (only relevant when the backend runs on a private address).
+    if (req.headers['access-control-request-private-network'] === 'true') res.setHeader('Access-Control-Allow-Private-Network', 'true')
   }
   const send = (res, status, body) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-rixor-environment': 'fork-demo' })

@@ -52,6 +52,8 @@ const advance = async (label) => {
 
 try {
   await step('open app with fork backend', async () => {
+    // Optional: a Vercel share link for a protected preview. Visiting it sets the access cookie.
+    if (process.env.PRELOAD_URL) await page.goto(process.env.PRELOAD_URL)
     await page.goto(`${appUrl}/?backend=${encodeURIComponent(backendUrl)}`)
     await page.locator('.demo-strip', { hasText: 'Not mainnet' }).waitFor({ timeout: 30_000 })
     await page.locator('.challenge-link').first().waitFor()
