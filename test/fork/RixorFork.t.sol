@@ -80,7 +80,7 @@ interface ISafeProxyFactory {
 ///         anything. Safe signer keys below are throwaway test keys, not real signers.
 ///
 ///         Candidate tokens under test (approved for implementation testing only, NOT for production listing):
-///           HOOKR  0x18E6...ff5c  Class A candidate (Uniswap UERC20 / Solady ERC20)
+///           HOOKR  0x18E6...ff5c  Class B candidate (Uniswap UERC20 / Solady ERC20; 85.8% code-locked ETH depth)
 ///           TORCH  0x0000...1111  Class B candidate (OpenZeppelin ERC20 with a fixed buy tax on pool exits)
 ///         $WIF is the reward and prize token only.
 ///
@@ -129,7 +129,7 @@ contract RixorForkTest is Test {
         guardianSafe = _deploySafe(guardianKeys, 2);
 
         RixorLocker.Listing[] memory l = new RixorLocker.Listing[](2);
-        l[0] = RixorLocker.Listing(HOOKR, UNIT, CAP, 1); // Class A
+        l[0] = RixorLocker.Listing(HOOKR, UNIT, CAP, 2); // Class B
         l[1] = RixorLocker.Listing(TORCH, UNIT, CAP, 2); // Class B
         locker = new RixorLocker(address(ownerSafe), address(guardianSafe), l);
         challenges = new RixorChallenges(IRixorLocker(address(locker)), WIF, MIN_HOLD);
@@ -210,7 +210,7 @@ contract RixorForkTest is Test {
         assertEq(IERC20Like(HOOKR).decimals(), 18);
         assertEq(IERC20Like(TORCH).decimals(), 18);
         assertEq(IERC20Like(WIF).decimals(), 18);
-        assertEq(locker.riskClass(HOOKR), 1);
+        assertEq(locker.riskClass(HOOKR), 2);
         assertEq(locker.riskClass(TORCH), 2);
         assertFalse(locker.isListed(WIF), "WIF is the reward token, not a lockable asset");
         assertEq(ITorch(TORCH).POOL_MANAGER(), POOL_MANAGER);
@@ -297,11 +297,14 @@ contract RixorForkTest is Test {
         assertEq(_bal(TORCH, address(locker)), 0);
     }
 
-    // ------------------------------------------------------------------ HOOKR: Class A, Permit2 default allowance
+    // ------------------------------------------------------------------ HOOKR: Class B, Permit2 default allowance
 
-    function test_fork_hookr_diamondExactAndPermit2CannotDrainLocker() public {
+    function test_fork_hookr_classBExactAndPermit2CannotDrainLocker() public {
         vm.prank(alice);
-        uint256 id = locker.lock(HOOKR, 10 * UNIT, 2, 90); // Class A allows Diamond
+        vm.expectRevert(abi.encodeWithSelector(RixorLocker.TierNotAllowed.selector, 2));
+        locker.lock(HOOKR, UNIT, 2, 30); // Class B: no Diamond
+        vm.prank(alice);
+        uint256 id = locker.lock(HOOKR, 10 * UNIT, 1, 60); // Committed, Class B maximum term
         assertEq(_bal(HOOKR, address(locker)), 10 * UNIT, "deposit exact");
         // Solady gives Permit2 an infinite allowance from every owner, including the Locker...
         assertEq(IERC20Like(HOOKR).allowance(address(locker), PERMIT2), type(uint256).max);
@@ -321,7 +324,7 @@ contract RixorForkTest is Test {
 
     // ------------------------------------------------------------------ full V2 lifecycle on real tokens
 
-    uint256 internal ph; // HOOKR Diamond (alice)
+    uint256 internal ph; // HOOKR Committed (alice)
     uint256 internal pt; // TORCH Committed (bob)
     uint256 internal pf; // HOOKR Flexible (carol)
     uint256 internal sH;
@@ -344,7 +347,7 @@ contract RixorForkTest is Test {
         assertEq(_bal(WIF, address(rewards)), 210_000 ether, "real WIF transfer exact");
         vm.warp(uint256(rewards.streamOf(sH).startDay) * 1 days); // stream start (next UTC midnight)
         vm.prank(alice);
-        ph = locker.lock(HOOKR, 10 * UNIT, 2, 90);
+        ph = locker.lock(HOOKR, 10 * UNIT, 1, 60);
         vm.prank(bob);
         pt = locker.lock(TORCH, 10 * UNIT, 1, 30);
         vm.prank(carol);
@@ -367,7 +370,7 @@ contract RixorForkTest is Test {
         challenges.join(cid, ph, address(0));
         vm.prank(bob);
         challenges.join(cid, pt, address(0));
-        assertEq(challenges.entryOf(cid, alice).points, 250_000); // 10 units x Diamond 2.5x
+        assertEq(challenges.entryOf(cid, alice).points, 150_000); // 10 units x Committed 1.5x
         assertEq(challenges.entryOf(cid, bob).points, 150_000); // 10 units x Committed 1.5x
     }
 
@@ -375,13 +378,13 @@ contract RixorForkTest is Test {
         vm.warp(block.timestamp + 3 days);
         challenges.settle(cid, 10);
         vm.prank(alice);
-        assertEq(challenges.claim(cid), uint256(300_000 ether) * 250_000 / 400_000);
-        // HOOKR stream: alice (weight 2.5M) and carol (weight 250k) share 10,000 WIF/day for 3 days.
+        assertEq(challenges.claim(cid), uint256(300_000 ether) * 150_000 / 300_000);
+        // HOOKR stream: alice (weight 1.5M) and carol (weight 250k) share 10,000 WIF/day for 3 days.
         uint256[] memory ids = new uint256[](1);
         ids[0] = ph;
         vm.prank(alice);
         uint256 got = rewards.claim(ids, 500);
-        assertApproxEqRel(got, uint256(30_000 ether) * 2_500_000 / 2_750_000, 1e12, "alice HOOKR rewards");
+        assertApproxEqRel(got, uint256(30_000 ether) * 1_500_000 / 1_750_000, 1e12, "alice HOOKR rewards");
     }
 
     function _phaseReleaseTorch() internal {
@@ -429,7 +432,7 @@ contract RixorForkTest is Test {
 
     function test_fork_emergencyThroughSafe() public {
         vm.prank(alice);
-        uint256 d = locker.lock(HOOKR, 10 * UNIT, 2, 90);
+        uint256 d = locker.lock(HOOKR, 10 * UNIT, 1, 60);
         vm.prank(funder);
         uint256 s = rewards.fund(HOOKR, 70_000 ether, 7);
         // One signature is not enough for the 2-of-3 guardian Safe.
@@ -440,7 +443,7 @@ contract RixorForkTest is Test {
         _guardianExec(data);
         uint256 before = _bal(HOOKR, alice);
         vm.prank(alice);
-        locker.exit(d, 0); // Diamond exits immediately, no fee
+        locker.exit(d, 0); // Committed exits immediately under emergency, no fee
         assertEq(_bal(HOOKR, alice) - before, 10 * UNIT);
         vm.warp(block.timestamp + 10 days);
         assertEq(rewards.refund(s, 500), 70_000 ether, "emergency before stream start: full refund");

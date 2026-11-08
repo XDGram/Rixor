@@ -29,3 +29,5 @@ demo/fork-backend/data/
 deployments/31337.json
 deployments/31337-testnet-config.json
 public/testnet/
+deployments/31337-safe-tx-*.json
+deployments/*-plan*.json

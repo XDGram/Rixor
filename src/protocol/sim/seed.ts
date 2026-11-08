@@ -20,7 +20,7 @@ export const DEMO_PARAMS = {
 
 /** Candidate tokens listed in the SIMULATION's Locker for testing. Not approved for production listing. */
 export const SIM_LISTINGS = [
-  { symbol: 'HOOKR', riskClass: 1 },
+  { symbol: 'HOOKR', riskClass: 2 }, // Class B: 85.8% of ETH depth code-locked, below the 90% Class A threshold
   { symbol: 'TORCH', riskClass: 2 },
 ] as const
 
@@ -153,7 +153,7 @@ export async function seedChain(chain: SimChain, provider: Provider, snapshot: S
 
   onStep?.('Demo lockers joining')
   const plan = [
-    { token: hookr, amount: '300000', tier: 2, days: 90, season: true },
+    { token: hookr, amount: '300000', tier: 1, days: 60, season: true },
     { token: torch, amount: '200000', tier: 1, days: 60, season: true },
     { token: hookr, amount: '100000', tier: 0, days: 0, season: false },
   ]

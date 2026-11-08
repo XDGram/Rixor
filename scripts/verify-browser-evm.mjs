@@ -46,7 +46,7 @@ check('real WIF code and storage from mainnet snapshot', (await wifR.symbol()) =
 check('real HOOKR and TORCH code from mainnet snapshot', (await new Contract(HOOKR, ERC20, p).symbol()) === 'HOOKR' && (await new Contract(TORCH, ERC20, p).symbol()) === 'TORCH')
 const lockerR = new Contract(L, lockerAbi, p)
 check('Locker owned by a Safe v1.5.0 proxy', (await lockerR.owner()) === s.manifest.contracts.ownerSafe, `Safe ${s.manifest.safeVersion}`)
-check('Locker lists HOOKR (Class A) and TORCH (Class B); WIF is not lockable', Number(await lockerR.riskClass(HOOKR)) === 1 && Number(await lockerR.riskClass(TORCH)) === 2 && !(await lockerR.isListed(WIF)))
+check('Locker lists HOOKR and TORCH as Class B; WIF is not lockable', Number(await lockerR.riskClass(HOOKR)) === 2 && Number(await lockerR.riskClass(TORCH)) === 2 && !(await lockerR.isListed(WIF)))
 check('demo seeds: 2 challenges, 2 reward streams, 3 demo lockers', Number(await new Contract(C, challengesAbi, p).nextChallengeId()) === 3 && Number(await new Contract(RW, rewardsAbi, p).streamCount()) === 2)
 
 // ---------------------------------------------------------------- the journey
@@ -65,9 +65,9 @@ await step('faucet', () => s.faucet(user.address))
 await s.faucet(sponsor.address)
 check('faucet: demo HOOKR, TORCH and WIF (no deposit)', (await hookrU.balanceOf(user.address)) === W(500_000) && (await torchU.balanceOf(user.address)) === W(500_000) && (await wifR.balanceOf(user.address)) === W(1_000_000))
 
-await step('approve+lock', async () => { await (await hookrU.approve(L, W(100_000))).wait(); await (await lk.lock(HOOKR, W(100_000), 2, 90)).wait() })
+await step('approve+lock', async () => { await (await hookrU.approve(L, W(100_000))).wait(); await (await lk.lock(HOOKR, W(100_000), 1, 60)).wait() })
 const pid = Number((await lk.positionsOf(user.address))[0])
-check('lock HOOKR: Diamond 10 units, 90 days, exact transfer', (await lk.positionOf(pid)).amount === W(100_000) && (await hookrU.balanceOf(L)) >= W(100_000))
+check('lock HOOKR: Committed 10 units, 60 days (Class B maximum), exact transfer', (await lk.positionOf(pid)).amount === W(100_000) && (await hookrU.balanceOf(L)) >= W(100_000))
 let noDiamond = false
 await (await torchU.approve(L, W(50_000))).wait()
 try { await lk.lock.staticCall(TORCH, W(50_000), 2, 30) } catch { noDiamond = true }
@@ -85,7 +85,7 @@ const fid = cid + 1
 check('create multi-token challenge escrows the pool', (await ch.getChallenge(cid)).escrow === W(100_000) && (await ch.challengeTokens(cid)).length === 2)
 
 await step('join', () => ch.join(cid, pid, '0x0000000000000000000000000000000000000000').then((tx) => tx.wait()))
-check('join scores 250,000 points (10 units x Diamond; every token counts equally)', (await ch.entryOf(cid, user.address)).points === 250_000n)
+check('join scores 150,000 points (10 units x Committed; every token counts equally)', (await ch.entryOf(cid, user.address)).points === 150_000n)
 let laneBlocked = false
 try { await ch.join.staticCall(fid, pid, '0x0000000000000000000000000000000000000000') } catch (e) { laneBlocked = true }
 check('lane rule: same position cannot join a second running community challenge', laneBlocked)
@@ -127,7 +127,7 @@ check('sweep after the claim window', await ch.swept(cid, user.address))
 
 let locked = false
 try { await lk.exit.staticCall(pid, 0) } catch { locked = true }
-check('Diamond cannot exit before its term (StillLocked)', locked)
+check('Committed exit before its term requires the quoted fee (FeeTooHigh with maxFee 0)', locked)
 await s.advance(31 * 86400); await s.advance(31 * 86400)
 const tb = await torchU.balanceOf(user.address)
 await (await lk.exit(tpid, 0)).wait()

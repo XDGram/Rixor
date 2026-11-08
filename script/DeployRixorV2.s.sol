@@ -15,7 +15,7 @@ interface ISafeView {
 
 /// @notice Deploys RixorLocker, RixorRewards and RixorChallenges from a JSON config.
 ///
-///   RIXOR_CONFIG=deploy/config/<file>.json RIXOR_OWNER_SAFE=0x… RIXOR_GUARDIAN_SAFE=0x… \
+///   RIXOR_EXPECTED_CHAIN_ID=46630 RIXOR_CONFIG=deploy/config/<file>.json RIXOR_OWNER_SAFE=0x… RIXOR_GUARDIAN_SAFE=0x… \
 ///   forge script script/DeployRixorV2.s.sol --rpc-url <url> --broadcast <signer options>
 ///
 /// Guards (the script reverts before broadcasting anything if one fails):
@@ -72,6 +72,8 @@ contract DeployRixorV2 is Script {
     }
 
     function _guardChain() internal view {
+        // Mandatory pin: the operator states the intended chain; a mis-pointed RPC fails before anything is signed.
+        require(block.chainid == vm.envUint("RIXOR_EXPECTED_CHAIN_ID"), "RPC chain id differs from RIXOR_EXPECTED_CHAIN_ID");
         if (block.chainid == MAINNET) {
             require(
                 keccak256(bytes(vm.envOr("RIXOR_CONFIRM_MAINNET", string("")))) == keccak256(bytes(MAINNET_CONFIRMATION)),
@@ -186,7 +188,9 @@ contract DeployRixorV2 is Script {
         vm.serializeUint(key, "minHoldSeconds", minHold);
         vm.serializeUint(key, "initialListings", listingCount);
         string memory out = vm.serializeString(key, "config", configPath);
-        string memory file = string.concat("deployments/", vm.toString(block.chainid), ".json");
+        // RIXOR_OUTPUT_TAG (e.g. "plan") keeps rehearsal output apart from a real deployment's manifest.
+        string memory tag = vm.envOr("RIXOR_OUTPUT_TAG", string(""));
+        string memory file = string.concat("deployments/", vm.toString(block.chainid), bytes(tag).length > 0 ? string.concat("-", tag) : "", ".json");
         vm.writeJson(out, file);
         console2.log("manifest", file);
         console2.log("RixorLocker", d.locker);

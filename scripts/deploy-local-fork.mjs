@@ -34,7 +34,7 @@ const check = (name, ok, detail = '') => { results.push({ name, ok: Boolean(ok) 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function forge(args, env = {}) {
-  const r = spawnSync(process.execPath, [FORGE, ...args], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [FORGE, ...args], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env }, encoding: 'utf8' })
   if (r.status !== 0) { console.error(r.stdout, r.stderr); throw new Error(`forge ${args[1]} failed`) }
   return r.stdout
 }
@@ -63,13 +63,14 @@ try {
   check('VerifyRixorV2: wiring, roles, code hash and listings', /verification passed/.test(verifyOut))
 
   // Guards: the deploy script must refuse an EOA owner, and refuse to list the reward token.
-  const refuse = (extraEnv) => spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, ...env, ...extraEnv }, encoding: 'utf8' })
+  const refuse = (extraEnv) => spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env, ...extraEnv }, encoding: 'utf8' })
   // anvil's default account is EIP-7702-delegated on Robinhood mainnet (23 bytes of code): it must still be refused.
   check('guard: EIP-7702-delegated EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: deployer }).status !== 0)
   check('guard: plain EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: '0x00000000000000000000000000000000000Be111' }).status !== 0)
   check('guard: non-Safe contract owner rejected', refuse({ RIXOR_OWNER_SAFE: WIF }).status !== 0)
   check('guard: guardian sharing every owner signer rejected', refuse({ RIXOR_GUARDIAN_SAFE: logged(safesOut, 'LOCAL shared-signer Safe') }).status !== 0)
-  check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
+  check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '4663', ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
+  check('guard: chain pin mismatch refused', refuse({ RIXOR_EXPECTED_CHAIN_ID: '46630' }).status !== 0, 'local RPC with RIXOR_EXPECTED_CHAIN_ID=46630')
 
   // ------------------------------------------------------------------ smoke journey (impersonated holders)
   const lockerAbi = JSON.parse(readFileSync(join(ROOT, 'src/protocol/abi/RixorLocker.json'), 'utf8'))
@@ -86,11 +87,11 @@ try {
   check('fund a 7-day HOOKR stream with real WIF bytecode', (await new Contract(manifest.rewards, rewardsAbi, provider).streamCount()) === 1n)
 
   await (await new Contract(HOOKR, ERC20, hookrHolder).approve(manifest.locker, unit)).wait()
-  await (await new Contract(manifest.locker, lockerAbi, hookrHolder).lock(HOOKR, unit, 2, 90)).wait()
+  await (await new Contract(manifest.locker, lockerAbi, hookrHolder).lock(HOOKR, unit, 1, 60)).wait()
   await (await new Contract(TORCH, ERC20, torchHolder).approve(manifest.locker, unit)).wait()
   const torchBefore = await new Contract(TORCH, ERC20, provider).balanceOf(HOLDERS[TORCH])
   const rc = await (await new Contract(manifest.locker, lockerAbi, torchHolder).lock(TORCH, unit, 0, 0)).wait()
-  check('lock HOOKR (Diamond) and TORCH (Flexible) from holders, exact amounts', (await new Contract(TORCH, ERC20, provider).balanceOf(manifest.locker)) === unit && rc.status === 1)
+  check('lock HOOKR (Committed, Class B) and TORCH (Flexible) from holders, exact amounts', (await new Contract(TORCH, ERC20, provider).balanceOf(manifest.locker)) === unit && rc.status === 1)
 
   await provider.send('evm_increaseTime', [3 * 86400]); await provider.send('evm_mine', [])
   const torchLocker = new Contract(manifest.locker, lockerAbi, torchHolder)

@@ -40,7 +40,7 @@ listed. No script sets a gas limit: every transaction uses the node's `eth_estim
 
 ## 3. Testnet (Robinhood Chain testnet, chain id 46630)
 
-Rehearsed end to end on a local chain: `npm run rehearse:testnet` (9 checks) and the testnet-mode UI journey
+Full procedure: `docs/TESTNET_DEPLOYMENT.md`. Rehearsed end to end on a local chain: `npm run rehearse:testnet` (12 checks) and the testnet-mode UI journey
 (`demo/e2e/testnet-journey.mjs`, 8 steps). Every 🔒 step waits for the project owner's written approval.
 
 **Prepared defaults** (`script/DeployTestnetTokens.s.sol`; reviewable before anything is sent):

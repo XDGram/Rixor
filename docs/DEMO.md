@@ -42,9 +42,9 @@ Current snapshot: block **109,445,894**: 11 accounts, 101 KB.
 
 ## 2. What the simulation sets up
 
-On first visit, as real signed transactions: two 2-of-3 demo Safes; RixorLocker listing **HOOKR (Class A)** and
+On first visit, as real signed transactions: two 2-of-3 demo Safes; RixorLocker listing **HOOKR (Class B)** and
 **TORCH (Class B)** with provisional demo units and caps; RixorRewards; RixorChallenges (1-hour minimum hold for the
-demo); two **demo WIF streams** (140,000 WIF over 14 days for HOOKR, 70,000 WIF over 14 days for TORCH); a
+demo); two **demo WIF streams** (no Class A token is listed in the simulation, so Diamond is shown as unavailable; testnet's tMEMEA is Class A) (140,000 WIF over 14 days for HOOKR, 70,000 WIF over 14 days for TORCH); a
 community challenge and a Season challenge for HOOKR + TORCH; and three labelled demo bot lockers.
 
 **HOOKR and TORCH are candidate tokens listed in the simulation only, for testing. Neither is approved for

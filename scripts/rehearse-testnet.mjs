@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Contract, JsonRpcProvider, formatUnits, parseUnits } from 'ethers'
+import { Contract, Interface, JsonRpcProvider, Wallet, formatUnits, id as labelHash, parseUnits } from 'ethers'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const UPSTREAM = process.env.RH_MAINNET_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com'
@@ -29,7 +29,7 @@ const results = []
 const check = (name, ok, detail = '') => { results.push({ name, ok: Boolean(ok) }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`) }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 function forge(args, env = {}) {
-  const r = spawnSync(process.execPath, [FORGE, ...args], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [FORGE, ...args], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env }, encoding: 'utf8' })
   if (r.status !== 0) { console.error(r.stdout.slice(-3000), r.stderr.slice(-2000)); throw new Error(`forge ${args[1]} failed`) }
   return r.stdout
 }
@@ -45,10 +45,20 @@ try {
   const unlocked = ['--rpc-url', LOCAL, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
   mkdirSync(join(ROOT, 'deployments'), { recursive: true })
 
-  const safes = forge(['script', 'script/LocalForkSafes.s.sol', ...unlocked])
-  const ownerSafe = logged(safes, 'LOCAL owner Safe')
-  const guardianSafe = logged(safes, 'LOCAL guardian Safe')
-  check('stand-in Safes (2-of-3, Safe v1.5.0)', ownerSafe && guardianSafe)
+  // Signers: throwaway LOCAL test keys standing in for six hardware wallets (they sign with cast below, exactly as a
+  // Ledger would with `cast wallet sign --ledger`). Never used anywhere else.
+  // (Derived from labels: well-known keys such as 0x11…11 are EIP-7702-delegated on Robinhood mainnet and the
+  // script correctly refuses them as hardware-wallet signers.)
+  const ownerKeys = [1, 2, 3].map((i) => labelHash(`rixor.local.rehearsal.owner.${i}`))
+  const guardianKeys = [1, 2, 3].map((i) => labelHash(`rixor.local.rehearsal.guardian.${i}`))
+  const addr = (k) => new Wallet(k).address
+  const safeEnv = { RIXOR_OWNER_SIGNERS: ownerKeys.map(addr).join(','), RIXOR_GUARDIAN_SIGNERS: guardianKeys.map(addr).join(',') }
+  const planned = forge(['script', 'script/CreateTestnetSafes.s.sol', '--rpc-url', LOCAL, '--sender', deployer], safeEnv) // simulation only
+  const safes = forge(['script', 'script/CreateTestnetSafes.s.sol', ...unlocked], safeEnv)
+  const ownerSafe = logged(safes, 'owner Safe')
+  const guardianSafe = logged(safes, 'guardian Safe')
+  check('CreateTestnetSafes: 2-of-3 Safe v1.5.0, addresses equal the pre-broadcast prediction',
+    ownerSafe && guardianSafe && logged(planned, 'predicted owner Safe') === ownerSafe && logged(planned, 'predicted guardian Safe') === guardianSafe, `${ownerSafe} / ${guardianSafe}`)
 
   const tok = forge(['script', 'script/DeployTestnetTokens.s.sol', ...unlocked])
   const cfgPath = 'deployments/31337-testnet-config.json'
@@ -90,6 +100,29 @@ try {
   const [, fee] = await lk.exitTerms(id)
   await (await lk.exit(id, fee)).wait()
   check('early Committed exit with the quoted fee', (await b.balanceOf(manifest.locker)) === 0n, `fee ${Number(fee) / 100}%`)
+
+  // Multisig administration with the CLI flow: guardian Safe pauses, owner Safe unpauses (2 signatures each).
+  const safeTx = async (safe, keys, data, label) => {
+    const file = join(ROOT, 'deployments', `31337-safe-tx-${label}.json`)
+    const run = (a) => spawnSync(process.execPath, [join(ROOT, 'scripts/safe-tx.mjs'), ...a], { cwd: ROOT, encoding: 'utf8' })
+    const prep = run(['prepare', '--rpc', LOCAL, '--safe', safe, '--to', manifest.locker, '--data', data, '--out', file])
+    if (prep.status !== 0) throw new Error(`safe-tx prepare: ${prep.stderr}`)
+    const sigs = keys.slice(0, 2).map((k) => spawnSync(process.execPath, [join(ROOT, 'node_modules/@foundry-rs/cast/bin.mjs'), 'wallet', 'sign', '--private-key', k, '--data', '--from-file', file], { encoding: 'utf8' }).stdout.trim())
+    const ex = run(['exec', '--rpc', LOCAL, '--tx', file, ...sigs.flatMap((x) => ['--sig', x])])
+    if (ex.status !== 0) throw new Error(`safe-tx exec: ${ex.stderr}`)
+    const calldata = ex.stdout.match(/cast send 0x[0-9a-fA-F]{40} (0x[0-9a-fA-F]+)/)[1]
+    await (await (await provider.getSigner(deployer)).sendTransaction({ to: safe, data: calldata })).wait() // relays only
+  }
+  const L = new Interface(lockerAbi)
+  const lockerRead = new Contract(manifest.locker, lockerAbi, provider)
+  await safeTx(guardianSafe, guardianKeys, L.encodeFunctionData('pause'), 'pause')
+  const pausedAfter = await lockerRead.paused()
+  await safeTx(ownerSafe, ownerKeys, L.encodeFunctionData('unpause'), 'unpause')
+  check('Safe CLI flow: guardian 2-of-3 pause, owner 2-of-3 unpause (typed-data signatures)', pausedAfter === true && (await lockerRead.paused()) === false)
+  const oneSig = spawnSync(process.execPath, [join(ROOT, 'scripts/safe-tx.mjs'), 'exec', '--rpc', LOCAL, '--tx', join(ROOT, 'deployments', '31337-safe-tx-unpause.json'), '--sig', '0x' + '00'.repeat(65)], { encoding: 'utf8' })
+  check('Safe CLI refuses insufficient or invalid signatures', oneSig.status !== 0)
+  const mainnetPrep = spawnSync(process.execPath, [join(ROOT, 'scripts/safe-tx.mjs'), 'prepare', '--rpc', UPSTREAM, '--safe', ownerSafe, '--to', manifest.locker, '--data', '0x'], { encoding: 'utf8' })
+  check('Safe CLI refuses Robinhood Chain mainnet (4663)', mainnetPrep.status !== 0 && /refused/.test(mainnetPrep.stderr))
 
   // Frontend testnet-mode manifest (local build only; git-ignored).
   mkdirSync(join(ROOT, 'public', 'testnet'), { recursive: true })

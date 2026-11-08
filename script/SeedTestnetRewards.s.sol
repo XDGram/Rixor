@@ -25,6 +25,7 @@ contract SeedTestnetRewards is Script {
 
     function run() external {
         require(block.chainid == 46630 || block.chainid == 31337, "testnet or local only");
+        require(block.chainid == vm.envUint("RIXOR_EXPECTED_CHAIN_ID"), "RPC chain id differs from RIXOR_EXPECTED_CHAIN_ID");
         string memory dep = vm.readFile(vm.envString("RIXOR_DEPLOYMENT"));
         string memory cfg = vm.readFile(vm.envString("RIXOR_CONFIG"));
         require(dep.readUint(".chainId") == block.chainid, "manifest is for another chain");

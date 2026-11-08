@@ -37,8 +37,8 @@ export const TOKEN_LIST: ListedToken[] = [
     note: 'Reward and prize token. Not needed to lock, and not lockable itself.',
   },
   {
-    address: '0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c', symbol: 'HOOKR', name: 'Hookr.fun', decimals: 18, status: 'under_review', proposedClass: 'A',
-    note: 'Class A candidate. Testing only; not approved for listing.',
+    address: '0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c', symbol: 'HOOKR', name: 'Hookr.fun', decimals: 18, status: 'under_review', proposedClass: 'B',
+    note: 'Class B candidate (85.8% of ETH liquidity locked by code, below the 90% Class A threshold). Testing only; not approved for listing.',
     disclosures: ['Token code: Uniswap UERC20 (Solady). Like every Solady token, it pre-approves Permit2 for all holders; only sign Permit2 messages you trust.'],
   },
   {

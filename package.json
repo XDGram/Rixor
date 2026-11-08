@@ -23,7 +23,8 @@
     "demo:snapshot": "node scripts/build-browser-snapshot.mjs",
     "demo:verify": "node scripts/verify-browser-evm.mjs",
     "deploy:local-fork": "node scripts/deploy-local-fork.mjs",
-    "rehearse:testnet": "node scripts/rehearse-testnet.mjs"
+    "rehearse:testnet": "node scripts/rehearse-testnet.mjs",
+    "plan:testnet": "node scripts/plan-testnet.mjs"
   },
   "dependencies": {
     "@ethereumjs/block": "10.1.3",

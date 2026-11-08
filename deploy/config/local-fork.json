@@ -3,7 +3,7 @@
   "wif": "0x5173b8eA6923c2d40267890D45C46a3480954773",
   "minHoldSeconds": 86400,
   "listings": [
-    { "token": "0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c", "unitAmount": "100000000000000000000000", "maxTotalLocked": "50000000000000000000000000", "riskClass": 1 },
+    { "token": "0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c", "unitAmount": "100000000000000000000000", "maxTotalLocked": "50000000000000000000000000", "riskClass": 2 },
     { "token": "0x000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111", "unitAmount": "100000000000000000000000", "maxTotalLocked": "50000000000000000000000000", "riskClass": 2 }
   ]
 }

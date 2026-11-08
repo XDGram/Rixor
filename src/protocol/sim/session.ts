@@ -9,7 +9,7 @@ import { SimProvider } from './provider'
 import { DEMO_PARAMS, faucetTransfer, seedChain } from './seed'
 
 export const SIM_CHAIN_ID = 466399
-const STATE_KEY = 'state-v2'
+const STATE_KEY = 'state-v3' // v3: HOOKR listed as Class B
 const MAX_TIME_ADVANCE = 31 * 86400
 
 type Saved = { snapshotBlockHash: string; manifest: Manifest; ops: Op[]; clockOffset: number; walletKey?: string; createdAt: string }

@@ -107,12 +107,13 @@ try {
     await closeSheet()
   })
 
-  await step('lock 10 units of HOOKR (Class A) as Diamond for 90 days, no WIF needed', async () => {
+  await step('lock 10 units of HOOKR (Class B): Diamond unavailable, Committed 60 days, no WIF needed', async () => {
     await go('#/lock')
     await page.locator('.seg button', { hasText: 'HOOKR' }).click()
-    await page.getByRole('radio', { name: /Diamond/ }).click()
+    if (!(await page.getByRole('radio', { name: /Diamond/ }).isDisabled())) throw new Error('Diamond should be disabled for HOOKR (Class B)')
+    await page.getByRole('radio', { name: /Committed/ }).click()
     await page.locator('.chip', { hasText: '10 units' }).click()
-    await page.locator('.chip', { hasText: '90 days' }).click()
+    await page.locator('.chip', { hasText: '60 days' }).click()
     await page.locator('.rows', { hasText: '10 units' }).waitFor()
     await shot('03-lock-form')
     await page.getByRole('button', { name: 'Lock HOOKR' }).click()
@@ -144,7 +145,7 @@ try {
     await page.locator('.challenge-card h3', { hasText: 'E2E: hold through the hour' }).waitFor()
   })
 
-  await step('join the challenge with the Diamond position', async () => {
+  await step('join the challenge with a locked position', async () => {
     await page.locator('.choice:not([disabled])').first().click()
     await page.getByRole('button', { name: 'Join challenge' }).click()
     await receipt('Joined')
