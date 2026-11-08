@@ -7,7 +7,8 @@
 //   1. Pin the latest Robinhood Chain mainnet block.
 //   2. Start a throwaway LOCAL anvil fork at that block and use eth_createAccessList to discover every
 //      account and storage slot touched by the demo's dependencies:
-//        - WIF: name/symbol/decimals/totalSupply/balanceOf/allowance/transfer/approve/transferFrom/burn,
+//        - WIF (reward token) and the candidate meme tokens HOOKR and TORCH: name/symbol/decimals/
+//          totalSupply/balanceOf/allowance/transfer/approve/transferFrom (and burn where it exists),
 //          including transfers out of the large holders that the demo faucet draws from;
 //        - Safe v1.5.0: proxy creation through the factory, setup, and an execTransaction.
 //   3. Fetch code and every discovered slot DIRECTLY from the upstream RPC at the pinned block
@@ -30,6 +31,12 @@ const SAFE = {
   singletonL2: '0xEdd160fEBBD92E350D4D398fb636302fccd67C7e',
   factory: '0x14F2982D601c9458F93bd70B218933A6f8165e7b',
   fallbackHandler: '0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4',
+}
+// Candidate meme tokens copied into the simulation (approved for implementation testing only, not for
+// production listing). Each has one large EOA holder whose COPIED balance the demo faucet draws from.
+const MEME_TOKENS = {
+  HOOKR: { address: '0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c', reserves: ['0xA522e716e1750702F775416f2Aa3Df620D9A1831'] },
+  TORCH: { address: '0x000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111', reserves: ['0x9eAc2DD9A2cEE409575901f50C8B3e5Bd7eE1b2d'] },
 }
 // Large WIF holders (from docs/TOKEN_VETTING.md). Inside the isolated browser EVM, the demo faucet moves
 // part of their copied balance to visitors. Their real balances are never touched.
@@ -93,6 +100,24 @@ async function main() {
       add(await accessList(p, { from, to: WIF, data: ERC20.encodeFunctionData('approve', [spender, 10n ** 18n]) }))
       add(await accessList(p, { from, to: WIF, data: ERC20.encodeFunctionData('burn', [10n ** 18n]) }))
     }
+    // Meme tokens: the same surface, from their reserve holders and a fresh account.
+    for (const { address: token, reserves } of Object.values(MEME_TOKENS)) {
+      for (const from of [...reserves, spender]) {
+        for (const data of [
+          ERC20.encodeFunctionData('name'), ERC20.encodeFunctionData('symbol'), ERC20.encodeFunctionData('decimals'),
+          ERC20.encodeFunctionData('totalSupply'), ERC20.encodeFunctionData('balanceOf', [from]),
+          ERC20.encodeFunctionData('allowance', [from, spender]),
+        ]) add(await accessList(p, { from, to: token, data }))
+      }
+      for (const from of reserves) {
+        add(await accessList(p, { from, to: token, data: ERC20.encodeFunctionData('transfer', [spender, 10n ** 18n]) }))
+        add(await accessList(p, { from, to: token, data: ERC20.encodeFunctionData('approve', [spender, 10n ** 18n]) }))
+        await p.send('anvil_setBalance', [from, hex(parseEther('1'))])
+        await p.send('anvil_impersonateAccount', [from])
+        await (await new Contract(token, ERC20, await p.getSigner(from)).approve(spender, 10n ** 18n)).wait()
+        add(await accessList(p, { from: spender, to: token, data: ERC20.encodeFunctionData('transferFrom', [from, spender, 10n ** 18n]) }))
+      }
+    }
     // transferFrom needs a real allowance: create one on the throwaway fork, then trace.
     await p.send('anvil_setBalance', [RESERVES[0], hex(parseEther('1'))])
     await p.send('anvil_impersonateAccount', [RESERVES[0]])
@@ -123,7 +148,8 @@ async function main() {
   }
 
   // Required dependencies regardless of what the traces show.
-  for (const a of [WIF, SAFE.singletonL2, SAFE.factory, SAFE.fallbackHandler, ...RESERVES]) if (!touched.has(a.toLowerCase())) touched.set(a.toLowerCase(), new Set())
+  const memeAddrs = Object.values(MEME_TOKENS).flatMap((t) => [t.address, ...t.reserves])
+  for (const a of [WIF, SAFE.singletonL2, SAFE.factory, SAFE.fallbackHandler, ...RESERVES, ...memeAddrs]) if (!touched.has(a.toLowerCase())) touched.set(a.toLowerCase(), new Set())
   touched.delete('0x00000000000000000000000000000000000ab1e1')
 
   // Fetch everything directly from the upstream at the pinned block.
@@ -139,7 +165,8 @@ async function main() {
 
   // Verification: required contracts present with code; values re-read and compared.
   const problems = []
-  for (const [name, a] of Object.entries({ WIF, ...SAFE })) if ((accounts[a.toLowerCase()]?.code ?? '0x') === '0x') problems.push(`${name} has no code`)
+  const memeContracts = Object.fromEntries(Object.entries(MEME_TOKENS).map(([k, v]) => [k, v.address]))
+  for (const [name, a] of Object.entries({ WIF, ...SAFE, ...memeContracts })) if ((accounts[a.toLowerCase()]?.code ?? '0x') === '0x') problems.push(`${name} has no code`)
   for (const [addr, acc] of Object.entries(accounts)) {
     const again = await upstream.getCode(addr, block.number)
     if (keccak256(again) !== acc.codeHash) problems.push(`code changed for ${addr}`)
@@ -147,16 +174,24 @@ async function main() {
   const wif = new Contract(WIF, ERC20, upstream)
   const reserveBalances = {}
   for (const r of RESERVES) reserveBalances[r] = (await wif.balanceOf(r, { blockTag: block.number })).toString()
+  const memeTokens = {}
+  for (const [symbol, t] of Object.entries(MEME_TOKENS)) {
+    const erc = new Contract(t.address, ERC20, upstream)
+    const balances = {}
+    for (const r of t.reserves) balances[r] = (await erc.balanceOf(r, { blockTag: block.number })).toString()
+    memeTokens[symbol] = { address: t.address, name: await erc.name({ blockTag: block.number }), decimals: Number(await erc.decimals({ blockTag: block.number })), reserves: t.reserves, reserveBalances: balances }
+  }
   if (problems.length) throw new Error(`snapshot verification failed: ${problems.join('; ')}`)
 
   const snapshot = {
     kind: 'rixor-browser-evm-snapshot',
-    version: 1,
+    version: 2,
     source: { name: 'Robinhood Chain mainnet', chainId: 4663, rpc: RPC, block: block.number, blockHash: block.hash, timestamp: block.timestamp, builtAt: new Date().toISOString() },
     method: 'Code and storage read directly from the upstream RPC at the pinned block; slot set discovered with eth_createAccessList on a throwaway local fork.',
     contracts: { WIF, ...SAFE },
     reserves: RESERVES,
     reserveBalances,
+    memeTokens,
     accounts,
   }
   mkdirSync(dirname(OUT), { recursive: true })

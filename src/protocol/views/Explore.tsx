@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { icon } from '../../ui'
 import { Empty } from '../components'
 import type { Ctx } from '../ctx'
-import { fmtDuration, fmtPoints, fmtToken, pct, phaseOf, PHASE_LABEL, TIERS, type Challenge } from '../model'
+import { fmtDuration, fmtPoints, fmtToken, pct, phaseOf, PHASE_LABEL, RISK_CLASS, TIERS, type Challenge } from '../model'
+import { HoldingsCard } from './Holdings'
 
 type Filter = 'live' | 'ended' | 'mine'
 
@@ -59,14 +60,14 @@ export function Explore({ ctx }: { ctx: Ctx }) {
     <div className="view">
       <section className="card explore-hero">
         <small className="kicker">Conviction locking on Robinhood Chain</small>
-        <h1 className="section-title">Lock your memes. Hold together. Share prefunded WIF pools.</h1>
+        <h1 className="section-title">Lock the memes you already hold. Earn WIF from prefunded streams.</h1>
         <p className="figure-sub">
-          Lock supported tokens for a time commitment, join community challenges, and split WIF pools that sponsors deposit up front.
-          Locking itself earns nothing; rewards exist only where a pool was funded.
+          Lock a supported community token straight from your wallet, choose how long you commit, and share the WIF that sponsors stream to that community.
+          You never need WIF to lock. Rewards exist only where a sponsor funded them up front.
         </p>
         <div className="stat-grid">
           {snapshot.tokens.map((t) => (
-            <div className="stat" key={t.address}><small>{t.symbol} locked</small><strong>{fmtToken(t.totalLocked, t.decimals, { compact: true })}</strong><span>{pct(t.totalLocked, t.cap)}% of cap</span></div>
+            <div className="stat" key={t.address}><small>{t.symbol} locked</small><strong>{fmtToken(t.totalLocked, t.decimals, { compact: true })}</strong><span>{fmtToken(t.rateNow * 86_400n, 18, { compact: true })} WIF/day streaming</span></div>
           ))}
           <div className="stat"><small>WIF in challenge escrow</small><strong>{fmtToken(escrow, 18, { compact: true })}</strong><span>prefunded by sponsors</span></div>
           <div className="stat"><small>Live challenges</small><strong>{live}</strong><span>{snapshot.challenges.length} total</span></div>
@@ -77,22 +78,24 @@ export function Explore({ ctx }: { ctx: Ctx }) {
         </div>
       </section>
 
+      <HoldingsCard ctx={ctx} />
+
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Token communities</small><h2>Supported tokens</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">Token communities · browser simulation</small><h2>Tokens you can lock here</h2></div></header>
         <ul className="token-list">
           {snapshot.tokens.map((t) => (
             <li key={t.address}>
               <button type="button" className="token-line" onClick={() => ctx.go({ name: 'token', address: t.address })}>
                 <span className="token-mark">{t.symbol.slice(0, 1)}</span>
-                <span className="token-line-copy"><strong>{t.symbol}</strong><span>{(t.multiplierBps / 10_000).toFixed(1)}× token multiplier · reward token</span></span>
-                <span className="token-line-side"><strong>{fmtToken(t.totalLocked, t.decimals, { compact: true })}</strong><span>locked</span></span>
+                <span className="token-line-copy"><strong>{t.symbol} <span className={`tag ${t.riskClass === 1 ? 'tag--lime' : 'tag--outline'}`}>{RISK_CLASS[t.riskClass]?.label}</span></strong><span>{t.releasedAt !== 0 ? 'Released: exits free, locks closed' : `${RISK_CLASS[t.riskClass]?.tiers} · ${fmtToken(t.rateNow * 86_400n, 18, { compact: true })} WIF/day`}</span></span>
+                <span className="token-line-side"><strong>{fmtToken(t.totalLocked, t.decimals, { compact: true })}</strong><span>locked · {pct(t.totalLocked, t.cap)}% of cap</span></span>
               </button>
             </li>
           ))}
         </ul>
         <p className="fine-print">
-          The pilot supports WIF only. Other meme tokens are added only after exact-address vetting, approval and a 48-hour on-chain timelock.
-          DOPE remains excluded until its listing conditions are met.
+          HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing.
+          On Robinhood Chain, a token becomes supported only after exact-address vetting, approval and a 48-hour on-chain timelock.
         </p>
       </section>
 

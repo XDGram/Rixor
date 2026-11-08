@@ -88,7 +88,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
   const sponsorProblem = sponsorAmount === null ? null
     : sponsorAmount < MIN_SPONSOR ? 'Minimum sponsorship is 10,000 WIF.'
       : c.pool + sponsorAmount > MAX_POOL ? `The pool cannot exceed 10,000,000 WIF (room for ${fmtToken(MAX_POOL - c.pool)}).`
-        : wallet && sponsorAmount > (ctx.snapshot.tokens[0]?.balance ?? 0n) ? 'More than this wallet holds.' : null
+        : wallet && sponsorAmount > ctx.snapshot.wif.balance ? 'More than this wallet holds.' : null
   const blocked = ctx.snapshot.paused || ctx.snapshot.emergencyAt !== 0
   const canSponsor = (phase === 'open' || phase === 'holding') && !blocked
   const sweepEstimate = c.pool > 0n ? (c.escrow * c.me.contribution) / c.pool : 0n
@@ -102,8 +102,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
   const sponsor = async () => {
     if (!write || !sponsorAmount) return
     const steps = []
-    const wif = ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === ctx.manifest.contracts.wif.toLowerCase())
-    if ((wif?.allowanceChallenges ?? 0n) < sponsorAmount) steps.push({ label: `Approve ${fmtToken(sponsorAmount)} WIF`, send: () => write.wif.approve(ctx.manifest.contracts.challenges, sponsorAmount) })
+    if (ctx.snapshot.wif.allowanceChallenges < sponsorAmount) steps.push({ label: `Approve ${fmtToken(sponsorAmount)} WIF`, send: () => write.wif.approve(ctx.manifest.contracts.challenges, sponsorAmount) })
     steps.push({ label: `Sponsor ${fmtToken(sponsorAmount)} WIF`, send: () => write.challenges.sponsor(c.id, sponsorAmount) })
     const ok = await tx.run('sponsor', steps, `Added ${fmtToken(sponsorAmount)} WIF to the pool`)
     if (ok) setSponsorText('')
@@ -169,7 +168,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
           <div className="sheet-section">
             {eligible.length === 0 ? (
               <div className="empty empty--action">
-                <div><strong>No open position</strong><span>Lock {symbols} first, then come back to join.</span></div>
+                <div><strong>No open position</strong><span>Lock {symbols.split(' + ').join(' or ')} first, then come back to join.</span></div>
                 <button type="button" className="btn btn--lime btn--sm" onClick={() => ctx.go({ name: 'lock' })}>Lock</button>
               </div>
             ) : (
@@ -179,7 +178,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
                   {eligible.map(({ p, reason, points }) => (
                     <li key={p.id}>
                       <button type="button" disabled={reason !== null} className={`choice ${positionId === p.id ? 'is-active' : ''}`} onClick={() => setPositionId(p.id)} aria-pressed={positionId === p.id}>
-                        <span><strong>#{p.id} · {TIERS[p.tier].name}</strong><small>{fmtToken(p.amount)} {ctx.snapshot.tokens[0]?.symbol}</small></span>
+                        <span><strong>#{p.id} · {TIERS[p.tier].name}</strong><small>{fmtToken(p.amount)} {ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === p.token.toLowerCase())?.symbol ?? ''}</small></span>
                         <span>{reason ? <small className="is-loss">{reason}</small> : <strong>{points !== null ? `${fmtPoints(points)} pts` : '…'}</strong>}</span>
                       </button>
                     </li>

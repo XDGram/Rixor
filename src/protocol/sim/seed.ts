@@ -3,17 +3,26 @@
 import { Contract, ContractFactory, Interface, Wallet, getAddress, parseUnits, type Log, type LogDescription, type Provider } from 'ethers'
 import lockerAbi from '../abi/RixorLocker.json'
 import challengesAbi from '../abi/RixorChallenges.json'
+import rewardsAbi from '../abi/RixorRewards.json'
 import lockerArtifact from './artifacts/RixorLocker.json'
 import challengesArtifact from './artifacts/RixorChallenges.json'
+import rewardsArtifact from './artifacts/RixorRewards.json'
 import type { Snapshot, SimChain } from './engine'
 
 export const DEMO_PARAMS = {
   // Provisional demo values. Not approved production parameters.
-  wifUnit: '7500',
-  wifCap: '50000000',
+  memeUnit: '10000',
+  memeCap: '50000000',
   minHoldSeconds: 3600,
   faucetWif: '1000000',
+  faucetMeme: '500000',
 }
+
+/** Candidate tokens listed in the SIMULATION's Locker for testing. Not approved for production listing. */
+export const SIM_LISTINGS = [
+  { symbol: 'HOOKR', riskClass: 1 },
+  { symbol: 'TORCH', riskClass: 2 },
+] as const
 
 const ERC20 = new Interface([
   'function transfer(address,uint256) returns (bool)', 'function approve(address,uint256) returns (bool)',
@@ -29,18 +38,22 @@ const SAFE = new Interface([
 const ZERO = '0x0000000000000000000000000000000000000000'
 const DAY = 86400
 
-/** Moves copied WIF from a large mainnet holder inside the isolated chain (anvil-style impersonation). */
-export async function faucetTransfer(chain: SimChain, provider: Provider, snapshot: Snapshot, to: string, wholeWif: string) {
-  const amount = parseUnits(wholeWif, 18)
-  const wif = new Contract(snapshot.contracts.WIF, ERC20, provider)
-  for (const reserve of snapshot.reserves) {
-    const bal = (await wif.balanceOf(reserve)) as bigint
+/** Moves copied tokens from a large mainnet holder inside the isolated chain (anvil-style impersonation). */
+export async function faucetTransfer(chain: SimChain, provider: Provider, snapshot: Snapshot, to: string, whole: string, symbol = 'WIF') {
+  const meme = symbol === 'WIF' ? null : snapshot.memeTokens?.[symbol]
+  if (symbol !== 'WIF' && !meme) throw new Error(`${symbol} is not in this snapshot.`)
+  const tokenAddr = meme ? meme.address : snapshot.contracts.WIF
+  const reserves = meme ? meme.reserves : snapshot.reserves
+  const amount = parseUnits(whole, 18)
+  const token = new Contract(tokenAddr, ERC20, provider)
+  for (const reserve of reserves) {
+    const bal = (await token.balanceOf(reserve)) as bigint
     if (bal >= amount) {
-      await chain.apply({ k: 'imp', from: reserve, to: snapshot.contracts.WIF, data: ERC20.encodeFunctionData('transfer', [to, amount]), ts: chain.now(), label: 'Demo faucet' })
+      await chain.apply({ k: 'imp', from: reserve, to: tokenAddr, data: ERC20.encodeFunctionData('transfer', [to, amount]), ts: chain.now(), label: `Demo faucet (${symbol})` })
       return amount
     }
   }
-  throw new Error('The demo faucet reserve is exhausted. Reset the demo to start over.')
+  throw new Error(`The demo ${symbol} faucet reserve is exhausted. Reset the demo to start over.`)
 }
 
 async function deploySafe(provider: Provider, deployer: Wallet, snapshot: Snapshot, owners: string[], salt: number) {
@@ -62,14 +75,15 @@ async function safeExec(relayer: Wallet, safeAddress: string, signers: Wallet[],
 }
 
 export type SeedResult = {
-  contracts: { locker: string; challenges: string; wif: string; ownerSafe: string; guardianSafe: string }
+  contracts: { locker: string; challenges: string; rewards: string; wif: string; ownerSafe: string; guardianSafe: string }
+  tokens: { address: string; symbol: string; name: string; riskClass: number }[]
   safeVersion: string
   sponsorBot: string
   lockerBots: string[]
   seeds: number[]
 }
 
-/** Deploys the Gate 1 contracts with two 2-of-3 Safes and creates labelled demo activity. */
+/** Deploys the V2 contracts with two 2-of-3 Safes, funds WIF streams and creates labelled demo activity. */
 export async function seedChain(chain: SimChain, provider: Provider, snapshot: Snapshot, onStep?: (label: string) => void): Promise<SeedResult> {
   // Throwaway keys used only to sign the setup transactions below; they are not stored anywhere.
   const fresh = () => Wallet.createRandom().connect(provider) as unknown as Wallet
@@ -79,37 +93,55 @@ export async function seedChain(chain: SimChain, provider: Provider, snapshot: S
   const sponsor = fresh()
   const bots = [fresh(), fresh(), fresh()]
   const wifAddr = snapshot.contracts.WIF
+  const memes = SIM_LISTINGS.map((l) => {
+    const m = snapshot.memeTokens?.[l.symbol]
+    if (!m) throw new Error(`Snapshot is missing ${l.symbol}`)
+    return { address: getAddress(m.address), symbol: l.symbol, name: m.name, riskClass: l.riskClass }
+  })
+  const [hookr, torch] = memes
 
   onStep?.('Creating the demo Safes (Safe v1.5.0)')
   const ownerSafe = await deploySafe(provider, deployer, snapshot, ownerSigners.map((w) => w.address), 1)
   const guardianSafe = await deploySafe(provider, deployer, snapshot, guardianSigners.map((w) => w.address), 2)
 
-  onStep?.('Deploying RixorLocker and RixorChallenges')
-  const unit = parseUnits(DEMO_PARAMS.wifUnit, 18)
-  const cap = parseUnits(DEMO_PARAMS.wifCap, 18)
-  const locker = await new ContractFactory(lockerAbi, lockerArtifact.bytecode, deployer).deploy(wifAddr, ownerSafe.address, guardianSafe.address, [wifAddr], [unit], [cap])
+  onStep?.('Deploying RixorLocker, RixorRewards and RixorChallenges')
+  const unit = parseUnits(DEMO_PARAMS.memeUnit, 18)
+  const cap = parseUnits(DEMO_PARAMS.memeCap, 18)
+  const listings = memes.map((m) => ({ token: m.address, unitAmount: unit, maxTotalLocked: cap, riskClass: m.riskClass }))
+  const locker = await new ContractFactory(lockerAbi, lockerArtifact.bytecode, deployer).deploy(ownerSafe.address, guardianSafe.address, listings)
   await locker.waitForDeployment()
   const lockerAddr = await locker.getAddress()
-  const challenges = await new ContractFactory(challengesAbi, challengesArtifact.bytecode, deployer).deploy(lockerAddr, DEMO_PARAMS.minHoldSeconds)
+  const rewards = await new ContractFactory(rewardsAbi, rewardsArtifact.bytecode, deployer).deploy(lockerAddr, wifAddr)
+  await rewards.waitForDeployment()
+  const rewardsAddr = await rewards.getAddress()
+  const challenges = await new ContractFactory(challengesAbi, challengesArtifact.bytecode, deployer).deploy(lockerAddr, wifAddr, DEMO_PARAMS.minHoldSeconds)
   await challenges.waitForDeployment()
   const challengesAddr = await challenges.getAddress()
 
-  onStep?.('Creating demo seed challenges')
-  await faucetTransfer(chain, provider, snapshot, sponsor.address, '1000000')
+  onStep?.('Funding demo WIF reward streams')
+  await faucetTransfer(chain, provider, snapshot, sponsor.address, '1500000')
   await faucetTransfer(chain, provider, snapshot, ownerSafe.address, '600000')
-  for (const b of bots) await faucetTransfer(chain, provider, snapshot, b.address, '300000')
+  const wif = (w: Wallet) => new Contract(wifAddr, ERC20, w)
+  const rw = new Contract(rewardsAddr, rewardsAbi, sponsor)
+  await (await wif(sponsor).approve(rewardsAddr, parseUnits('210000', 18))).wait()
+  await (await rw.fund(hookr.address, parseUnits('140000', 18), 14)).wait()
+  await (await rw.fund(torch.address, parseUnits('70000', 18), 14)).wait()
 
+  onStep?.('Creating demo seed challenges')
+  for (const b of bots) {
+    await faucetTransfer(chain, provider, snapshot, b.address, '400000', 'HOOKR')
+    await faucetTransfer(chain, provider, snapshot, b.address, '400000', 'TORCH')
+  }
   const now = chain.now()
   const params = (title: string, description: string, joinIn: number, endIn: number, minTier: number, minUnits: number) => ({
-    tokens: [wifAddr], minTier, minUnitsPerEntry: minUnits, joinDeadline: now + joinIn, endTime: now + endIn,
+    tokens: [hookr.address, torch.address], minTier, minUnitsPerEntry: minUnits, joinDeadline: now + joinIn, endTime: now + endIn,
     goalPoints: 0n, maxParticipants: 200, title, description,
   })
-  const wif = (w: Wallet) => new Contract(wifAddr, ERC20, w)
   const ch = (w: Wallet) => new Contract(challengesAddr, challengesAbi, w)
   await (await wif(sponsor).approve(challengesAddr, parseUnits('250000', 18))).wait()
   await (await ch(sponsor).createChallenge(params(
     'Hold the line (demo seed)',
-    'Demo challenge created when this simulation started. Keep your WIF position open until the end to share the pool.',
+    'Demo challenge created when this simulation started. Lock HOOKR or TORCH and keep the position open until the end to share the pool.',
     2 * DAY, 5 * DAY, 0, 1,
   ), parseUnits('250000', 18))).wait()
   const seasonPool = parseUnits('500000', 18)
@@ -121,16 +153,16 @@ export async function seedChain(chain: SimChain, provider: Provider, snapshot: S
 
   onStep?.('Demo lockers joining')
   const plan = [
-    { amount: '75000', tier: 2, days: 90, season: true },
-    { amount: '30000', tier: 1, days: 30, season: true },
-    { amount: '15000', tier: 0, days: 0, season: false },
+    { token: hookr, amount: '300000', tier: 2, days: 90, season: true },
+    { token: torch, amount: '200000', tier: 1, days: 60, season: true },
+    { token: hookr, amount: '100000', tier: 0, days: 0, season: false },
   ]
   const lockerIface = new Interface(lockerAbi)
   for (let i = 0; i < bots.length; i++) {
     const p = plan[i]
     const amt = parseUnits(p.amount, 18)
-    await (await wif(bots[i]).approve(lockerAddr, amt)).wait()
-    const rc = await (await new Contract(lockerAddr, lockerAbi, bots[i]).lock(wifAddr, amt, p.tier, p.days)).wait()
+    await (await new Contract(p.token.address, ERC20, bots[i]).approve(lockerAddr, amt)).wait()
+    const rc = await (await new Contract(lockerAddr, lockerAbi, bots[i]).lock(p.token.address, amt, p.tier, p.days)).wait()
     const ev = rc!.logs.map((l: Log) => { try { return lockerIface.parseLog(l) } catch { return null } }).find((e: LogDescription | null) => e?.name === 'Locked')
     const positionId = ev!.args.positionId as bigint
     await (await ch(bots[i]).join(1, positionId, ZERO)).wait()
@@ -138,7 +170,8 @@ export async function seedChain(chain: SimChain, provider: Provider, snapshot: S
   }
 
   return {
-    contracts: { locker: lockerAddr, challenges: challengesAddr, wif: wifAddr, ownerSafe: ownerSafe.address, guardianSafe: guardianSafe.address },
+    contracts: { locker: lockerAddr, challenges: challengesAddr, rewards: rewardsAddr, wif: wifAddr, ownerSafe: ownerSafe.address, guardianSafe: guardianSafe.address },
+    tokens: memes,
     safeVersion: ownerSafe.version,
     sponsorBot: sponsor.address,
     lockerBots: bots.map((b) => b.address),

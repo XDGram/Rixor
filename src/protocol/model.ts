@@ -2,9 +2,15 @@ import { formatUnits } from 'ethers'
 
 export const TIERS = [
   { id: 0, name: 'Flexible', short: 'FLX', multiplierBps: 5_000, summary: 'Exit any time, no fee.' },
-  { id: 1, name: 'Committed', short: 'CMT', multiplierBps: 15_000, summary: '30–90 days. Early exit fee up to 10%, falling to 0.' },
-  { id: 2, name: 'Diamond', short: 'DMD', multiplierBps: 25_000, summary: '30–90 days. No exit before the term ends.' },
+  { id: 1, name: 'Committed', short: 'CMT', multiplierBps: 15_000, summary: 'Fixed term. Early exit fee up to 10%, falling to 0.' },
+  { id: 2, name: 'Diamond', short: 'DMD', multiplierBps: 25_000, summary: 'Fixed term. No exit before the term ends.' },
 ] as const
+
+/** Risk classes enforced by the Locker. They limit what a holder can commit to, never what they can withdraw. */
+export const RISK_CLASS: Record<number, { label: string; tiers: string; maxTermDays: number; why: string }> = {
+  1: { label: 'Class A', tiers: 'Flexible, Committed, Diamond', maxTermDays: 90, why: 'Deep, code-locked liquidity and widely spread holders: all tiers allowed.' },
+  2: { label: 'Class B', tiers: 'Flexible, Committed', maxTermDays: 60, why: 'No Diamond: holders can always leave early (Committed with a fee), because market or concentration risk is higher.' },
+}
 
 export const MAX_SCORED_UNITS = 10
 export const MAX_POSITION_UNITS = 50
@@ -14,6 +20,17 @@ export const MIN_SPONSOR = 10_000n * 10n ** 18n
 export const MAX_PARTICIPANTS = 200
 export const MAX_DURATION = 30 * 86400
 
+export type StreamInfo = {
+  id: number
+  token: string
+  funder: string
+  start: number
+  end: number
+  rate: bigint
+  amount: bigint
+  refunded: boolean
+}
+
 export type TokenInfo = {
   address: string
   symbol: string
@@ -21,12 +38,22 @@ export type TokenInfo = {
   unit: bigint
   cap: bigint
   totalLocked: bigint
+  totalWeight: bigint
   locksEnabled: boolean
-  multiplierBps: number
+  riskClass: number
+  /** Bitmask of tiers allowed right now (bit i = tier i); 0 when locks are closed. */
+  allowedMask: number
+  maxTermDays: number
+  releasedAt: number
   balance: bigint
   allowanceLocker: bigint
-  allowanceChallenges: bigint
+  streams: StreamInfo[]
+  /** WIF per second currently streaming to this token's lockers (from active streams). */
+  rateNow: bigint
 }
+
+/** The reward and prize token. Not lockable; never needed to lock. */
+export type WifInfo = { address: string; balance: bigint; allowanceChallenges: bigint; allowanceRewards: bigint }
 
 export type Position = {
   id: number
@@ -37,8 +64,12 @@ export type Position = {
   endsAt: number
   closedAt: number
   amount: bigint
+  weight: bigint
   exitAllowed: boolean
   feeBps: number
+  /** WIF claimable now from reward streams (simulated claim, includes catching up). */
+  rewardClaimable: bigint
+  rewardClaimed: bigint
 }
 
 export type Entry = { positionId: number; points: bigint; qualified: boolean; claimed: boolean }
@@ -95,14 +126,25 @@ export const PHASE_LABEL: Record<Phase, string> = {
   cancelled: 'Cancelled by emergency · refunds',
 }
 
-/** Mirrors RixorChallenges scoring. Points are relative scoring units, not values. */
-export function pointsFor(amount: bigint, unit: bigint, tier: number, tokenMultiplierBps: number) {
+/** Mirrors RixorChallenges scoring (every token counts equally). Points are relative scoring units, not values. */
+export function pointsFor(amount: bigint, unit: bigint, tier: number) {
   if (unit === 0n) return { units: 0, points: 0n }
   let units = Number(amount / unit)
   if (units > MAX_SCORED_UNITS) units = MAX_SCORED_UNITS
-  const points = (BigInt(units) * BigInt(TIERS[tier]?.multiplierBps ?? 0) * BigInt(tokenMultiplierBps)) / 10_000n
+  const points = BigInt(units) * BigInt(TIERS[tier]?.multiplierBps ?? 0)
   return { units, points }
 }
+
+/** Mirrors RixorLocker: weight = amount x tier multiplier. */
+export const weightOf = (amount: bigint, tier: number) => (amount * BigInt(TIERS[tier]?.multiplierBps ?? 0)) / 10_000n
+
+/** Estimated WIF per day for a new position of `weight`, given the token's current stream rate and weight. */
+export function estimateDaily(rateNow: bigint, totalWeight: bigint, weight: bigint) {
+  if (weight === 0n || rateNow === 0n) return 0n
+  return (rateNow * 86_400n * weight) / (totalWeight + weight)
+}
+
+export const tierAllowed = (mask: number, tier: number) => (mask & (1 << tier)) !== 0
 
 // ------------------------------------------------------------------ formatting
 

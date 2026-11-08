@@ -1,7 +1,7 @@
 // Isolated in-browser EVM for the Rixor demo.
 //
-// The chain starts from a snapshot of Robinhood Chain mainnet state (real WIF code and storage, canonical
-// Safe v1.5.0 contracts) and executes the actual compiled Gate 1 bytecode with @ethereumjs/vm. It answers
+// The chain starts from a snapshot of Robinhood Chain mainnet state (real WIF, HOOKR and TORCH code and storage,
+// canonical Safe v1.5.0 contracts) and executes the actual compiled V2 bytecode with @ethereumjs/vm. It answers
 // the JSON-RPC methods the app uses. Nothing here talks to a network: it is a private chain on this device.
 //
 // Persistence is an append-only journal of operations (signed raw transactions, faucet transfers, time
@@ -11,7 +11,7 @@ import { createVM, runTx, type VM } from '@ethereumjs/vm'
 import { createCustomCommon, Hardfork, Mainnet, type Common } from '@ethereumjs/common'
 import { createTxFromRLP } from '@ethereumjs/tx'
 import { createBlock } from '@ethereumjs/block'
-import { createAccount, createAddressFromString, bytesToHex, hexToBytes, setLengthLeft, type Address } from '@ethereumjs/util'
+import { createAccount, createAddressFromString, bytesToHex, bytesToUnprefixedHex, hexToBytes, setLengthLeft, type Address } from '@ethereumjs/util'
 import { keccak256, toUtf8Bytes } from 'ethers'
 
 export type Snapshot = {
@@ -20,6 +20,8 @@ export type Snapshot = {
   source: { name: string; chainId: number; block: number; blockHash: string; timestamp: number; builtAt: string }
   contracts: { WIF: string; singletonL2: string; factory: string; fallbackHandler: string }
   reserves: string[]
+  /** Candidate meme tokens copied from mainnet (snapshot v2+), with the holders the demo faucet draws from. */
+  memeTokens?: Record<string, { address: string; name: string; decimals: number; reserves: string[]; reserveBalances: Record<string, string> }>
   reserveBalances: Record<string, string>
   accounts: Record<string, { code: string; codeHash: string; balance: string; nonce: number; storage: Record<string, string> }>
 }
@@ -81,7 +83,7 @@ export class SimChain {
 
   private constructor(readonly snapshot: Snapshot, chainId: number) {
     this.chainId = chainId
-    // Prague rules: the snapshot's WIF was compiled with solc 0.8.35; Gate 1 targets shanghai (a subset).
+    // Prague rules: the snapshot's WIF was compiled with solc 0.8.35; the V2 contracts target cancun (a subset).
     this.common = createCustomCommon({ chainId }, Mainnet, { hardfork: Hardfork.Prague })
   }
 
@@ -262,17 +264,25 @@ export class SimChain {
     return this.blocks[n] ?? null
   }
 
-  private async simulate(call: { from?: string; to?: string; data?: string; input?: string; value?: string }) {
+  private async simulate(call: { from?: string; to?: string; data?: string; input?: string; value?: string }, gasLimit = GAS_LIMIT) {
     const number = this.head.number + 1
     const caller = createAddressFromString(call.from ?? ZERO)
     await this.vm.stateManager.checkpoint()
+    // Match a real transaction's EIP-2929 accounting: start from a cold journal (warm slots must not leak between
+    // simulations, or repeated estimates come out too low), with sender, recipient and precompiles warm.
+    const journal = this.vm.evm.journal
+    await journal.cleanup()
+    for (const [addressStr] of this.vm.evm.precompiles.entries()) journal.addAlwaysWarmAddress(addressStr)
+    journal.addAlwaysWarmAddress(caller.toString())
+    if (call.to) journal.addAlwaysWarmAddress(bytesToUnprefixedHex(createAddressFromString(call.to).bytes))
     try {
       return await this.vm.evm.runCall({
         caller, origin: caller, to: call.to ? createAddressFromString(call.to) : undefined,
         data: hexToBytes(((call.data ?? call.input) || '0x') as `0x${string}`), value: call.value ? BigInt(call.value) : 0n,
-        gasLimit: GAS_LIMIT, block: this.evmBlock(number, this.now()),
+        gasLimit, block: this.evmBlock(number, this.now()),
       })
     } finally {
+      await journal.cleanup()
       await this.vm.stateManager.revert()
     }
   }
@@ -329,10 +339,24 @@ export class SimChain {
         return bytesToHex(res.execResult.returnValue)
       }
       case 'eth_estimateGas': {
-        const res = await this.simulate(params[0] as Record<string, string>)
+        const call = params[0] as Record<string, string>
+        const res = await this.simulate(call)
         if (res.execResult.exceptionError) throw new RpcError(3, 'execution reverted', bytesToHex(res.execResult.returnValue))
-        const callData = (((params[0] as Record<string, string>).data ?? (params[0] as Record<string, string>).input ?? '0x').length - 2) / 2
-        return q(((res.execResult.executionGasUsed + 21_000n + BigInt(callData) * 16n) * 13n) / 10n + 30_000n)
+        // Like a real node: binary-search the smallest gas limit that succeeds. Gas USED is not enough for
+        // contracts that check gasleft() (e.g. TORCH requires ~81k left before probing a sender), so a
+        // used-gas heuristic would hand out limits that revert.
+        const ok = async (g: bigint) => !(await this.simulate(call, g)).execResult.exceptionError
+        let lo = res.execResult.executionGasUsed
+        let hi = lo * 2n + 100_000n
+        if (hi > GAS_LIMIT || !(await ok(hi))) hi = GAS_LIMIT
+        if (await ok(lo)) hi = lo
+        while (hi - lo > 1_000n) {
+          const mid = (lo + hi) / 2n
+          if (await ok(mid)) hi = mid
+          else lo = mid
+        }
+        const callData = ((call.data ?? call.input ?? '0x').length - 2) / 2
+        return q((hi * 12n) / 10n + 21_000n + BigInt(callData) * 16n)
       }
       case 'eth_getBlockByNumber': { const b = this.blockByTag(params[0]); return b ? this.formatBlock(b, Boolean(params[1])) : null }
       case 'eth_getBlockByHash': { const b = this.blocks.find((x) => x.hash === params[0]); return b ? this.formatBlock(b, Boolean(params[1])) : null }

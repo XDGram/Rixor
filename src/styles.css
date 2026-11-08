@@ -1301,7 +1301,7 @@ a { color: inherit; }
 .commit-fields { display: grid; gap: 14px; }
 .commit-field { display: grid; gap: 8px; }
 .commit-field > span { font-size: 13px; font-weight: 600; }
-.chip.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip.is-active, .chip.is-active:hover:not(:disabled) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
 .is-gain { color: var(--ok) !important; }
 .roi-meter { display: grid; gap: 4px; }

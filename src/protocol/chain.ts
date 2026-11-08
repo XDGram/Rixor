@@ -1,6 +1,7 @@
 import { Contract, Interface, NonceManager, Wallet, type JsonRpcApiProvider, type Signer } from 'ethers'
 import lockerAbi from './abi/RixorLocker.json'
 import challengesAbi from './abi/RixorChallenges.json'
+import rewardsAbi from './abi/RixorRewards.json'
 import type { Manifest } from './env'
 
 export const ERC20_ABI = [
@@ -10,16 +11,21 @@ export const ERC20_ABI = [
 ]
 export const LOCKER_ABI = lockerAbi
 export const CHALLENGES_ABI = challengesAbi
+export const REWARDS_ABI = rewardsAbi
 export const lockerIface = new Interface(lockerAbi)
 export const challengesIface = new Interface(challengesAbi)
+export const rewardsIface = new Interface(rewardsAbi)
 
-export type Contracts = { locker: Contract; challenges: Contract; wif: Contract }
+export type Contracts = { locker: Contract; challenges: Contract; rewards: Contract; wif: Contract; token: (address: string) => Contract }
 
 export function contractsFor(manifest: Manifest, runner: JsonRpcApiProvider | Signer): Contracts {
   return {
     locker: new Contract(manifest.contracts.locker, LOCKER_ABI, runner),
     challenges: new Contract(manifest.contracts.challenges, CHALLENGES_ABI, runner),
+    rewards: new Contract(manifest.contracts.rewards, REWARDS_ABI, runner),
     wif: new Contract(manifest.contracts.wif, ERC20_ABI, runner),
+    // Approvals always go to the exact token being locked (never a fixed token).
+    token: (address: string) => new Contract(address, ERC20_ABI, runner),
   }
 }
 
@@ -45,10 +51,17 @@ const FRIENDLY: Record<string, string> = {
   EmergencyActive: 'Emergency mode is active. Only exits, refunds and settled claims are available.',
   InvalidAmount: 'That amount is outside the allowed range.',
   InvalidTier: 'Choose Flexible, Committed or Diamond.',
-  InvalidTerm: 'Committed and Diamond terms must be 30 to 90 days.',
+  InvalidTerm: 'That term is outside what this token allows (30 to 90 days for Class A, 30 to 60 days for Class B).',
+  TierNotAllowed: 'Diamond is not available for this token (Class B: Flexible and Committed only).',
+  NeedsSync: 'Rewards for this token need more catching up. Try again; nothing is lost.',
+  NotReady: 'This stream has not finished yet, so its refund is not final.',
+  TokenStopped: 'Rewards for this token have stopped (released or emergency).',
+  InvalidDuration: 'Streams last 7 to 90 days.',
+  TokenReleasedAlready: 'This token is already released.',
+  InvalidRiskClass: 'Invalid risk class.',
   CapExceeded: 'This token has reached its total lock cap.',
   LocksNotEnabled: 'New locks are disabled for this token.',
-  NotListed: 'This token is not supported.',
+  NotListed: 'This token is not supported by the Locker.',
   IncompatibleToken: 'The token transfer did not deliver the exact amount.',
   TransferFailed: 'The token transfer failed. Check your balance and approval.',
   NotPositionOwner: 'That position belongs to another wallet.',
@@ -61,7 +74,7 @@ const FRIENDLY: Record<string, string> = {
   ChallengeNotFound: 'That challenge does not exist.',
   JoinClosed: 'The join window for this challenge has closed.',
   ChallengeEnded: 'This challenge has already ended.',
-  TokenNotAllowed: 'That position\'s token is not allowed in this challenge.',
+  TokenNotAllowed: 'That position\'s token is not allowed in this challenge (or it was released).',
   TierTooLow: 'This challenge needs a higher tier.',
   PositionEndsTooEarly: 'Your position\'s term ends before the challenge ends.',
   BelowMinimumUnits: 'That position is below this challenge\'s minimum size.',
@@ -91,7 +104,7 @@ export function describeError(error: unknown): string {
   if (e?.code === 'ACTION_REJECTED') return 'You rejected the request in your wallet.'
   const data = e?.data ?? e?.info?.error?.data ?? e?.error?.data
   if (typeof data === 'string' && data.startsWith('0x') && data.length >= 10) {
-    for (const iface of [challengesIface, lockerIface]) {
+    for (const iface of [challengesIface, lockerIface, rewardsIface]) {
       try {
         const parsed = iface.parseError(data)
         if (parsed) return FRIENDLY[parsed.name] ?? parsed.name
@@ -99,6 +112,6 @@ export function describeError(error: unknown): string {
     }
   }
   const msg = e?.shortMessage ?? e?.message ?? 'Something went wrong.'
-  if (/insufficient funds/i.test(msg)) return 'This demo wallet cannot pay for that. Use "Get demo WIF".'
+  if (/insufficient funds/i.test(msg)) return 'This demo wallet cannot pay for that. Use "Get demo tokens".'
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg
 }

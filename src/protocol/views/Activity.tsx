@@ -7,11 +7,16 @@ import type { ActivityItem } from '../useProtocol'
 
 function describe(ctx: Ctx, a: ActivityItem): { title: string; detail: string; amount?: string; icon: 'lock' | 'arrowUp' | 'trophy' | 'coins' | 'check' | 'flame' | 'plus' } {
   const who = ctx.label(a.actor)
+  const sym = ctx.snapshot.tokens.find((t) => t.address.toLowerCase() === a.token?.toLowerCase())?.symbol ?? ''
   const ch = a.challengeId !== undefined ? ctx.snapshot.challenges.find((c) => c.id === a.challengeId) : undefined
   const name = ch ? `“${ch.title}”` : `challenge #${a.challengeId}`
   switch (a.kind) {
-    case 'Locked': return { title: `${who} locked`, detail: `${TIERS[a.tier ?? 0].name} · position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'lock' }
-    case 'Exited': return { title: `${who} exited`, detail: a.fee && a.fee > 0n ? `fee ${fmtToken(a.fee, 18, { compact: true })} burned` : `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'arrowUp' }
+    case 'Locked': return { title: `${who} locked ${sym}`, detail: `${TIERS[a.tier ?? 0].name} · position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} ${sym}`, icon: 'lock' }
+    case 'Exited': return { title: `${who} exited`, detail: a.fee && a.fee > 0n ? `fee ${fmtToken(a.fee, 18, { compact: true })} ${sym} burned` : `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} ${sym}`, icon: 'arrowUp' }
+    case 'StreamFunded': return { title: `${who} funded a ${sym} reward stream`, detail: 'Prefunded WIF, shared by lockers', amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'coins' }
+    case 'RewardClaimed': return { title: `${who} claimed stream rewards`, detail: `position #${a.positionId}`, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'trophy' }
+    case 'StreamRefunded': return { title: `Stream refund paid to ${who === 'You' ? 'you' : who}`, detail: 'Unallocated or unstreamed WIF', amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'coins' }
+    case 'TokenReleased': return { title: `${sym} released by ${who}`, detail: 'All its positions can exit without a fee', icon: 'flame' }
     case 'ChallengeCreated': return { title: `${who} created a ${a.success ? 'Season' : 'community'} challenge`, detail: a.title ?? name, amount: `${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'plus' }
     case 'Sponsored': return { title: `${who} sponsored`, detail: name, amount: `+${fmtToken(a.amount ?? 0n, 18, { compact: true })} WIF`, icon: 'coins' }
     case 'Joined': return { title: `${who} joined`, detail: name, amount: `${fmtPoints(a.points ?? 0n)} pts`, icon: 'trophy' }
@@ -55,7 +60,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
             })}
           </ul>
         )}
-        <p className="fine-print">Read from RixorLocker and RixorChallenges events emitted inside this browser simulation. These are not Robinhood Chain transactions.</p>
+        <p className="fine-print">Read from RixorLocker, RixorRewards and RixorChallenges events emitted inside this browser simulation. These are not Robinhood Chain transactions.</p>
       </section>
     </div>
   )

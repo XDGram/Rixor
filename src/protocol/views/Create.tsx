@@ -10,7 +10,10 @@ const D = 86400
 export function CreateView({ ctx }: { ctx: Ctx }) {
   const { snapshot, wallet, write, tx, manifest } = ctx
   const minHold = manifest.params.minHoldSeconds
-  const wif = snapshot.tokens.find((t) => t.address.toLowerCase() === manifest.contracts.wif.toLowerCase())
+  const wif = snapshot.wif
+  const lockable = snapshot.tokens.filter((t) => t.locksEnabled && t.releasedAt === 0)
+  const [picked, setPicked] = useState<string[]>(() => lockable.map((t) => t.address).slice(0, 3))
+  const toggle = (a: string) => setPicked((cur) => (cur.includes(a) ? cur.filter((x) => x !== a) : cur.length >= 3 ? cur : [...cur, a]))
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [minTier, setMinTier] = useState(0)
@@ -34,27 +37,28 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
     if (tb === 0) out.push('Add a title.')
     if (tb > 80) out.push('Title is limited to 80 bytes.')
     if (enc.encode(description).length > 2000) out.push('Description is limited to 2,000 bytes.')
+    if (picked.length === 0) out.push('Choose at least one token.')
     if (!Number.isInteger(maxP) || maxP < 1 || maxP > 200) out.push('Participants must be between 1 and 200.')
     if (joinWindow + hold > MAX_DURATION) out.push('A challenge can last at most 30 days.')
     if (pool === null) out.push('Enter a pool amount.')
     else if (pool < MIN_POOL) out.push('The minimum pool is 100,000 WIF.')
     else if (pool > MAX_POOL) out.push('The maximum pool is 10,000,000 WIF.')
-    else if (wallet && wif && pool > wif.balance) out.push('That is more demo WIF than this wallet holds.')
+    else if (wallet && pool > wif.balance) out.push('That is more demo WIF than this wallet holds.')
     return out
-  }, [title, description, maxP, joinWindow, hold, pool, wallet, wif]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [title, description, maxP, joinWindow, hold, pool, wallet, wif, picked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const blocked = snapshot.paused || snapshot.emergencyAt !== 0
   const joinDeadline = ctx.now + joinWindow
   const endTime = joinDeadline + hold
   // Points for one maximum entry under these rules, for orienting the goal.
-  const maxEntry = BigInt(10 * TIERS[2].multiplierBps) * BigInt(wif?.multiplierBps ?? 10_000) / 10_000n
+  const maxEntry = BigInt(10 * TIERS[2].multiplierBps)
 
   const submit = async () => {
-    if (!write || !pool || !wif) return
+    if (!write || !pool) return
     // Deadlines are measured from the demo chain's clock, which can differ from wall-clock time.
     const chainNow = ctx.now
     const params = {
-      tokens: [wif.address], minTier, minUnitsPerEntry: minUnits, joinDeadline: chainNow + joinWindow, endTime: chainNow + joinWindow + hold,
+      tokens: picked, minTier, minUnitsPerEntry: minUnits, joinDeadline: chainNow + joinWindow, endTime: chainNow + joinWindow + hold,
       goalPoints: goal, maxParticipants: maxP, title: title.trim(), description: description.trim(),
     }
     const steps = []
@@ -73,6 +77,11 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
     <div className="view">
       <section className="card lock-card">
         <header className="panel-head"><div><small className="kicker">New community challenge</small><h2>Create and fund a challenge</h2></div></header>
+
+        <div className="commit-field">
+          <span>Eligible tokens <small>(1 to 3; holders of any of them can join)</small></span>
+          <div className="chip-row">{lockable.map((t) => <button key={t.address} type="button" aria-pressed={picked.includes(t.address)} className={`chip ${picked.includes(t.address) ? 'is-active' : ''}`} onClick={() => toggle(t.address)}>{t.symbol}</button>)}</div>
+        </div>
 
         <label className="field"><span>Title</span><input value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="Hold the line" /></label>
         <label className="field"><span>Description <small>(optional)</small></span><textarea value={description} rows={3} maxLength={2000} onChange={(e) => setDescription(e.target.value)} placeholder="What participants commit to, in plain words." /></label>
@@ -100,12 +109,13 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
         <label className="field"><span>Maximum participants</span><input inputMode="numeric" value={maxParticipants} onChange={(e) => setMaxParticipants(e.target.value.replace(/[^0-9]/g, ''))} /></label>
 
         <div className="amount-field">
-          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif?.balance ?? 0n)} demo WIF available</span></div>
+          <div className="amount-field-head"><label htmlFor="pool">WIF pool (escrowed now)</label><span>{fmtToken(wif.balance)} demo WIF available</span></div>
           <div className="amount-input"><input id="pool" inputMode="decimal" value={poolText} onChange={(e) => setPoolText(e.target.value.replace(/[^0-9.]/g, ''))} /><span>WIF</span></div>
         </div>
 
         <dl className="rows">
-          <div><dt>Eligible token</dt><dd>{wif?.symbol} (pilot scope)</dd></div>
+          <div><dt>Eligible tokens</dt><dd>{picked.map((a) => snapshot.tokens.find((t) => t.address === a)?.symbol).join(' + ') || '—'}</dd></div>
+          <div><dt>Scoring</dt><dd>Units (per-token size) × tier; every token counts equally</dd></div>
           <div><dt>Joining closes</dt><dd>{fmtDate(joinDeadline)}</dd></div>
           <div><dt>Ends</dt><dd>{fmtDate(endTime)}</dd></div>
           <div><dt>If it succeeds</dt><dd>Pool split by points among qualifiers</dd></div>

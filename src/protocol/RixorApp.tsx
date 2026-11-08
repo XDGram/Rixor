@@ -83,7 +83,7 @@ export default function RixorApp() {
     setWorking('faucet')
     try {
       const r = await session.faucet(wallet.address)
-      flash('ok', `Added ${Number(r.wif).toLocaleString('en-US')} demo WIF to your simulated wallet.`)
+      flash('ok', `Added ${Number(r.meme).toLocaleString('en-US')} demo ${r.symbols.join(' and ')} plus ${Number(r.wif).toLocaleString('en-US')} demo WIF to your simulated wallet.`)
       await refresh()
     } catch (e) { flash('error', e instanceof Error ? e.message : String(e)) } finally { setWorking(null) }
   }
@@ -139,7 +139,7 @@ export default function RixorApp() {
   }
 
   const ctx: Ctx = { manifest, provider, snapshot, now, wallet, write, tx, go, refresh, openWallet: () => setWalletOpen(true), label }
-  const wif = snapshot.tokens.find((t) => t.address.toLowerCase() === manifest.contracts.wif.toLowerCase())
+  const holdsNothing = snapshot.tokens.every((t) => t.balance === 0n) && snapshot.wif.balance === 0n
   const active = route.name === 'token' || route.name === 'challenge' || route.name === 'create' ? 'explore' : route.name
 
   return (
@@ -176,10 +176,10 @@ export default function RixorApp() {
         {snapshot.paused && snapshot.emergencyAt === 0 && <div className="notice notice--warn"><strong>Paused</strong><span>New locks, challenges, sponsorships and joins are on hold. Exits, settlement, claims and refunds still work.</span></div>}
         {error && <div className="notice notice--warn"><strong>Showing the last data read</strong><span>{error}</span></div>}
         {notice && <div className={`notice ${notice.kind === 'error' ? 'notice--error' : ''}`} role="status"><span>{notice.text}</span></div>}
-        {wallet && wif && wif.balance === 0n && snapshot.positions.length === 0 && (
+        {wallet && holdsNothing && snapshot.positions.length === 0 && (
           <div className="empty empty--action">
-            <div><strong>Your demo wallet is empty</strong><span>Get demo WIF from the simulation faucet. Nothing real is spent or deposited.</span></div>
-            <button type="button" className="btn btn--lime btn--sm" disabled={working !== null} onClick={() => void fund()}>{working === 'faucet' ? 'Funding…' : 'Get demo WIF'}</button>
+            <div><strong>Your demo wallet is empty</strong><span>Get demo {manifest.tokens.map((t) => t.symbol).join(' and ')} to lock, plus demo WIF for sponsoring. Nothing real is spent or deposited.</span></div>
+            <button type="button" className="btn btn--lime btn--sm" disabled={working !== null} onClick={() => void fund()}>{working === 'faucet' ? 'Funding…' : 'Get demo tokens'}</button>
           </div>
         )}
 
@@ -209,13 +209,13 @@ export default function RixorApp() {
                 <div>
                   <small>Demo wallet · this device only</small>
                   <strong className="mono">{shortAddr(wallet.address)}</strong>
-                  <span>{fmtToken(wif?.balance ?? 0n, 18, { compact: true })} demo WIF · gas is free in the simulation</span>
+                  <span>{snapshot.tokens.map((t) => `${fmtToken(t.balance, t.decimals, { compact: true })} ${t.symbol}`).join(' · ')} · {fmtToken(snapshot.wif.balance, 18, { compact: true })} WIF · gas is free</span>
                 </div>
               </div>
               <div className="notice"><strong>Simulated balances, not real ones</strong><span>These balances exist only inside the isolated EVM in this browser. They are not Robinhood Chain balances and cannot be moved anywhere else.</span></div>
               <div className="sheet-section">
                 <small className="kicker">Demo faucet</small>
-                <button type="button" className="btn btn--lime btn--block" disabled={working !== null} onClick={() => void fund()}>{working === 'faucet' ? 'Funding…' : `Get ${Number(manifest.features.faucetWif).toLocaleString('en-US')} demo WIF`}</button>
+                <button type="button" className="btn btn--lime btn--block" disabled={working !== null} onClick={() => void fund()}>{working === 'faucet' ? 'Funding…' : `Get demo ${manifest.tokens.map((t) => t.symbol).join(', ')} and WIF`}</button>
               </div>
               <div className="sheet-section">
                 <small className="kicker">Simulation time</small>
@@ -233,6 +233,7 @@ export default function RixorApp() {
                   <div><dt>Snapshot</dt><dd>{manifest.upstream.name} block {manifest.upstream.forkBlock.toLocaleString('en-US')}</dd></div>
                   <div><dt>Simulation chain id</dt><dd>{manifest.chainId} (not Robinhood Chain)</dd></div>
                   <div><dt>Locker</dt><dd className="mono">{shortAddr(manifest.contracts.locker)}</dd></div>
+                  <div><dt>Rewards</dt><dd className="mono">{manifest.contracts.rewards ? shortAddr(manifest.contracts.rewards) : '—'}</dd></div>
                   <div><dt>Challenges</dt><dd className="mono">{shortAddr(manifest.contracts.challenges)}</dd></div>
                   <div><dt>Saved on this device</dt><dd>{session.persistent ? `${session.chain.ops.length} operations` : 'No (storage blocked)'}</dd></div>
                 </dl>

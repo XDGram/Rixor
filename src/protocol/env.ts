@@ -1,6 +1,7 @@
 // Shared types for the demo environment. The active environment is the isolated in-browser EVM
 // (src/protocol/sim): a private chain on the visitor's device, started from a snapshot of Robinhood Chain
-// mainnet state. Nothing in this app talks to Robinhood Chain or sends a real transaction.
+// mainnet state. Apart from read-only wallet detection (src/protocol/wallet.ts), nothing in this app talks to
+// Robinhood Chain, and nothing ever sends a real transaction.
 
 export type Manifest = {
   environment: 'fork-demo' | 'browser-evm'
@@ -8,8 +9,8 @@ export type Manifest = {
   chainId: number
   upstream: { name: string; chainId: number; forkBlock: number; forkTimestamp: number }
   startBlock: number
-  contracts: { locker: string; challenges: string; wif: string; ownerSafe: string; guardianSafe: string }
-  tokens: { address: string; symbol: string; name: string; decimals: number; unit: string; cap: string; provisional: boolean }[]
+  contracts: { locker: string; challenges: string; rewards: string; wif: string; ownerSafe: string; guardianSafe: string }
+  tokens: { address: string; symbol: string; name: string; decimals: number; unit: string; cap: string; riskClass: number; provisional: boolean }[]
   params: { minHoldSeconds: number; provisional: boolean; note: string }
   demoAccounts: { faucet: string; sponsorBot: string; lockerBots: string[] }
   seeds: number[]

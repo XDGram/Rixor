@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Contract, type JsonRpcApiProvider, type Log } from 'ethers'
-import { challengesIface, contractsFor, ERC20_ABI, lockerIface } from './chain'
+import { challengesIface, contractsFor, ERC20_ABI, lockerIface, rewardsIface } from './chain'
 import type { Manifest } from './env'
 
 export type Health = { ok: boolean; block: number; timestamp: number; chainNow: number }
 export type HealthFn = () => Promise<Health>
-import type { Challenge, Entry, Position, TokenInfo } from './model'
+import type { Challenge, Entry, Position, StreamInfo, TokenInfo, WifInfo } from './model'
 
 export type ActivityItem = {
   key: string
-  kind: 'Locked' | 'Exited' | 'ChallengeCreated' | 'Sponsored' | 'Joined' | 'Settled' | 'Claimed' | 'Refunded' | 'Swept'
+  kind: 'Locked' | 'Exited' | 'ChallengeCreated' | 'Sponsored' | 'Joined' | 'Settled' | 'Claimed' | 'Refunded' | 'Swept' | 'StreamFunded' | 'RewardClaimed' | 'StreamRefunded' | 'TokenReleased'
   block: number
   tx: string
   actor: string
@@ -22,6 +22,7 @@ export type ActivityItem = {
   success?: boolean
   title?: string
   timestamp?: number
+  token?: string
 }
 
 export type Snapshot = {
@@ -30,6 +31,7 @@ export type Snapshot = {
   paused: boolean
   emergencyAt: number
   tokens: TokenInfo[]
+  wif: WifInfo
   ethBalance: bigint
   positions: Position[]
   challenges: Challenge[]
@@ -49,15 +51,19 @@ function parseActivity(logs: Log[], manifest: Manifest): { items: ActivityItem[]
   const items: ActivityItem[] = []
   const descriptions: Record<number, string> = {}
   for (const log of logs) {
-    const isLocker = log.address.toLowerCase() === manifest.contracts.locker.toLowerCase()
+    const addr = log.address.toLowerCase()
+    const iface = addr === manifest.contracts.locker.toLowerCase() ? lockerIface : addr === manifest.contracts.rewards?.toLowerCase() ? rewardsIface : challengesIface
+    const isRewards = iface === rewardsIface
     let parsed
-    try { parsed = (isLocker ? lockerIface : challengesIface).parseLog(log) } catch { continue }
+    try { parsed = iface.parseLog(log) } catch { continue }
     if (!parsed) continue
     const a = parsed.args
     const base = { key: `${log.transactionHash}:${log.index}`, block: log.blockNumber, tx: log.transactionHash }
     switch (parsed.name) {
-      case 'Locked': items.push({ ...base, kind: 'Locked', actor: a.owner, positionId: n(a.positionId), amount: a.amount, tier: n(a.tier) }); break
-      case 'Exited': items.push({ ...base, kind: 'Exited', actor: a.owner, positionId: n(a.positionId), amount: a.amountReturned, fee: a.fee }); break
+      case 'Locked': items.push({ ...base, kind: 'Locked', actor: a.owner, positionId: n(a.positionId), amount: a.amount, tier: n(a.tier), token: a.token }); break
+      case 'Exited': items.push({ ...base, kind: 'Exited', actor: a.owner, positionId: n(a.positionId), amount: a.amountReturned, fee: a.fee, token: a.token }); break
+      case 'TokenReleased': items.push({ ...base, kind: 'TokenReleased', actor: a.by, token: a.token }); break
+      case 'StreamFunded': items.push({ ...base, kind: 'StreamFunded', actor: a.funder, amount: a.amount, token: a.token }); break
       case 'ChallengeCreated':
         descriptions[n(a.id)] = a.description
         items.push({ ...base, kind: 'ChallengeCreated', actor: a.creator, challengeId: n(a.id), amount: a.pool, title: a.title, success: a.isSeason })
@@ -65,8 +71,14 @@ function parseActivity(logs: Log[], manifest: Manifest): { items: ActivityItem[]
       case 'Sponsored': items.push({ ...base, kind: 'Sponsored', actor: a.sponsor, challengeId: n(a.id), amount: a.amount }); break
       case 'Joined': items.push({ ...base, kind: 'Joined', actor: a.participant, challengeId: n(a.id), positionId: n(a.positionId), points: a.points }); break
       case 'Settled': items.push({ ...base, kind: 'Settled', actor: ZERO, challengeId: n(a.id), success: a.success, points: a.qualifiedPoints }); break
-      case 'Claimed': items.push({ ...base, kind: 'Claimed', actor: a.participant, challengeId: n(a.id), amount: a.amount }); break
-      case 'Refunded': items.push({ ...base, kind: 'Refunded', actor: a.sponsor, challengeId: n(a.id), amount: a.amount }); break
+      case 'Claimed':
+        if (isRewards) items.push({ ...base, kind: 'RewardClaimed', actor: a.account, positionId: n(a.positionId), amount: a.amount })
+        else items.push({ ...base, kind: 'Claimed', actor: a.participant, challengeId: n(a.id), amount: a.amount })
+        break
+      case 'Refunded':
+        if (isRewards) items.push({ ...base, kind: 'StreamRefunded', actor: a.funder, amount: a.amount })
+        else items.push({ ...base, kind: 'Refunded', actor: a.sponsor, challengeId: n(a.id), amount: a.amount })
+        break
       case 'Swept': items.push({ ...base, kind: 'Swept', actor: a.sponsor, challengeId: n(a.id), amount: a.amount }); break
       default: break
     }
@@ -75,9 +87,9 @@ function parseActivity(logs: Log[], manifest: Manifest): { items: ActivityItem[]
 }
 
 export async function loadSnapshot(readHealth: HealthFn, manifest: Manifest, provider: JsonRpcApiProvider, account: string | null): Promise<Snapshot> {
-  const { locker, challenges } = contractsFor(manifest, provider)
+  const { locker, challenges, rewards, wif } = contractsFor(manifest, provider)
   const me = account ?? ZERO
-  const [health, paused, emergencyAt, listed, nextId, ethBalance, positionIds] = await Promise.all([
+  const [health, paused, emergencyAt, listed, nextId, ethBalance, positionIds, streamCount] = await Promise.all([
     readHealth(),
     locker.paused() as Promise<boolean>,
     locker.emergencyActivatedAt() as Promise<bigint>,
@@ -85,29 +97,50 @@ export async function loadSnapshot(readHealth: HealthFn, manifest: Manifest, pro
     challenges.nextChallengeId() as Promise<bigint>,
     account ? provider.getBalance(account) : Promise.resolve(0n),
     account ? (locker.positionsOf(account) as Promise<bigint[]>) : Promise.resolve([] as bigint[]),
+    rewards.streamCount() as Promise<bigint>,
   ])
+
+  const streams: StreamInfo[] = await Promise.all(Array.from({ length: Number(streamCount) }, async (_, i) => {
+    const st = await rewards.streamOf(i)
+    return { id: i, token: st.token, funder: st.funder, start: Number(st.startDay) * 86400, end: Number(st.endDay) * 86400, rate: st.rate, amount: st.amount, refunded: st.refunded }
+  }))
 
   const tokens: TokenInfo[] = await Promise.all(listed.map(async (address) => {
     const erc = new Contract(address, ERC20_ABI, provider)
-    const [cfg, mult, symbol, balance, allowanceLocker, allowanceChallenges] = await Promise.all([
+    const [cfg, allowed, symbol, balance, allowanceLocker, stop] = await Promise.all([
       locker.tokenConfig(address),
-      locker.tokenMultiplierBps(address) as Promise<bigint>,
+      locker.allowedTiers(address) as Promise<[bigint, bigint]>,
       erc.symbol() as Promise<string>,
       account ? (erc.balanceOf(account) as Promise<bigint>) : Promise.resolve(0n),
       account ? (erc.allowance(account, manifest.contracts.locker) as Promise<bigint>) : Promise.resolve(0n),
-      account ? (erc.allowance(account, manifest.contracts.challenges) as Promise<bigint>) : Promise.resolve(0n),
+      rewards.stopTime(address) as Promise<bigint>,
     ])
+    const mine = streams.filter((x) => x.token.toLowerCase() === address.toLowerCase())
+    const t = health.chainNow
+    const rateNow = stop !== 0n && Number(stop) <= t ? 0n : mine.filter((x) => x.start <= t && t < x.end).reduce((sum, x) => sum + x.rate, 0n)
     return {
       address, symbol, decimals: Number(cfg.decimals), unit: cfg.unitAmount, cap: cfg.maxTotalLocked, totalLocked: cfg.totalLocked,
-      locksEnabled: cfg.locksEnabled, multiplierBps: Number(mult), balance, allowanceLocker, allowanceChallenges,
+      totalWeight: cfg.totalWeight, locksEnabled: cfg.locksEnabled, riskClass: Number(cfg.riskClass), allowedMask: Number(allowed[0]),
+      maxTermDays: Number(allowed[1]), releasedAt: Number(cfg.releasedAt), balance, allowanceLocker, streams: mine, rateNow,
     }
   }))
 
+  const [wifBalance, allowanceChallenges, allowanceRewards] = await Promise.all([
+    account ? (wif.balanceOf(account) as Promise<bigint>) : Promise.resolve(0n),
+    account ? (wif.allowance(account, manifest.contracts.challenges) as Promise<bigint>) : Promise.resolve(0n),
+    account ? (wif.allowance(account, manifest.contracts.rewards) as Promise<bigint>) : Promise.resolve(0n),
+  ])
+  const wifInfo: WifInfo = { address: manifest.contracts.wif, balance: wifBalance, allowanceChallenges, allowanceRewards }
+
   const positions: Position[] = await Promise.all(positionIds.map(async (idRaw) => {
-    const [p, terms] = await Promise.all([locker.positionOf(idRaw), locker.exitTerms(idRaw)])
+    const [p, terms, claimed] = await Promise.all([locker.positionOf(idRaw), locker.exitTerms(idRaw), rewards.claimedOf(idRaw) as Promise<bigint>])
+    // A simulated claim (eth_call) includes any catching-up the token still needs, so the figure is exact.
+    let claimable = 0n
+    try { claimable = (await rewards.claim.staticCall([idRaw], 2_000, { from: me })) as bigint } catch { claimable = 0n }
     return {
       id: Number(idRaw), owner: p.owner, token: p.token, tier: Number(p.tier), startedAt: Number(p.startedAt),
-      endsAt: Number(p.endsAt), closedAt: Number(p.closedAt), amount: p.amount, exitAllowed: terms[0], feeBps: Number(terms[1]),
+      endsAt: Number(p.endsAt), closedAt: Number(p.closedAt), amount: p.amount, weight: p.weight, exitAllowed: terms[0], feeBps: Number(terms[1]),
+      rewardClaimable: claimable, rewardClaimed: claimed,
     }
   }))
   positions.sort((a, b) => b.id - a.id)
@@ -131,7 +164,7 @@ export async function loadSnapshot(readHealth: HealthFn, manifest: Manifest, pro
   }))
   list.sort((a, b) => b.id - a.id)
 
-  const logs = await provider.getLogs({ address: [manifest.contracts.locker, manifest.contracts.challenges], fromBlock: manifest.startBlock, toBlock: 'latest' })
+  const logs = await provider.getLogs({ address: [manifest.contracts.locker, manifest.contracts.challenges, manifest.contracts.rewards], fromBlock: manifest.startBlock, toBlock: 'latest' })
   const { items, descriptions } = parseActivity(logs, manifest)
   const recent = items.slice(0, 60)
   const blocks = [...new Set(recent.map((i) => i.block))]
@@ -139,7 +172,7 @@ export async function loadSnapshot(readHealth: HealthFn, manifest: Manifest, pro
   const tsByBlock = new Map(times)
   for (const i of recent) i.timestamp = tsByBlock.get(i.block)
 
-  return { health, loadedAt: Date.now(), paused, emergencyAt: Number(emergencyAt), tokens, ethBalance, positions, challenges: list, activity: recent, descriptions }
+  return { health, loadedAt: Date.now(), paused, emergencyAt: Number(emergencyAt), tokens, wif: wifInfo, ethBalance, positions, challenges: list, activity: recent, descriptions }
 }
 
 export function useProtocol(health: HealthFn | null, manifest: Manifest | null, provider: JsonRpcApiProvider | null, account: string | null) {

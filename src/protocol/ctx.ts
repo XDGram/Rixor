@@ -37,7 +37,7 @@ export function routeToHash(r: Route): string {
 }
 
 export function hashToRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/')
+  const parts = hash.replace(/^#\/?/, '').split('?')[0].split('/')
   switch (parts[0]) {
     case 'token': return parts[1] ? { name: 'token', address: parts[1] } : { name: 'explore' }
     case 'challenge': return Number(parts[1]) > 0 ? { name: 'challenge', id: Number(parts[1]) } : { name: 'explore' }
@@ -56,6 +56,7 @@ export function makeLabeler(manifest: Manifest, me: string | null) {
   known.set(manifest.demoAccounts.faucet.toLowerCase(), 'Demo faucet')
   known.set(manifest.contracts.ownerSafe.toLowerCase(), 'Demo owner Safe')
   known.set(manifest.contracts.guardianSafe.toLowerCase(), 'Demo guardian Safe')
+  if (manifest.contracts.rewards) known.set(manifest.contracts.rewards.toLowerCase(), 'Rixor Rewards')
   return (address: string) => {
     const a = address.toLowerCase()
     if (me && a === me.toLowerCase()) return 'You'

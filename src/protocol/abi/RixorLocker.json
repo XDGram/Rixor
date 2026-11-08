@@ -3,11 +3,6 @@
     "type": "constructor",
     "inputs": [
       {
-        "name": "wif_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "owner_",
         "type": "address",
         "internalType": "address"
@@ -18,19 +13,31 @@
         "internalType": "address"
       },
       {
-        "name": "tokens",
-        "type": "address[]",
-        "internalType": "address[]"
-      },
-      {
-        "name": "unitAmounts",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      },
-      {
-        "name": "maxTotalLocked",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
+        "name": "initial",
+        "type": "tuple[]",
+        "internalType": "struct RixorLocker.Listing[]",
+        "components": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "unitAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxTotalLocked",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "riskClass",
+            "type": "uint8",
+            "internalType": "uint8"
+          }
+        ]
       }
     ],
     "stateMutability": "nonpayable"
@@ -38,6 +45,45 @@
   {
     "type": "function",
     "name": "BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "CLASS_A",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "CLASS_B",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "CLASS_B_MAX_TERM_DAYS",
     "inputs": [],
     "outputs": [
       {
@@ -64,19 +110,6 @@
   {
     "type": "function",
     "name": "COMMITTED_MULTIPLIER_BPS",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "DEFAULT_TOKEN_MULTIPLIER_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -271,32 +304,6 @@
   },
   {
     "type": "function",
-    "name": "WIF",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "WIF_MULTIPLIER_BPS",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "acceptOwnership",
     "inputs": [],
     "outputs": [],
@@ -311,7 +318,44 @@
   },
   {
     "type": "function",
+    "name": "allowedTiers",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "mask",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "maxTermDays",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "cancelCapIncrease",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelClassUpgrade",
     "inputs": [
       {
         "name": "token",
@@ -363,7 +407,68 @@
   },
   {
     "type": "function",
+    "name": "checkpointAt",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "time",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "totalWeight",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "checkpointCount",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "disableLocks",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "downgradeClass",
     "inputs": [
       {
         "name": "token",
@@ -390,6 +495,19 @@
   {
     "type": "function",
     "name": "executeCapIncrease",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeClassUpgrade",
     "inputs": [
       {
         "name": "token",
@@ -669,6 +787,30 @@
   },
   {
     "type": "function",
+    "name": "pendingClassUpgrade",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "pendingEnableLocks",
     "inputs": [
       {
@@ -706,6 +848,11 @@
         "name": "maxTotalLocked",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "riskClass",
+        "type": "uint8",
+        "internalType": "uint8"
       },
       {
         "name": "eta",
@@ -802,6 +949,21 @@
             "name": "amount",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "weight",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "startCheckpoint",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "endCheckpoint",
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       }
@@ -847,6 +1009,19 @@
   },
   {
     "type": "function",
+    "name": "proposeClassUpgrade",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "proposeEnableLocks",
     "inputs": [
       {
@@ -876,6 +1051,11 @@
         "name": "maxTotalLocked_",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "riskClass_",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [],
@@ -901,6 +1081,38 @@
   },
   {
     "type": "function",
+    "name": "releaseToken",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "releasedAt",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "retainedFees",
     "inputs": [
       {
@@ -914,6 +1126,25 @@
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "riskClass",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "view"
@@ -982,7 +1213,17 @@
             "internalType": "uint8"
           },
           {
+            "name": "riskClass",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
             "name": "lastUnitChange",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "releasedAt",
             "type": "uint64",
             "internalType": "uint64"
           },
@@ -1000,27 +1241,13 @@
             "name": "totalLocked",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "totalWeight",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "tokenMultiplierBps",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -1135,6 +1362,75 @@
   },
   {
     "type": "event",
+    "name": "Checkpointed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "time",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "totalWeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClassUpgradeCancelled",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClassUpgradeProposed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newClass",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "eta",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "EmergencyActivated",
     "inputs": [
       {
@@ -1225,7 +1521,7 @@
         "internalType": "bool"
       },
       {
-        "name": "emergency",
+        "name": "released",
         "type": "bool",
         "indexed": false,
         "internalType": "bool"
@@ -1288,6 +1584,12 @@
         "internalType": "uint256"
       },
       {
+        "name": "riskClass",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
         "name": "eta",
         "type": "uint64",
         "indexed": false,
@@ -1320,6 +1622,12 @@
       },
       {
         "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "weight",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1424,6 +1732,31 @@
   },
   {
     "type": "event",
+    "name": "RiskClassChanged",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "previousClass",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "newClass",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TokenListed",
     "inputs": [
       {
@@ -1449,6 +1782,37 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "riskClass",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TokenReleased",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "at",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -1596,6 +1960,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidRiskClass",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidTerm",
     "inputs": []
   },
@@ -1700,12 +2069,34 @@
   },
   {
     "type": "error",
+    "name": "TierNotAllowed",
+    "inputs": [
+      {
+        "name": "tier",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "TimelockNotReady",
     "inputs": [
       {
         "name": "eta",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TokenReleasedAlready",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
       }
     ]
   },

@@ -9,7 +9,7 @@ import { SimProvider } from './provider'
 import { DEMO_PARAMS, faucetTransfer, seedChain } from './seed'
 
 export const SIM_CHAIN_ID = 466399
-const STATE_KEY = 'state-v1'
+const STATE_KEY = 'state-v2'
 const MAX_TIME_ADVANCE = 31 * 86400
 
 type Saved = { snapshotBlockHash: string; manifest: Manifest; ops: Op[]; clockOffset: number; walletKey?: string; createdAt: string }
@@ -25,7 +25,7 @@ export type SimSession = {
   resumed: boolean
   bootMs: number
   health: () => Promise<{ ok: boolean; block: number; timestamp: number; chainNow: number }>
-  faucet: (address: string) => Promise<{ wif: string }>
+  faucet: (address: string) => Promise<{ wif: string; meme: string; symbols: string[] }>
   advance: (seconds: number) => Promise<{ chainNow: number }>
   walletKey: () => string | undefined
   createWalletKey: () => Promise<string>
@@ -62,7 +62,7 @@ export async function bootSim(onBoot?: (b: Boot) => void, snapshotOverride?: Sna
     manifest = saved.manifest
     resumed = true
   } else {
-    onBoot?.({ stage: 'setup', detail: 'Deploying the Gate 1 contracts in your browser' })
+    onBoot?.({ stage: 'setup', detail: 'Deploying the Rixor contracts in your browser' })
     const seeded = await seedChain(chain, provider, snapshot, (label) => onBoot?.({ stage: 'setup', detail: label }))
     manifest = {
       environment: 'browser-evm',
@@ -71,7 +71,7 @@ export async function bootSim(onBoot?: (b: Boot) => void, snapshotOverride?: Sna
       upstream: { name: snapshot.source.name, chainId: snapshot.source.chainId, forkBlock: snapshot.source.block, forkTimestamp: snapshot.source.timestamp },
       startBlock: 0,
       contracts: seeded.contracts,
-      tokens: [{ address: seeded.contracts.wif, symbol: 'WIF', name: 'World is Flat', decimals: 18, unit: (BigInt(DEMO_PARAMS.wifUnit) * 10n ** 18n).toString(), cap: (BigInt(DEMO_PARAMS.wifCap) * 10n ** 18n).toString(), provisional: true }],
+      tokens: seeded.tokens.map((t) => ({ address: t.address, symbol: t.symbol, name: t.name, decimals: 18, unit: (BigInt(DEMO_PARAMS.memeUnit) * 10n ** 18n).toString(), cap: (BigInt(DEMO_PARAMS.memeCap) * 10n ** 18n).toString(), riskClass: t.riskClass, provisional: true })),
       params: { minHoldSeconds: DEMO_PARAMS.minHoldSeconds, provisional: true, note: 'Demo parameters only. Production unit sizes, caps and budgets are not approved.' },
       demoAccounts: { faucet: snapshot.reserves[0], sponsorBot: seeded.sponsorBot, lockerBots: seeded.lockerBots },
       seeds: seeded.seeds,
@@ -98,8 +98,11 @@ export async function bootSim(onBoot?: (b: Boot) => void, snapshotOverride?: Sna
     chain, provider, manifest, snapshot, persistent, resumed, bootMs: Math.round(performance.now() - t0),
     health: async () => ({ ok: true, block: chain.head.number, timestamp: chain.head.timestamp, chainNow: chain.now() }),
     faucet: async (address) => {
+      // Demo copies of the candidate meme tokens to lock, plus demo WIF for sponsoring challenges or funding streams.
+      const symbols = manifest.tokens.map((t) => t.symbol)
+      for (const s of symbols) await faucetTransfer(chain, provider, snapshot, address, DEMO_PARAMS.faucetMeme, s)
       await faucetTransfer(chain, provider, snapshot, address, DEMO_PARAMS.faucetWif)
-      return { wif: DEMO_PARAMS.faucetWif }
+      return { wif: DEMO_PARAMS.faucetWif, meme: DEMO_PARAMS.faucetMeme, symbols }
     },
     advance: async (seconds) => {
       if (!Number.isInteger(seconds) || seconds < 60 || seconds > MAX_TIME_ADVANCE) throw new Error('Choose between one minute and 31 days.')

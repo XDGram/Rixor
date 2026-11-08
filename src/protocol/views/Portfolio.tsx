@@ -20,6 +20,12 @@ function PositionItem({ ctx, p }: { ctx: Ctx; p: Position }) {
           : p.tier === 2 ? `Locked until ${fmtDate(p.endsAt)} (${fmtDuration(p.endsAt - ctx.now)})`
             : `Early exit fee now ${(p.feeBps / 100).toFixed(2)}% · free in ${fmtDuration(p.endsAt - ctx.now)}`
   const key = `exit-${p.id}`
+  const claimKey = `reward-${p.id}`
+  const claimReward = async () => {
+    if (!ctx.write) return
+    const w = ctx.write
+    await ctx.tx.run(claimKey, [{ label: `Claim ${fmtToken(p.rewardClaimable)} WIF from position #${p.id}`, send: () => w.rewards.claim([p.id], 2_000) }], `Claimed ${fmtToken(p.rewardClaimable)} WIF`)
+  }
 
   const exit = async () => {
     if (!ctx.write) return
@@ -41,6 +47,13 @@ function PositionItem({ ctx, p }: { ctx: Ctx; p: Position }) {
         </div>
       </div>
       <p className={`eligibility ${closed ? '' : p.exitAllowed ? (p.feeBps > 0 ? 'is-fee' : 'is-open') : ''}`}>{status}</p>
+      {(p.rewardClaimable > 0n || p.rewardClaimed > 0n) && (
+        <div className="lock-row-actions">
+          <span className="lock-reward">WIF rewards: {fmtToken(p.rewardClaimable)} claimable{p.rewardClaimed > 0n ? ` · ${fmtToken(p.rewardClaimed, 18, { compact: true })} claimed` : ''}</span>
+          <div>{p.rewardClaimable > 0n && <button type="button" className="btn btn--sm btn--lime" disabled={ctx.tx.busy || !ctx.write} onClick={() => void claimReward()}>Claim WIF</button>}</div>
+        </div>
+      )}
+      <TxNotice tx={ctx.tx.tx} for={claimKey} />
       {!closed && running.length > 0 && (
         <p className="fine-print">Exiting before a challenge ends disqualifies this position from: {running.map((c) => c.title).join(', ')}.</p>
       )}
@@ -59,6 +72,7 @@ function PositionItem({ ctx, p }: { ctx: Ctx; p: Position }) {
           <dl className="rows">
             {p.feeBps > 0 && <div className="is-loss"><dt>Fee ({(p.feeBps / 100).toFixed(2)}%, burned)</dt><dd>−{fmtToken(fee, decimals)} {symbol}</dd></div>}
             <div><dt>You receive</dt><dd>{fmtToken(p.amount - fee, decimals)} {symbol}</dd></div>
+            {p.rewardClaimable > 0n && <div><dt>WIF rewards</dt><dd>Stay claimable after you exit</dd></div>}
             {running.length > 0 && <div className="is-loss"><dt>Challenges</dt><dd>Disqualified from {running.length}</dd></div>}
           </dl>
           <div className="btn-pair">
@@ -88,7 +102,13 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
   const actionable = snapshot.challenges.filter((c) => c.me.claimable > 0n
     || (c.me.contribution > 0n && !c.me.refunded && (phaseOf(c, ctx.now) === 'failed' || phaseOf(c, ctx.now) === 'cancelled'))
     || (c.me.contribution > 0n && !c.me.swept && phaseOf(c, ctx.now) === 'sweeping'))
-  const wif = snapshot.tokens[0]
+  const rewardTotal = snapshot.positions.reduce((s, p) => s + p.rewardClaimable, 0n)
+  const withRewards = snapshot.positions.filter((p) => p.rewardClaimable > 0n).map((p) => p.id)
+  const claimAll = async () => {
+    if (!ctx.write || withRewards.length === 0) return
+    const w = ctx.write
+    await ctx.tx.run('reward-all', [{ label: `Claim ${fmtToken(rewardTotal)} WIF from ${withRewards.length} position${withRewards.length === 1 ? '' : 's'}`, send: () => w.rewards.claim(withRewards, 2_000) }], `Claimed ${fmtToken(rewardTotal)} WIF`)
+  }
 
   return (
     <div className="view">
@@ -96,10 +116,18 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
         <header className="panel-head"><div><small className="kicker">Demo wallet · simulated balances</small><h2>Your portfolio</h2></div></header>
         <div className="stat-grid">
           {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>Demo {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>not a real balance</span></div>)}
+          <div className="stat"><small>WIF rewards claimable</small><strong>{fmtToken(rewardTotal, 18, { compact: true })}</strong><span>from reward streams</span></div>
+          <div className="stat"><small>Demo WIF</small><strong>{fmtToken(snapshot.wif.balance, 18, { compact: true })}</strong><span>for sponsoring only</span></div>
           <div className="stat"><small>Open positions</small><strong>{open.length}</strong><span>{closed.length} closed</span></div>
           <div className="stat"><small>Challenges joined</small><strong>{snapshot.challenges.filter((c) => c.me.entry).length}</strong><span>{snapshot.challenges.filter((c) => c.me.contribution > 0n).length} sponsored</span></div>
-          <div className="stat"><small>Rewards claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>demo {wif?.symbol ?? 'WIF'}</span></div>
+          <div className="stat"><small>Challenge prizes claimed</small><strong>{fmtToken(snapshot.activity.filter((a) => a.kind === 'Claimed' && ctx.label(a.actor) === 'You').reduce((s, a) => s + (a.amount ?? 0n), 0n), 18, { compact: true })}</strong><span>demo WIF</span></div>
         </div>
+        {rewardTotal > 0n && (
+          <div className="action-row">
+            <button type="button" className="btn btn--lime" disabled={ctx.tx.busy || !ctx.write} onClick={() => void claimAll()}>Claim all {fmtToken(rewardTotal)} WIF</button>
+          </div>
+        )}
+        <TxNotice tx={ctx.tx.tx} for="reward-all" />
       </section>
 
       {actionable.length > 0 && (
@@ -122,7 +150,7 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
           <div><small className="kicker">Positions</small><h2>{open.length ? `${open.length} open` : 'No open positions'}</h2></div>
           <button type="button" className="btn btn--lime btn--sm" onClick={() => ctx.go({ name: 'lock' })}>New lock</button>
         </header>
-        {snapshot.positions.length === 0 ? <Empty title="Nothing locked yet">Lock WIF to join challenges.</Empty> : (
+        {snapshot.positions.length === 0 ? <Empty title="Nothing locked yet">Lock a supported meme token to earn WIF from reward streams and join challenges.</Empty> : (
           <ul className="lock-list">{[...open, ...closed].map((p) => <PositionItem key={p.id} ctx={ctx} p={p} />)}</ul>
         )}
       </section>
