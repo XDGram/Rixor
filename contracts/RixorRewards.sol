@@ -193,7 +193,7 @@ contract RixorRewards {
             else p.zero += dt;
             p.lastTime = uint64(t_);
         }
-        bool progressed;
+        bool progressed = false;
         if (t_ == nextDay) {
             int256 d = rateDelta[token][t_ / DAY];
             if (d != 0) p.rate = uint256(int256(p.rate) + d);
