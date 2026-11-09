@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Rixor Wallet Drill</title>
+<style>
+  :root { --lime: #c8ff00; --bg: #0b0b0c; --surface: #161618; --ink: #f4f4f1; --muted: rgba(244,244,241,.66); --line: rgba(218,218,219,.16); --bad: #ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: .02em; }
+  h1 span { color: var(--lime); }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  .note { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 16px 0; }
+  button { width: 100%; padding: 14px; border-radius: 999px; border: 0; background: var(--lime); color: #111; font-weight: 700; font-size: 16px; }
+  button:disabled { background: #3a3a3d; color: var(--muted); }
+  ul { padding-left: 18px; margin: 12px 0 0; font-size: 14px; }
+  li.ok { color: var(--lime); } li.bad { color: var(--bad); }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .note, li, .result { overflow-wrap: anywhere; }
+  #hashes code { display: block; word-break: break-all; margin-top: 4px; }
+  td { border-top: 1px solid var(--line); padding: 6px 4px; vertical-align: top; word-break: break-all; }
+  td:first-child { color: var(--muted); width: 38%; word-break: normal; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .result { margin-top: 12px; font-weight: 700; font-size: 18px; }
+  .result.ok { color: var(--lime); } .result.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>RIXOR</span> wallet signing drill</h1>
+  <p class="note">Drill only: local chain 31337 and dummy contract 0x…dEaD. The signature is valid on no network and for no Safe. Nothing is sent to any blockchain.</p>
+
+  <section>
+    <h2>Stage 1: connect and check the network (no signing)</h2>
+    <button id="stage1">Run Stage 1</button>
+    <ul id="log"></ul>
+  </section>
+
+  <section>
+    <h2>Stage 2: sign the drill</h2>
+    <p class="note">Approve in the wallet only if its signing screen matches every row below. Otherwise reject.</p>
+    <table id="fields"></table>
+    <p class="note" id="hashes"></p>
+    <button id="stage2" disabled>Sign the drill</button>
+    <div id="result" class="result"></div>
+  </section>
+</main>
+<script src="drill-page.js"></script>
+</body>
+</html>
