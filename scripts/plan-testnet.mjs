@@ -12,6 +12,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { signerCodeProblems, signerSetProblems } from './lib/signer-sets.mjs'
 import { AbiCoder, Contract, Interface, JsonRpcProvider, concat, getAddress, getCreate2Address, getCreateAddress, id as labelHash, keccak256, solidityPacked, Wallet, formatEther, ZeroAddress } from 'ethers'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -31,6 +32,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const upstream = new JsonRpcProvider(TESTNET_RPC, 46630, { staticNetwork: true })
 const upstreamChain = Number((await upstream.getNetwork()).chainId)
 if (upstreamChain !== 46630) { console.error(`refusing: ${TESTNET_RPC} is chain ${upstreamChain}, not 46630`); process.exit(1) }
+// Same signer rules as CreateTestnetSafes / DeployRixorV2 (six distinct signers, deployer separate, plain EOAs).
+const signerProblems = [...signerSetProblems({ owners, guardians, deployer }), ...(await signerCodeProblems(upstream, { owners, guardians, deployer }))]
+if (signerProblems.length) { console.error(`refusing to plan:\n  - ${signerProblems.join('\n  - ')}`); process.exit(1) }
 const [gasPrice, startNonce, deployerBalance] = await Promise.all([
   upstream.send('eth_gasPrice', []).then(BigInt), upstream.getTransactionCount(deployer), upstream.getBalance(deployer),
 ])
@@ -96,7 +100,7 @@ try {
   const plan = {
     note: usingPlaceholders ? 'PLACEHOLDER signer/deployer addresses: addresses below are illustrative; rerun with the real addresses before broadcasting.' : 'Real deployer and signer addresses: these are the exact addresses the broadcast will produce if the deployer nonce is unchanged.',
     chainId: 46630, rpc: TESTNET_RPC, deployer, deployerTestnetNonce: startNonce, deployerTestnetBalanceEth: formatEther(deployerBalance),
-    ownerSigners: owners, guardianSigners: guardians, threshold: '2 of 3',
+    ownerSigners: owners, guardianSigners: guardians, threshold: '2 of 3', signerRules: 'six distinct plain-EOA signers (no overlap between Safes), deployer separate: checked',
     addresses: {
       ownerSafe, guardianSafe,
       tMEMEA: cfg.listings[0].token, tMEMEB: cfg.listings[1].token, tWIF: cfg.wif,

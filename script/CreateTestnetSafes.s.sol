@@ -36,8 +36,8 @@ interface ISafe {
 ///
 /// Without --broadcast it only simulates and prints the exact Safe addresses. Addresses are CREATE2 from the
 /// factory and depend only on the signer lists, threshold and the fixed salt, never on who sends the transaction.
-/// Checks: signers distinct, non-zero, plain EOAs (no code), at least one guardian signer not an owner signer,
-/// the broadcasting deployer is not a signer, threshold 2-of-3.
+/// Checks (RixorSignerChecks): all six signers distinct across both Safes, non-zero, plain EOAs (no code, no
+/// EIP-7702 delegation), the broadcasting deployer is not a signer; threshold 2-of-3.
 contract CreateTestnetSafes is RixorScriptBase {
     address internal constant SINGLETON_L2 = 0xEdd160fEBBD92E350D4D398fb636302fccd67C7e; // Safe v1.5.0 (SafeL2)
     address internal constant FACTORY = 0x14F2982D601c9458F93bd70B218933A6f8165e7b;
@@ -54,13 +54,8 @@ contract CreateTestnetSafes is RixorScriptBase {
 
         address[] memory owners = vm.envAddress("RIXOR_OWNER_SIGNERS", ",");
         address[] memory guardians = vm.envAddress("RIXOR_GUARDIAN_SIGNERS", ",");
-        _checkSigners(owners, "owner");
-        _checkSigners(guardians, "guardian");
-        bool independent;
-        for (uint256 i = 0; i < guardians.length; i++) {
-            if (!_contains(owners, guardians[i])) independent = true;
-        }
-        require(independent, "at least one guardian signer must not be an owner signer");
+        require(owners.length == 3 && guardians.length == 3, "exactly 3 signers per Safe expected (2-of-3)");
+        _checkSignerSets(owners, guardians);
 
         bytes memory ownerInit = _init(owners);
         bytes memory guardianInit = _init(guardians);
@@ -91,18 +86,6 @@ contract CreateTestnetSafes is RixorScriptBase {
         bytes32 salt = keccak256(abi.encodePacked(keccak256(initializer), saltNonce));
         bytes memory code = abi.encodePacked(ISafeFactory(FACTORY).proxyCreationCode(), uint256(uint160(SINGLETON_L2)));
         return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), FACTORY, salt, keccak256(code))))));
-    }
-
-    function _checkSigners(address[] memory s, string memory role) internal view {
-        require(s.length == 3, string.concat(role, ": exactly 3 signers expected (2-of-3)"));
-        for (uint256 i = 0; i < s.length; i++) {
-            require(s[i] != address(0), string.concat(role, ": zero signer"));
-            require(s[i].code.length == 0, string.concat(role, ": signers must be plain EOAs (hardware wallets)"));
-            require(s[i] != msg.sender && s[i] != tx.origin, string.concat(role, ": the deployer must not be a signer"));
-            for (uint256 j = i + 1; j < s.length; j++) {
-                require(s[i] != s[j], string.concat(role, ": duplicate signer"));
-            }
-        }
     }
 
     function _verify(address safe, address[] memory expected) internal view {

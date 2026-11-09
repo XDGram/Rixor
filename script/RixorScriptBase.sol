@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Script} from "forge-std/Script.sol";
+import {RixorSignerChecks} from "./RixorSignerChecks.sol";
 
 /// @notice Shared guards for every Rixor deployment script.
 ///
@@ -41,5 +42,11 @@ abstract contract RixorScriptBase is Script {
     function _requireRealSender() internal view {
         require(msg.sender != FOUNDRY_DEFAULT_SENDER, "pass --sender <deployer address> (Foundry's default sender is not a deployer)");
         require(msg.sender.code.length == 0, "the deployer must be a plain EOA (hardware wallet), not a contract or delegated account");
+    }
+
+    /// @dev Six distinct signers across both Safes; the broadcasting account (msg.sender and tx.origin) is none of them.
+    function _checkSignerSets(address[] memory owners, address[] memory guardians) internal view {
+        RixorSignerChecks.check(owners, guardians, msg.sender);
+        if (tx.origin != msg.sender) RixorSignerChecks.check(owners, guardians, tx.origin);
     }
 }

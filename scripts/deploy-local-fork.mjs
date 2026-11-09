@@ -76,6 +76,7 @@ try {
   check('guard: plain EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: '0x00000000000000000000000000000000000Be111' }).status !== 0)
   check('guard: non-Safe contract owner rejected', refuse({ RIXOR_OWNER_SAFE: WIF }).status !== 0)
   check('guard: guardian sharing every owner signer rejected', refuse({ RIXOR_GUARDIAN_SAFE: logged(safesOut, 'LOCAL shared-signer Safe') }).status !== 0)
+  check('guard: guardian sharing ONE owner signer rejected', /must not share any signer/.test(((r) => r.stdout + r.stderr)(refuse({ RIXOR_GUARDIAN_SAFE: logged(safesOut, 'LOCAL one-shared-signer Safe') }))))
   check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM, '--sender', deployer], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '4663', ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
   check('guard: chain pin mismatch refused', refuse({ RIXOR_EXPECTED_CHAIN_ID: '46630' }).status !== 0, 'local RPC with RIXOR_EXPECTED_CHAIN_ID=46630')
 

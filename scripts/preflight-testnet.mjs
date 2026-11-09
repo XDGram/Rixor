@@ -6,6 +6,8 @@
 // Checks (all must pass for GO):
 //   - the RPC answers eth_chainId = 46630 (raw call) and is not 4663; the latest block is fresh;
 //   - Safe v1.5.0 singleton / factory / fallback handler code hashes equal the values recorded on 9 Nov 2026;
+//   - the plan's six signers are distinct (no overlap between the Safes), exclude the deployer, and are plain EOAs;
+//   - existing Safes have exactly the planned signers, 2-of-3;
 //   - the deployer is a plain EOA, is funded, and its nonce equals the nonce this step must start at (from the plan);
 //   - the addresses this step will create are still empty (Safes: empty, or already the identical planned Safe);
 //   - step prerequisites exist on chain (Safes before Rixor; Rixor and TEST balance before funding).
@@ -13,6 +15,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Contract, JsonRpcProvider, formatEther, getAddress, keccak256 } from 'ethers'
+import { signerCodeProblems, signerSetProblems } from './lib/signer-sets.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -40,6 +43,11 @@ const block = await p.getBlock('latest')
 check('latest block is fresh (< 10 minutes old)', Date.now() / 1000 - block.timestamp < 600, `block ${block.number}`)
 check('plan is for chain 46630 and this deployer', plan.chainId === 46630 && getAddress(plan.deployer) === deployer)
 check('plan was made with the REAL deployer and signer addresses (not placeholders)', !String(plan.note).startsWith('PLACEHOLDER'), plan.note.slice(0, 60))
+const roles = { owners: plan.ownerSigners ?? [], guardians: plan.guardianSigners ?? [], deployer }
+const setProblems = signerSetProblems(roles)
+check('six distinct signers (no overlap between Safes), deployer separate', setProblems.length === 0, setProblems.join('; '))
+const codeProblems = setProblems.length ? ['skipped'] : await signerCodeProblems(p, roles)
+check('all six signers and the deployer are plain EOAs (no code, no EIP-7702 delegation)', codeProblems.length === 0, codeProblems.join('; '))
 for (const [addr, expected] of Object.entries(SAFE_CODEHASH)) {
   const h = keccak256(await p.getCode(addr))
   check(`Safe contract code unchanged at ${addr.slice(0, 10)}…`, h === expected, h)
@@ -52,14 +60,18 @@ check(`deployer nonce is ${want} (start of step "${step}")`, nonce === want, `cu
 
 const a = plan.addresses
 const empty = async (k) => (await p.getCode(a[k])) === '0x'
-if (step === 'safes') {
-  for (const k of ['ownerSafe', 'guardianSafe']) check(`${k} ${a[k]} not yet created (or identical, re-run is a no-op)`, true, (await empty(k)) ? 'empty' : 'exists: CreateTestnetSafes will verify owners and skip')
-} else {
-  for (const k of ['ownerSafe', 'guardianSafe']) {
-    const s = new Contract(a[k], ['function getThreshold() view returns (uint256)', 'function getOwners() view returns (address[])'], p)
-    const ok = !(await empty(k)) && Number(await s.getThreshold()) === 2 && (await s.getOwners()).length === 3
-    check(`${k} exists, 2-of-3`, ok, a[k])
-  }
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.map(getAddress).includes(getAddress(x)))
+const safeState = async (k, signers) => {
+  if (await empty(k)) return { exists: false }
+  const s = new Contract(a[k], ['function getThreshold() view returns (uint256)', 'function getOwners() view returns (address[])'], p)
+  const [t, o] = await Promise.all([s.getThreshold(), s.getOwners()])
+  return { exists: true, ok: Number(t) === 2 && sameSet(o, signers), detail: `threshold ${t}, owners ${o.join(',')}` }
+}
+const planSigners = { ownerSafe: roles.owners, guardianSafe: roles.guardians }
+for (const k of ['ownerSafe', 'guardianSafe']) {
+  const st = await safeState(k, planSigners[k])
+  if (step === 'safes') check(`${k} ${a[k]} not yet created, or already exactly the planned 2-of-3 Safe`, !st.exists || st.ok, st.exists ? st.detail : 'empty')
+  else check(`${k} exists, 2-of-3, signers exactly as planned`, st.exists && st.ok, st.exists ? st.detail : `no code at ${a[k]}`)
 }
 if (step === 'tokens') for (const k of ['tMEMEA', 'tMEMEB', 'tWIF']) check(`${k} address ${a[k]} still empty`, await empty(k))
 if (step === 'rixor') {

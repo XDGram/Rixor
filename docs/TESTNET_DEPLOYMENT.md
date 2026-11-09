@@ -15,9 +15,19 @@ approved · HOOKR Class B (not involved in testnet) · deployment waits for writ
 
 | Slot | Who | Rule (enforced by the scripts) |
 |---|---|---|
-| Owner signers O1, O2, O3 | three people, each a Ledger account | distinct; plain EOAs (no code, no EIP-7702 delegation) |
-| Guardian signers G1, G2, G3 | three people, each a Ledger account | distinct; plain EOAs; **at least one not an owner signer** (recommended: all six distinct) |
+| Owner signers O1, O2, O3 | three people, each a Ledger account | non-zero; distinct; plain EOAs (no code, no EIP-7702 delegation) |
+| Guardian signers G1, G2, G3 | three people, each a Ledger account | non-zero; distinct; plain EOAs; **none of them may be an owner signer** |
 | Deployer D | one Ledger account used only for deployment | plain EOA; **not any of the six signers**; holds no protocol role |
+
+**Six distinct signer addresses are mandatory.** No address may appear twice, within a Safe or across the two
+Safes (not even one shared signer), and the deployer is none of the six. Both Safes are 2-of-3. The rule lives in
+`script/RixorSignerChecks.sol` (Safe creation, deployment, verification) and its mirror `scripts/lib/signer-sets.mjs`
+(planning and the live preflight); every stage refuses a violation before anything is signed. Tests:
+`test/RixorSignerChecks.t.sol` and `npm run test:signer-sets`.
+
+**Recommended: six separate people, each with their own Ledger device.** The scripts can only compare addresses: two
+accounts on the same device (or the same recovery phrase) look distinct but are not independent, so this part is
+the owner's responsibility. The deployer may be a separate account on the operator's device, as it holds no role.
 
 How each person obtains their address (their own machine, Ledger Ethereum app open; nothing secret is shown or shared):
 
@@ -103,10 +113,14 @@ Proves each device produces Safe EIP-712 signatures and shows the signer what th
 RIXOR_DEPLOYER=$D RIXOR_OWNER_SIGNERS=0x<O1>,0x<O2>,0x<O3> RIXOR_GUARDIAN_SIGNERS=0x<G1>,0x<G2>,0x<G3> npm run plan:testnet
 ```
 
+The plan refuses to run unless the six signers are distinct, exclude the deployer and are plain EOAs on testnet.
 Review `deployments/46630-plan-summary.json` (git-ignored): every address, the independent address check, the deployer
 nonce (must be 0, or the shown value), roles and listings. The owner confirms these addresses in writing.
 
 ### 5.4 Broadcast (only after written authorisation). Before EVERY step run the preflight; continue only on GO.
+
+The preflight re-checks the six-distinct-signer rule against the plan, that all seven addresses have no code on
+testnet, and (after step "safes") that each live Safe is 2-of-3 with exactly its planned signers.
 
 ```bash
 # Step "safes" (2 tx)
@@ -151,7 +165,7 @@ Blind signing must be enabled in the Ledger Ethereum app for transactions 1–8.
    planned 2-of-3 Safe v1.5.0 proxies; Rewards and Challenges wired to the Locker and tWIF; listings, units, caps and
    classes equal the config; the two streams (140,000 and 70,000 tWIF, 14 days) are listed with funder D.
 2. Safe owners: `$CAST call 0x<ownerSafe> "getOwners()(address[])" --rpc-url $RPC` and `getThreshold()` (= 2); same for
-   the guardian Safe.
+   the guardian Safe. The two owner lists must have no address in common (`VerifyRixorV2` also enforces this).
 3. Source verification on Sourcify (supports 46630), for each of the eight contracts except the two Safe proxies
    (already verified upstream):
    ```bash

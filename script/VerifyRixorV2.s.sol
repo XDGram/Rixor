@@ -7,6 +7,7 @@ import {RixorLocker} from "../contracts/RixorLocker.sol";
 import {RixorRewards} from "../contracts/RixorRewards.sol";
 import {RixorChallenges} from "../contracts/RixorChallenges.sol";
 import {RixorScriptBase} from "./RixorScriptBase.sol";
+import {RixorSignerChecks} from "./RixorSignerChecks.sol";
 
 interface ISafeView {
     function getThreshold() external view returns (uint256);
@@ -47,6 +48,8 @@ contract VerifyRixorV2 is RixorScriptBase {
         require(locker.pendingOwner() == address(0), "unexpected pending owner");
         _checkSafe(owner, "owner");
         _checkSafe(guardian, "guardian");
+        // Six distinct plain-EOA signers, no overlap between the Safes (the deployer is checked at deployment).
+        RixorSignerChecks.check(ISafeView(owner).getOwners(), ISafeView(guardian).getOwners(), address(0));
         require(address(rewards.locker()) == address(locker) && rewards.wif() == wif, "rewards wiring");
         require(address(challenges.locker()) == address(locker) && challenges.wif() == wif, "challenges wiring");
         require(challenges.minHold() == json.readUint(".minHoldSeconds"), "minHold");

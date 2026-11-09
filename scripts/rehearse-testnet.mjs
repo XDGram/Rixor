@@ -57,6 +57,16 @@ try {
   const guardianKeys = [1, 2, 3].map((i) => labelHash(`rixor.local.rehearsal.guardian.${i}`))
   const addr = (k) => new Wallet(k).address
   const safeEnv = { RIXOR_OWNER_SIGNERS: ownerKeys.map(addr).join(','), RIXOR_GUARDIAN_SIGNERS: guardianKeys.map(addr).join(',') }
+  // Six-distinct-signer rule: every overlap is refused before anything is created (simulation only).
+  const O = ownerKeys.map(addr)
+  const G = guardianKeys.map(addr)
+  const refusedWith = (env, re) => { const r = spawnSync(process.execPath, [FORGE, 'script', 'script/CreateTestnetSafes.s.sol', '--rpc-url', LOCAL, '--sender', deployer], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env }, encoding: 'utf8' }); return r.status !== 0 && re.test(r.stdout + r.stderr) }
+  const sets = (o, g) => ({ RIXOR_OWNER_SIGNERS: o.join(','), RIXOR_GUARDIAN_SIGNERS: g.join(',') })
+  const share = /must not share any signer/
+  check('CreateTestnetSafes refuses every signer overlap (one, two, three shared; duplicates; deployer)',
+    refusedWith(sets(O, [O[0], G[1], G[2]]), share) && refusedWith(sets(O, [O[1], O[2], G[2]]), share) && refusedWith(sets(O, O), share) &&
+    refusedWith(sets([O[0], O[0], O[2]], G), /owner: duplicate signer/) && refusedWith(sets(O, [G[0], G[1], G[1]]), /guardian: duplicate signer/) &&
+    refusedWith(sets([deployer, O[1], O[2]], G), /owner: the deployer must not be a signer/) && refusedWith(sets(O, [G[0], deployer, G[2]]), /guardian: the deployer must not be a signer/))
   const planned = forge(['script', 'script/CreateTestnetSafes.s.sol', '--rpc-url', LOCAL, '--sender', deployer], safeEnv) // simulation only
   const safes = forge(['script', 'script/CreateTestnetSafes.s.sol', ...unlocked], safeEnv)
   const ownerSafe = logged(safes, 'owner Safe')

@@ -24,25 +24,34 @@ interface ISafeSetup {
 
 /// @notice LOCAL FORK ONLY. Creates two throwaway 2-of-3 Safe v1.5.0 proxies (owner and guardian) on a local
 ///         anvil fork of Robinhood Chain started with `--chain-id 31337`, so the deployment dry run has real Safe
-///         contracts to point at. Refuses to run on any other chain id. The signer keys are well-known test keys
-///         and must never control anything real.
+///         contracts to point at. Refuses to run on any other chain id. The signer keys are label-derived throwaway
+///         keys and must never control anything real.
 contract LocalForkSafes is Script {
     address internal constant SINGLETON_L2 = 0xEdd160fEBBD92E350D4D398fb636302fccd67C7e;
     address internal constant FACTORY = 0x14F2982D601c9458F93bd70B218933A6f8165e7b;
     address internal constant FALLBACK = 0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4;
 
-    function run() external returns (address ownerSafe, address guardianSafe, address sharedSafe) {
+    function run() external returns (address ownerSafe, address guardianSafe, address sharedSafe, address oneSharedSafe) {
         require(block.chainid == 31337, "LocalForkSafes runs only on a local fork (chain id 31337)");
         require(SINGLETON_L2.code.length > 0 && FACTORY.code.length > 0, "fork has no Safe v1.5.0 deployment");
         vm.startBroadcast();
-        ownerSafe = _safe(1, [uint256(0xA11CE), 0xB0B, 0xCA401]);
-        guardianSafe = _safe(2, [uint256(0x6A1), 0x6A2, 0x6A3]);
+        ownerSafe = _safe(1, [_k("owner.1"), _k("owner.2"), _k("owner.3")]);
+        guardianSafe = _safe(2, [_k("guardian.1"), _k("guardian.2"), _k("guardian.3")]);
         // Negative control for the deploy script: same signers as the owner Safe (must be rejected as guardian).
-        sharedSafe = _safe(3, [uint256(0xA11CE), 0xB0B, 0xCA401]);
+        sharedSafe = _safe(3, [_k("owner.1"), _k("owner.2"), _k("owner.3")]);
+        // Negative control: shares exactly ONE signer with the owner Safe (must also be rejected as guardian).
+        oneSharedSafe = _safe(4, [_k("owner.1"), _k("guardian.4"), _k("guardian.5")]);
         vm.stopBroadcast();
         console2.log("LOCAL owner Safe", ownerSafe);
         console2.log("LOCAL guardian Safe", guardianSafe);
         console2.log("LOCAL shared-signer Safe", sharedSafe);
+        console2.log("LOCAL one-shared-signer Safe", oneSharedSafe);
+    }
+
+    /// @dev Label-derived throwaway keys. Well-known keys (0xA11CE, 0x11…11, …) are EIP-7702-delegated on Robinhood
+    ///      mainnet, so the signer checks correctly refuse them on a fork.
+    function _k(string memory label) internal pure returns (uint256) {
+        return uint256(keccak256(bytes(string.concat("rixor.local.fork.signer.", label))));
     }
 
     function _safe(uint256 salt, uint256[3] memory keys) internal returns (address) {

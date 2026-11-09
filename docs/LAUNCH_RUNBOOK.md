@@ -61,8 +61,8 @@ they are valueless; a real token with a mint would fail vetting).
 
 1. 🔒 Approve testnet deployment and these defaults.
 2. 🔒 The owner creates the deployer key and funds it from the testnet faucet.
-3. 🔒 Create the owner and guardian Safes (Safe v1.5.0, ≥ 3 signers, threshold ≥ 2, at least one guardian signer not
-   an owner signer, the deployer not a signer). Note: Safe{Wallet}'s web app disables MetaMask, Ledger, WalletConnect
+3. 🔒 Create the owner and guardian Safes (Safe v1.5.0, ≥ 3 signers, threshold ≥ 2, no signer shared between the
+   two Safes, the deployer not a signer). Note: Safe{Wallet}'s web app disables MetaMask, Ledger, WalletConnect
    and most other connectors on Robinhood testnet, so creation and operation may need another Safe client (decision).
 4. `DeployTestnetTokens` → writes `deployments/46630-testnet-config.json`. Review it.
 5. `DeployRixorV2` with that config and the two Safes (its guards reject anything that is not a genuine Safe proxy
@@ -76,7 +76,7 @@ they are valueless; a real token with a mint would fail vetting).
 
 1. 🔒 External review complete; findings resolved or accepted in writing.
 2. 🔒 Owner Safe and Guardian Safe created (Safe v1.5.0, at least 2-of-3, hardware wallets held by different
-   people; at least one guardian signer independent of the owner signers). Addresses recorded here.
+   people; no signer shared between the two Safes, enforced by the deploy script). Addresses recorded here.
 3. 🔒 Deploy with `deploy/config/mainnet.json` (listings empty) and the confirmation sentence. Verify on Sourcify.
 4. 🔒 For each token approved in writing: run `vet:token`, complete the checklist in `TOKEN_VETTING.md`, then the
    Owner Safe calls `proposeListing(token, unit, cap, class)`; anyone executes after 48 hours.
