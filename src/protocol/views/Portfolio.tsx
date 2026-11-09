@@ -116,7 +116,7 @@ export function Portfolio({ ctx }: { ctx: Ctx }) {
       <section className="card">
         <header className="panel-head"><div><small className="kicker">{ENV.wallet} · {ENV.whereShort}</small><h2>Your portfolio</h2></div></header>
         <div className="stat-grid">
-          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>{ENV.bal} {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>{ENV.bal === 'TEST' ? 'valueless TEST token' : 'not a real balance'}</span></div>)}
+          {snapshot.tokens.map((t) => <div className="stat" key={t.address}><small>{ENV.bal} {t.symbol} available</small><strong>{fmtToken(t.balance, t.decimals, { compact: true })}</strong><span>{ENV.bal === 'TEST' ? 'valueless TEST token' : ENV.chain === 'mainnet' ? 'in your wallet on Robinhood Chain' : 'not a real balance'}</span></div>)}
           <div className="stat"><small>WIF rewards claimable</small><strong>{fmtToken(rewardTotal, 18, { compact: true })}</strong><span>from reward streams</span></div>
           <div className="stat"><small>{ENV.bal} WIF</small><strong>{fmtToken(snapshot.wif.balance, 18, { compact: true })}</strong><span>for sponsoring only</span></div>
           <div className="stat"><small>Open positions</small><strong>{open.length}</strong><span>{closed.length} closed</span></div>

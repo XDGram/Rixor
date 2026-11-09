@@ -3,7 +3,7 @@ import { icon } from '../ui'
 import { browserWalletFrom, contractsFor, demoWalletFrom, FAUCET_COOLDOWN, TEST_FAUCET_ABI, type ConnectedWallet } from './chain'
 import { Contract, type Eip1193Provider } from 'ethers'
 import { setMode, type Mode } from './envtext'
-import { bootTestnet, loadTestnetDeployment, TESTNET, type TestnetDeployment, type TestnetSession } from './testnet'
+import { bootLive, loadLiveDeployment, MAINNET, TESTNET, type LiveNetwork, type TestnetDeployment, type TestnetSession } from './testnet'
 import { discoverWallets, requestAccount, switchToChain, type WalletOption } from './wallet'
 import { Brand, Sheet, TxNotice, useTx } from './components'
 import { hashToRoute, makeLabeler, routeToHash, type Ctx, type Route } from './ctx'
@@ -43,29 +43,35 @@ function useSimSession(enabled: boolean) {
   return { session, boot, error, restart: start }
 }
 
-/** Testnet mode is offered only when a deployment manifest is published (see src/protocol/testnet.ts). */
-function useTestnet(enabled: boolean) {
+/** A live mode (testnet or mainnet) is offered only when its deployment manifest is published (src/protocol/testnet.ts). */
+function useLive(network: LiveNetwork, enabled: boolean) {
   const [deployment, setDeployment] = useState<TestnetDeployment | null | undefined>(undefined)
   const [session, setSession] = useState<TestnetSession | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { loadTestnetDeployment().then(setDeployment).catch((e) => { setDeployment(null); setError(e instanceof Error ? e.message : String(e)) }) }, [])
+  useEffect(() => { loadLiveDeployment(network).then(setDeployment).catch((e) => { setDeployment(null); setError(e instanceof Error ? e.message : String(e)) }) }, [network])
   useEffect(() => {
     if (!enabled || !deployment || session) return
-    bootTestnet(deployment).then(setSession).catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [enabled, deployment, session])
+    bootLive(deployment, network).then(setSession).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [enabled, deployment, session, network])
   return { deployment, session, error }
 }
+const storedMode = (): Mode => { const m = safeStorage.get('rixor.mode'); return m === 'testnet' || m === 'mainnet' ? m : 'simulation' }
 
 export default function RixorApp() {
-  const [mode, setModeState] = useState<Mode>(() => (safeStorage.get('rixor.mode') === 'testnet' ? 'testnet' : 'simulation'))
-  const testnet = useTestnet(mode === 'testnet')
-  // Fall back to the simulation when no testnet deployment is published.
-  const effectiveMode: Mode = mode === 'testnet' && testnet.deployment === null ? 'simulation' : mode
+  const [mode, setModeState] = useState<Mode>(storedMode)
+  const testnet = useLive('testnet', mode === 'testnet')
+  const mainnet = useLive('mainnet', mode === 'mainnet')
+  const live = mode === 'mainnet' ? mainnet : testnet
+  // Fall back to the simulation when the chosen live deployment is not published.
+  const effectiveMode: Mode = mode !== 'simulation' && live.deployment === null ? 'simulation' : mode
   setMode(effectiveMode)
   const isSim = effectiveMode === 'simulation'
+  const isMainnet = effectiveMode === 'mainnet'
+  const net = isMainnet ? { name: 'Robinhood Chain mainnet', short: 'Mainnet', chain: MAINNET } : { name: 'Robinhood Chain testnet', short: 'Testnet', chain: TESTNET }
+  const connectedKey = `rixor.${isMainnet ? 'mainnet' : 'testnet'}.connected`
   const { session: simSession, boot, error: simError, restart } = useSimSession(isSim)
   const session = isSim ? simSession : null
-  const bootError = isSim ? simError : testnet.error
+  const bootError = isSim ? simError : live.error
   const [browserWallet, setBrowserWallet] = useState<WalletOption | null>(null)
   const [route, setRoute] = useState<Route>(() => hashToRoute(window.location.hash))
   const [light, setLight] = useState(() => safeStorage.get('rixor.theme') === 'light')
@@ -109,7 +115,7 @@ export default function RixorApp() {
     return () => { p.removeListener?.('accountsChanged', drop); p.removeListener?.('chainChanged', drop) }
   }, [browserWallet]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tn = isSim ? null : testnet.session
+  const tn = isSim ? null : live.session
   const manifest = isSim ? session?.manifest ?? null : tn?.manifest ?? null
   const provider = isSim ? session?.provider ?? null : tn?.provider ?? null
   const health = isSim ? (session ? session.health : null) : (tn ? tn.health : null)
@@ -151,13 +157,13 @@ export default function RixorApp() {
       const option = options[0]
       let acc = await requestAccount(option)
       if (acc.chainId !== tn.deployment.chainId) {
-        await switchToChain(option, { chainId: tn.deployment.chainId, name: tn.deployment.label ?? TESTNET.name, rpc: tn.rpc })
+        await switchToChain(option, { chainId: tn.deployment.chainId, name: isMainnet ? MAINNET.name : (tn.deployment.label ?? TESTNET.name), rpc: tn.rpc })
         acc = await requestAccount(option)
-        if (acc.chainId !== tn.deployment.chainId) throw new Error('Your wallet is not on Robinhood Chain testnet.')
+        if (acc.chainId !== tn.deployment.chainId) throw new Error(`Your wallet is not on ${net.name}.`)
       }
       setWallet(await browserWalletFrom(option.provider as unknown as Eip1193Provider, acc.address, tn.deployment.chainId))
       setBrowserWallet(option)
-      safeStorage.set('rixor.testnet.connected', '1')
+      safeStorage.set(connectedKey, '1')
     } catch (e) {
       const code = (e as { code?: number })?.code
       flash('error', code === 4001 ? 'You declined the request in your wallet.' : e instanceof Error ? e.message : String(e))
@@ -165,7 +171,7 @@ export default function RixorApp() {
   }
   // Restore a previously connected testnet wallet without prompting (eth_accounts), only if it is still on the right chain.
   useEffect(() => {
-    if (!tn || wallet || safeStorage.get('rixor.testnet.connected') !== '1') return
+    if (!tn || wallet || safeStorage.get(connectedKey) !== '1') return
     let live = true
     void (async () => {
       const [option] = await discoverWallets()
@@ -182,8 +188,8 @@ export default function RixorApp() {
   // TEST faucets (testnet only): one claim per token per address per day. Each faucet's cooldown is read first, so a
   // token still cooling down is skipped and its next time shown, instead of reverting and stopping the others.
   const faucetTargets = useMemo(
-    () => (!isSim && manifest ? [...manifest.tokens.map((t) => ({ address: t.address, symbol: t.symbol })), { address: manifest.contracts.wif, symbol: 'tWIF' }] : []),
-    [isSim, manifest],
+    () => (effectiveMode === 'testnet' && manifest ? [...manifest.tokens.map((t) => ({ address: t.address, symbol: t.symbol })), { address: manifest.contracts.wif, symbol: 'tWIF' }] : []),
+    [effectiveMode, manifest],
   )
   const [faucetNext, setFaucetNext] = useState<Record<string, number>>({})
   const readFaucets = useCallback(async (): Promise<Record<string, number>> => {
@@ -201,7 +207,7 @@ export default function RixorApp() {
     setFaucetNext(next)
     return next
   }, [provider, wallet, faucetTargets])
-  useEffect(() => { if (walletOpen && !isSim && wallet) readFaucets().catch(() => setFaucetNext({})) }, [walletOpen, isSim, wallet, readFaucets])
+  useEffect(() => { if (walletOpen && effectiveMode === 'testnet' && wallet) readFaucets().catch(() => setFaucetNext({})) }, [walletOpen, isSim, wallet, readFaucets])
   const testFaucet = async (only?: string) => {
     if (!manifest || !wallet) return
     const targets = only ? faucetTargets.filter((t) => t.address === only) : faucetTargets
@@ -241,7 +247,7 @@ export default function RixorApp() {
   if (bootError) {
     return (
       <Shell>
-        <div className="notice notice--error"><strong>{isSim ? 'The browser simulation could not start' : 'Testnet mode is unavailable'}</strong><span>{bootError}</span></div>
+        <div className="notice notice--error"><strong>{isSim ? 'The browser simulation could not start' : `${net.short} mode is unavailable`}</strong><span>{bootError}</span></div>
         {isSim ? <button type="button" className="btn btn--lime" onClick={restart}>Try again</button> : <button type="button" className="btn btn--lime" onClick={() => switchMode('simulation')}>Use the simulation</button>}
       </Shell>
     )
@@ -250,9 +256,9 @@ export default function RixorApp() {
     return (
       <Shell>
         <section className="card setup-card">
-          <small className="kicker">Robinhood Chain testnet</small>
-          <h1 className="section-title">Connecting to the testnet deployment</h1>
-          <div className="tx-progress" role="status"><span className="spinner" aria-hidden="true" /><div><small>Loading</small><strong>{error ?? 'Reading the Rixor contracts on testnet'}</strong></div></div>
+          <small className="kicker">{net.name}</small>
+          <h1 className="section-title">Connecting to the {isMainnet ? 'mainnet' : 'testnet'} deployment</h1>
+          <div className="tx-progress" role="status"><span className="spinner" aria-hidden="true" /><div><small>Loading</small><strong>{error ?? `Reading and verifying the Rixor contracts on ${isMainnet ? 'mainnet' : 'testnet'}`}</strong></div></div>
           <button type="button" className="text-btn" onClick={() => switchMode('simulation')}>Use the simulation instead</button>
         </section>
       </Shell>
@@ -291,7 +297,7 @@ export default function RixorApp() {
             <button className="wallet-btn" type="button" onClick={() => setWalletOpen(true)}>
               <span className="dot-live" />
               <span className="wallet-btn-copy">
-                <small>{isSim ? 'Simulation' : 'Testnet'}</small>
+                <small>{isSim ? 'Simulation' : net.short}</small>
                 <b>{wallet ? shortAddr(wallet.address) : 'Connect'}</b>
               </span>
             </button>
@@ -302,11 +308,14 @@ export default function RixorApp() {
       <div className="container demo-strip" role="note">
         <div className="seg" role="tablist" aria-label="Environment">
           <button type="button" role="tab" aria-selected={isSim} className={isSim ? 'is-active' : ''} onClick={() => switchMode('simulation')}>Simulation</button>
-          <button type="button" role="tab" aria-selected={!isSim} className={!isSim ? 'is-active' : ''} disabled={!testnet.deployment} title={testnet.deployment ? undefined : 'Not deployed to testnet yet'} onClick={() => switchMode('testnet')}>Testnet</button>
+          {mainnet.deployment && <button type="button" role="tab" aria-selected={isMainnet} className={isMainnet ? 'is-active' : ''} onClick={() => switchMode('mainnet')}>Mainnet</button>}
+          <button type="button" role="tab" aria-selected={effectiveMode === 'testnet'} className={effectiveMode === 'testnet' ? 'is-active' : ''} disabled={!testnet.deployment} title={testnet.deployment ? undefined : 'Not deployed to testnet yet'} onClick={() => switchMode('testnet')}>Testnet</button>
         </div>
         {isSim
-          ? <span>Isolated EVM on this device, started from Robinhood Chain mainnet block {manifest.upstream.forkBlock.toLocaleString('en-US')}. Not live Robinhood Chain. Assets here have no value.{testnet.deployment ? '' : ' Testnet: not deployed yet.'}</span>
-          : <span>{manifest.label} Real transactions signed by your wallet on chain {manifest.chainId}. TEST tokens only; "WIF" here means the valueless tWIF.</span>}
+          ? <span>Isolated EVM on this device, started from Robinhood Chain mainnet block {manifest.upstream.forkBlock.toLocaleString('en-US')}. Not live Robinhood Chain. Assets here have no value.{mainnet.deployment ? ' The live mainnet deployment is under Mainnet.' : ''}{testnet.deployment ? '' : ' Testnet: not deployed yet.'}</span>
+          : isMainnet
+            ? <span><strong>Robinhood Chain mainnet · real assets.</strong> Real transactions signed by your wallet on chain {manifest.chainId}, with your real tokens and the official WIF. The contracts are tested but not audited; lock only what you can afford to lose.</span>
+            : <span>{manifest.label} Real transactions signed by your wallet on chain {manifest.chainId}. TEST tokens only; "WIF" here means the valueless tWIF.</span>}
       </div>
 
       <div className="container app-body">
@@ -322,13 +331,16 @@ export default function RixorApp() {
           </div>
         )}
 
-        {!isSim && wallet && holdsNothing && snapshot.positions.length === 0 && (
+        {isMainnet && wallet && holdsNothing && snapshot.positions.length === 0 && (
+          <div className="empty"><div><strong>You hold none of the listed tokens</strong><span>Rixor locks tokens you already hold ({manifest.tokens.map((t) => t.symbol).join(', ')}); it never sells or swaps tokens. You also need a little Robinhood Chain ETH for gas.</span></div></div>
+        )}
+        {effectiveMode === 'testnet' && wallet && holdsNothing && snapshot.positions.length === 0 && (
           <div className="empty empty--action">
             <div><strong>No TEST tokens yet</strong><span>Each TEST token has a public faucet (once per day per address). They are valueless and exist only on testnet. You need a little testnet ETH for gas, from the official <a href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener noreferrer">Robinhood Chain testnet faucet</a>.</span></div>
             <button type="button" className="btn btn--lime btn--sm" disabled={tx.busy} onClick={() => void testFaucet()}>Get TEST tokens</button>
           </div>
         )}
-        {!isSim && <TxNotice tx={tx.tx} for="faucet" />}
+        {effectiveMode === 'testnet' && <TxNotice tx={tx.tx} for="faucet" />}
 
         {route.name === 'explore' && <Explore ctx={ctx} />}
         {route.name === 'token' && <TokenView ctx={ctx} address={route.address} />}
@@ -348,7 +360,7 @@ export default function RixorApp() {
       </nav>
 
       {walletOpen && !isSim && (
-        <Sheet id="wallet-title" kicker="Robinhood Chain testnet" title={wallet ? 'Your wallet' : 'Connect'} onClose={() => setWalletOpen(false)}>
+        <Sheet id="wallet-title" kicker={net.name} title={wallet ? 'Your wallet' : 'Connect'} onClose={() => setWalletOpen(false)}>
           {wallet ? (
             <>
               <div className="wallet-identity">
@@ -356,11 +368,13 @@ export default function RixorApp() {
                 <div>
                   <small>{browserWallet?.name ?? 'Browser wallet'} · chain {manifest.chainId}</small>
                   <strong className="mono">{shortAddr(wallet.address)}</strong>
-                  <span>{snapshot.tokens.map((t) => `${fmtToken(t.balance, t.decimals, { compact: true })} ${t.symbol}`).join(' · ')} · {fmtToken(snapshot.wif.balance, 18, { compact: true })} tWIF · {fmtToken(snapshot.ethBalance, 18)} ETH for gas</span>
+                  <span>{snapshot.tokens.map((t) => `${fmtToken(t.balance, t.decimals, { compact: true })} ${t.symbol}`).join(' · ')} · {fmtToken(snapshot.wif.balance, 18, { compact: true })} {isMainnet ? 'WIF' : 'tWIF'} · {fmtToken(snapshot.ethBalance, 18)} ETH for gas</span>
                 </div>
               </div>
-              <div className="notice"><strong>Testnet only</strong><span>Every transaction is signed by your wallet on Robinhood Chain testnet. TEST tokens have no value. Your wallet estimates gas; Rixor never sets gas limits.</span></div>
-              <div className="sheet-section">
+              {isMainnet
+                ? <div className="notice notice--warn"><strong>Real assets on mainnet</strong><span>Every transaction is signed by your wallet on Robinhood Chain mainnet and moves your real tokens. Rewards are paid in the official WIF. The contracts are tested but not audited. Your wallet estimates gas; Rixor never sets gas limits.</span></div>
+                : <div className="notice"><strong>Testnet only</strong><span>Every transaction is signed by your wallet on Robinhood Chain testnet. TEST tokens have no value. Your wallet estimates gas; Rixor never sets gas limits.</span></div>}
+              {!isMainnet && <div className="sheet-section">
                 <small className="kicker">TEST token faucets · one claim per token per day</small>
                 <button type="button" className="btn btn--lime btn--block" disabled={tx.busy || faucetTargets.every((t) => faucetNext[t.address])} onClick={() => void testFaucet()}>Get all available TEST tokens</button>
                 <dl className="rows">
@@ -375,7 +389,7 @@ export default function RixorApp() {
                 </dl>
                 <p className="fine-print">Gas is paid in Robinhood Chain testnet ETH, which Rixor does not provide. Get it from the official <a href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener noreferrer">Robinhood Chain testnet faucet</a>.</p>
                 <TxNotice tx={tx.tx} for="faucet" />
-              </div>
+              </div>}
               <div className="sheet-section">
                 <small className="kicker">Deployment</small>
                 <dl className="rows">
@@ -387,17 +401,17 @@ export default function RixorApp() {
                 </dl>
               </div>
               <div className="sheet-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => { setWallet(null); setBrowserWallet(null); safeStorage.remove('rixor.testnet.connected') }}>Disconnect</button>
+                <button type="button" className="btn btn--ghost" onClick={() => { setWallet(null); setBrowserWallet(null); safeStorage.remove(connectedKey) }}>Disconnect</button>
                 <button type="button" className="btn btn--dark" onClick={() => setWalletOpen(false)}>Done</button>
               </div>
             </>
           ) : (
             <>
-              <p className="figure-sub">Connect your own browser wallet on Robinhood Chain testnet. Rixor asks your wallet to switch networks if needed, and never asks for your keys or seed phrase.</p>
+              <p className="figure-sub">Connect your own browser wallet on {net.name}. Rixor asks your wallet to switch networks if needed, and never asks for your keys or seed phrase.</p>
               <div className="sheet-section">
                 <button type="button" className="btn btn--lime btn--block btn--lg" disabled={working !== null} onClick={() => void connectBrowser()}>{working === 'connect' ? 'Connecting…' : 'Connect wallet'}</button>
               </div>
-              <p className="fine-print">Testnet transactions use test ETH for gas and valueless TEST tokens. Never send real assets to testnet addresses.</p>
+              <p className="fine-print">{isMainnet ? 'Mainnet transactions use real ETH for gas and move your real tokens. Check every request in your wallet before approving it.' : 'Testnet transactions use test ETH for gas and valueless TEST tokens. Never send real assets to testnet addresses.'}</p>
             </>
           )}
         </Sheet>

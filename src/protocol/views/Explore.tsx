@@ -95,8 +95,8 @@ export function Explore({ ctx }: { ctx: Ctx }) {
           ))}
         </ul>
         <p className="fine-print">
-          {MODE === 'testnet' ? 'These are valueless TEST tokens deployed for the testnet demo. They represent no real asset.' : 'HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing.'}
-          On Robinhood Chain, a token becomes supported only after exact-address vetting, approval and a 48-hour on-chain timelock.
+          {MODE === 'testnet' ? 'These are valueless TEST tokens deployed for the testnet demo. They represent no real asset. ' : MODE === 'mainnet' ? 'These real tokens are listed in the Rixor Locker on Robinhood Chain mainnet after exact-address vetting (Class B: Flexible and Committed only, capped). ' : 'HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing. '}
+          {MODE === 'mainnet' ? 'Any further listing needs vetting, approval and a 48-hour on-chain timelock.' : 'On Robinhood Chain, a token becomes supported only after exact-address vetting, approval and a 48-hour on-chain timelock.'}
         </p>
       </section>
 

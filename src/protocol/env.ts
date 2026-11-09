@@ -4,7 +4,7 @@
 // Robinhood Chain, and nothing ever sends a real transaction.
 
 export type Manifest = {
-  environment: 'fork-demo' | 'browser-evm' | 'testnet'
+  environment: 'fork-demo' | 'browser-evm' | 'testnet' | 'mainnet'
   label: string
   chainId: number
   upstream: { name: string; chainId: number; forkBlock: number; forkTimestamp: number }

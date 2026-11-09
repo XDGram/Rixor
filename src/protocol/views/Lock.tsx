@@ -79,7 +79,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
           )}
         </header>
 
-        <div className="notice"><strong>{ENV.listingTitle}</strong><span>{ENV.listingBody(token.symbol)} {listInfo?.note ?? ''}</span></div>
+        <div className="notice"><strong>{ENV.listingTitle}</strong><span>{ENV.listingBody(token.symbol)} {ENV.chain === 'mainnet' ? '' : listInfo?.note ?? ''}</span></div>
 
         <div className="term-grid tier-grid" role="radiogroup" aria-label="Tier">
           {TIERS.map((t) => {
@@ -122,7 +122,7 @@ export function LockView({ ctx }: { ctx: Ctx }) {
 
         <dl className="rows">
           <div><dt>WIF rewards now</dt><dd>{token.rateNow > 0n ? (amount ? `≈ ${fmtToken(daily)} WIF/day at today's stream rate` : `${fmtToken(token.rateNow * 86_400n, 18, { compact: true })} WIF/day shared by all ${token.symbol} lockers`) : nextStream ? `Next stream starts ${fmtDate(nextStream.start)}` : 'No active stream'}</dd></div>
-          <div><dt>Unit size (provisional)</dt><dd>1 unit = {fmtToken(token.unit, token.decimals)} {token.symbol}</dd></div>
+          <div><dt>Unit size{ctx.manifest.params.provisional ? ' (provisional)' : ''}</dt><dd>1 unit = {fmtToken(token.unit, token.decimals)} {token.symbol}</dd></div>
           <div><dt>Challenge score per entry</dt><dd>{score ? `${score.units} unit${score.units === 1 ? '' : 's'} → ${fmtPoints(score.points)} points` : '—'}</dd></div>
           {tier === 0 && <div><dt>Leaving</dt><dd>Any time, no fee</dd></div>}
           {tier === 1 && <div><dt>Leaving early</dt><dd>Fee up to 10%, falling to 0 over {termDays} days, burned</dd></div>}
@@ -182,7 +182,7 @@ export function TokenView({ ctx, address }: { ctx: Ctx; address: string }) {
         <dl className="rows">
           <div><dt>Contract</dt><dd className="mono">{token.address}</dd></div>
           <div><dt>Risk class</dt><dd>{cls?.label}: {cls?.tiers}, terms up to {cls?.maxTermDays} days</dd></div>
-          <div><dt>Listing status</dt><dd>{listInfo?.note ?? ENV.listingTitle}</dd></div>
+          <div><dt>Listing status</dt><dd>{ENV.chain === 'mainnet' ? ENV.listingTitle : listInfo?.note ?? ENV.listingTitle}</dd></div>
           <div><dt>Challenges accepting {token.symbol}</dt><dd>{accepting.length}</dd></div>
         </dl>
         <p className="fine-print">{cls?.why} Risk classes limit what you can commit to; they never limit withdrawing your own tokens.</p>

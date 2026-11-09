@@ -38,3 +38,4 @@ safe-signing-drill.json
 deployments/*-deploy-bundle*.json
 deployments/addresses*.json
 dist-console/
+demo/e2e/mainnet-shots/
