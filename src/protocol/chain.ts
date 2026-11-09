@@ -138,7 +138,7 @@ export function describeError(error: unknown): string {
   const msg = e?.shortMessage ?? e?.message ?? 'Something went wrong.'
   if (/insufficient funds/i.test(msg)) {
     return MODE === 'testnet'
-      ? 'Your wallet does not have enough Robinhood Chain testnet ETH to pay for gas. Add a little testnet ETH and try again.'
+      ? 'Your wallet does not have enough Robinhood Chain testnet ETH to pay for gas. Get some from the official faucet (faucet.testnet.chain.robinhood.com) and try again.'
       : 'This demo wallet cannot pay for that. Use "Get demo tokens".'
   }
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg

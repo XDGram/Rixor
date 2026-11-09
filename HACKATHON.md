@@ -73,7 +73,7 @@ challenges, and move the simulation clock forward to see a full challenge finish
 - **Simulation demo:** complete. The end-to-end browser journey passes 17/17 steps, covering locks, tiers, rewards,
   both challenge outcomes, refunds and exits.
 - **Testnet:** **not deployed yet.** The deployment is scripted and rehearsed: on a local chain, the rehearsal passes
-  13/13 checks and the testnet-mode browser journey passes 8/8 steps (connect, faucet, lock, rewards, claim, early
+  13/13 checks and the testnet-mode browser journey passes 11/11 steps (connect, faucet, lock, rewards, claim, early
   exit). Real testnet transactions will be linked here once the contracts are deployed.
 - **Mainnet:** not deployed, and **no production token is listed or approved**. HOOKR and TORCH appear in the
   simulation only, as candidate Class B tokens under review.

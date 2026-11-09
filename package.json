@@ -14,6 +14,7 @@
     "test:pricing": "node scripts/test-pricing.mjs",
     "test:signer-sets": "node scripts/test-signer-sets.mjs",
     "test:safe-signing": "node scripts/test-safe-signing.mjs",
+    "test:wallet-switch": "node scripts/test-wallet-switch.mjs",
     "check:live-price": "node scripts/test-pricing.mjs --live",
     "forge": "node scripts/forge.mjs",
     "test:contracts": "node scripts/forge.mjs test --no-match-path 'test/fork/*'",

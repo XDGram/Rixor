@@ -324,7 +324,7 @@ export default function RixorApp() {
 
         {!isSim && wallet && holdsNothing && snapshot.positions.length === 0 && (
           <div className="empty empty--action">
-            <div><strong>No TEST tokens yet</strong><span>Each TEST token has a public faucet (once per day per address). They are valueless and exist only on testnet. You need a little testnet ETH for gas.</span></div>
+            <div><strong>No TEST tokens yet</strong><span>Each TEST token has a public faucet (once per day per address). They are valueless and exist only on testnet. You need a little testnet ETH for gas, from the official <a href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener noreferrer">Robinhood Chain testnet faucet</a>.</span></div>
             <button type="button" className="btn btn--lime btn--sm" disabled={tx.busy} onClick={() => void testFaucet()}>Get TEST tokens</button>
           </div>
         )}
@@ -373,7 +373,7 @@ export default function RixorApp() {
                     </div>
                   ))}
                 </dl>
-                <p className="fine-print">Gas is paid in Robinhood Chain testnet ETH, which Rixor does not provide.</p>
+                <p className="fine-print">Gas is paid in Robinhood Chain testnet ETH, which Rixor does not provide. Get it from the official <a href="https://faucet.testnet.chain.robinhood.com/" target="_blank" rel="noopener noreferrer">Robinhood Chain testnet faucet</a>.</p>
                 <TxNotice tx={tx.tx} for="faucet" />
               </div>
               <div className="sheet-section">

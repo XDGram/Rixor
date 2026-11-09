@@ -40,19 +40,26 @@ export async function requestAccount(w: WalletOption): Promise<{ address: string
   return { address: accounts[0], chainId: Number(chainHex) }
 }
 
-/** Switches the wallet to `chain`, adding the network first if the wallet does not know it. */
+/** Switches the wallet to `chain`, adding the network first if the wallet does not know it. Mobile wallets report an
+ *  unknown chain in different ways (4902, -32603, a nested `data.originalError.code`, or a plain message), and some
+ *  add a chain without switching to it, so: any error other than the user's rejection (4001) leads to
+ *  `wallet_addEthereumChain`, and the result is confirmed with `eth_chainId` (switching again if needed). */
 export async function switchToChain(w: WalletOption, chain: { chainId: number; name: string; rpc: string }) {
   const hex = '0x' + chain.chainId.toString(16)
+  const switchTo = () => w.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] })
+  const onChain = async () => Number((await w.provider.request({ method: 'eth_chainId' })) as string) === chain.chainId
   try {
-    await w.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] })
+    await switchTo()
   } catch (e) {
-    const code = (e as { code?: number })?.code
-    if (code !== 4902 && code !== -32603) throw e
+    const err = e as { code?: number; data?: { originalError?: { code?: number } } }
+    if (err?.code === 4001 || err?.data?.originalError?.code === 4001) throw e
     await w.provider.request({
       method: 'wallet_addEthereumChain',
       params: [{ chainId: hex, chainName: chain.name, rpcUrls: [chain.rpc], nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 } }],
     })
+    if (!(await onChain())) await switchTo()
   }
+  if (!(await onChain())) throw new Error(`Your wallet is not on ${chain.name} (chain ${chain.chainId}). Switch network in the wallet and try again.`)
 }
 
 export const switchToRobinhood = (w: WalletOption) =>
