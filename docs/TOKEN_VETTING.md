@@ -95,6 +95,9 @@ Adding a custodian requires the same source review. Unknown contracts are report
 | MOW, AnsemCat | see token list | Unsupported | Funding or holder clusters above limits |
 
 WIF (`0x5173b8eA6923c2d40267890D45C46a3480954773`) is the **reward token**. It is not a lockable community.
+Vetted as the reward token on 9 Nov 2026 (block 110,175,473): Sourcify full match (`PonsV2LauncherToken`, plain
+OpenZeppelin ERC20 + Burnable, no owner or admin powers), 18 decimals, exact transfers into and out of contracts and the
+PoolManager, 1,600 holders (largest 2.51%), ~22.7 ETH depth with 99.0% locked by code (`docs/MAINNET_DEPLOYMENT.md` §1).
 
 ## 4. Human review checklist (per listing)
 

@@ -77,8 +77,10 @@ challenges, and move the simulation clock forward to see a full challenge finish
   exit). Real testnet transactions will be linked here once the contracts are deployed. A mobile Deploy Console
   (`docs/DEPLOY_CONSOLE.md`) can send the same 11 deployment transactions from a phone wallet; it is tested on local
   chains only.
-- **Mainnet:** not deployed, and **no production token is listed or approved**. HOOKR and TORCH appear in the
-  simulation only, as candidate Class B tokens under review.
+- **Mainnet (real $WIF):** **not deployed yet; prepared.** The real-$WIF plan (two 2-of-3 Safes, Locker listing HOOKR
+  and TORCH as Class B, Rewards and Challenges paying the official WIF, 2 × 10,000 WIF reward streams) is scripted,
+  rehearsed on a local mainnet fork with real WIF transfers, and gated in the Deploy Console until approved
+  (`docs/MAINNET_DEPLOYMENT.md`). No production listing is approved yet.
 
 ## Notes
 

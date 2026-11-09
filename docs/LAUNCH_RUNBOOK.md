@@ -74,6 +74,11 @@ they are valueless; a real token with a mint would fail vetting).
 
 ## 4. Mainnet (chain id 4663), after an independent review
 
+> **Superseded for the hackathon by `docs/MAINNET_DEPLOYMENT.md`** (real-$WIF plan: `CreateMainnetSafes`,
+> `DeployRixorV2` with `deploy/config/mainnet.candidate.json`, `SeedMainnetRewards`, the Deploy Console mainnet profile).
+> That plan lists HOOKR and TORCH in the constructor and has **no external review**; both need written approval.
+> The original sequence below is kept for reference.
+
 1. 🔒 External review complete; findings resolved or accepted in writing.
 2. 🔒 Owner Safe and Guardian Safe created (Safe v1.5.0, at least 2-of-3, hardware wallets held by different
    people; no signer shared between the two Safes, enforced by the deploy script). Addresses recorded here.
