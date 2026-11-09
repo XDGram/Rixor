@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { icon } from '../ui'
-import { browserWalletFrom, contractsFor, demoWalletFrom, TEST_FAUCET_ABI, type ConnectedWallet } from './chain'
+import { browserWalletFrom, contractsFor, demoWalletFrom, FAUCET_COOLDOWN, TEST_FAUCET_ABI, type ConnectedWallet } from './chain'
 import { Contract, type Eip1193Provider } from 'ethers'
 import { setMode, type Mode } from './envtext'
 import { bootTestnet, loadTestnetDeployment, TESTNET, type TestnetDeployment, type TestnetSession } from './testnet'
@@ -178,10 +178,41 @@ export default function RixorApp() {
     })()
     return () => { live = false }
   }, [tn]) // eslint-disable-line react-hooks/exhaustive-deps
-  const testFaucet = async () => {
+
+  // TEST faucets (testnet only): one claim per token per address per day. Each faucet's cooldown is read first, so a
+  // token still cooling down is skipped and its next time shown, instead of reverting and stopping the others.
+  const faucetTargets = useMemo(
+    () => (!isSim && manifest ? [...manifest.tokens.map((t) => ({ address: t.address, symbol: t.symbol })), { address: manifest.contracts.wif, symbol: 'tWIF' }] : []),
+    [isSim, manifest],
+  )
+  const [faucetNext, setFaucetNext] = useState<Record<string, number>>({})
+  const readFaucets = useCallback(async (): Promise<Record<string, number>> => {
+    if (!provider || !wallet || faucetTargets.length === 0) return {}
+    const [block, ...lasts] = await Promise.all([
+      provider.getBlock('latest'),
+      ...faucetTargets.map((t) => new Contract(t.address, TEST_FAUCET_ABI, provider).lastFaucet(wallet.address) as Promise<bigint>),
+    ])
+    const chainNow = block?.timestamp ?? Math.floor(Date.now() / 1000)
+    const next: Record<string, number> = {}
+    faucetTargets.forEach((t, i) => {
+      const availableAt = lasts[i] === 0n ? 0 : Number(lasts[i]) + FAUCET_COOLDOWN
+      next[t.address] = availableAt > chainNow ? availableAt : 0 // 0 = ready now
+    })
+    setFaucetNext(next)
+    return next
+  }, [provider, wallet, faucetTargets])
+  useEffect(() => { if (walletOpen && !isSim && wallet) readFaucets().catch(() => setFaucetNext({})) }, [walletOpen, isSim, wallet, readFaucets])
+  const testFaucet = async (only?: string) => {
     if (!manifest || !wallet) return
-    const targets = [...manifest.tokens.map((t) => ({ address: t.address, symbol: t.symbol })), { address: manifest.contracts.wif, symbol: 'tWIF' }]
-    await tx.run('faucet', targets.map((t) => ({ label: `Get TEST ${t.symbol} from its faucet`, send: () => new Contract(t.address, TEST_FAUCET_ABI, wallet.signer).faucet() })), 'TEST tokens received')
+    const targets = only ? faucetTargets.filter((t) => t.address === only) : faucetTargets
+    // If the cooldown read fails, send anyway: a cooldown then shows as a readable error from the wallet's estimate.
+    const next = await readFaucets().catch(() => ({} as Record<string, number>))
+    const ready = targets.filter((t) => !next[t.address])
+    const waiting = targets.filter((t) => next[t.address]).map((t) => `${t.symbol} at ${fmtDate(next[t.address])}`).join(', ')
+    if (ready.length === 0) { flash('error', `Daily faucet limit reached. Available again: ${waiting}.`); return }
+    const ok = await tx.run('faucet', ready.map((t) => ({ label: `Get TEST ${t.symbol} from its faucet`, send: () => new Contract(t.address, TEST_FAUCET_ABI, wallet.signer).faucet() })), `Received TEST ${ready.map((t) => t.symbol).join(', ')}`)
+    if (waiting) flash(ok ? 'ok' : 'error', `Skipped (one claim per day): ${waiting}.`)
+    readFaucets().catch(() => setFaucetNext({}))
   }
   const forget = async () => {
     if (!session) return
@@ -330,8 +361,19 @@ export default function RixorApp() {
               </div>
               <div className="notice"><strong>Testnet only</strong><span>Every transaction is signed by your wallet on Robinhood Chain testnet. TEST tokens have no value. Your wallet estimates gas; Rixor never sets gas limits.</span></div>
               <div className="sheet-section">
-                <small className="kicker">TEST token faucets</small>
-                <button type="button" className="btn btn--lime btn--block" disabled={tx.busy} onClick={() => void testFaucet()}>Get TEST {manifest.tokens.map((t) => t.symbol).join(', ')} and tWIF</button>
+                <small className="kicker">TEST token faucets · one claim per token per day</small>
+                <button type="button" className="btn btn--lime btn--block" disabled={tx.busy || faucetTargets.every((t) => faucetNext[t.address])} onClick={() => void testFaucet()}>Get all available TEST tokens</button>
+                <dl className="rows">
+                  {faucetTargets.map((t) => (
+                    <div key={t.address}>
+                      <dt>{t.symbol}</dt>
+                      <dd>{faucetNext[t.address]
+                        ? <>Next at {fmtDate(faucetNext[t.address])}</>
+                        : <button type="button" className="text-btn" disabled={tx.busy} onClick={() => void testFaucet(t.address)}>Get {t.symbol}</button>}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="fine-print">Gas is paid in Robinhood Chain testnet ETH, which Rixor does not provide.</p>
                 <TxNotice tx={tx.tx} for="faucet" />
               </div>
               <div className="sheet-section">

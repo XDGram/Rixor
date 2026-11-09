@@ -62,7 +62,23 @@ try {
   })
   await step('get TEST tokens from the faucets (wallet-signed, node gas estimates)', async () => {
     await page.getByRole('button', { name: 'Get TEST tokens' }).click()
-    await receipt('TEST tokens received')
+    await receipt('Received TEST')
+  })
+  await step('faucet cooldown is shown per token and nothing is re-sent', async () => {
+    await page.locator('.tabbar button', { hasText: 'Wallet' }).click()
+    const sheet = page.locator('.sheet')
+    await sheet.locator('dd', { hasText: 'Next at' }).nth(2).waitFor({ timeout: 30_000 }) // tMEMEA, tMEMEB, tWIF
+    if (!(await sheet.getByRole('button', { name: 'Get all available TEST tokens' }).isDisabled())) throw new Error('faucet button must be disabled while every token is cooling down')
+    await shot('t01b-faucet-cooldown')
+    await sheet.locator('.icon-btn[aria-label="Close"]').click()
+  })
+  await step('mainnet holdings card in testnet mode: no network switch, testnet wallet stays connected', async () => {
+    await go('#/explore')
+    await page.getByRole('button', { name: 'Connect wallet (read-only)' }).click()
+    await page.locator('dd', { hasText: 'Your wallet stays on testnet' }).waitFor({ timeout: 30_000 })
+    if (await page.getByRole('button', { name: 'Switch to Robinhood Chain' }).count()) throw new Error('testnet mode must not offer a switch to mainnet')
+    const label = await page.locator('.wallet-btn b').innerText()
+    if (label === 'Connect') throw new Error('testnet wallet was disconnected')
   })
   await step('Class B TEST token: Diamond disabled; lock Committed 60 days', async () => {
     await go('#/lock')
@@ -91,6 +107,15 @@ try {
     await receipt('Exited position')
     await page.locator('.lock-row', { hasText: '5,000 tMEMEB' }).locator('strong', { hasText: 'Closed' }).waitFor({ timeout: 30_000 })
     await shot('t03-portfolio')
+  })
+  await step('after the cooldown (time moved on the local chain), one token can be claimed on its own', async () => {
+    await page.locator('.tabbar button', { hasText: 'Wallet' }).click()
+    const sheet = page.locator('.sheet')
+    await sheet.getByRole('button', { name: 'Get tMEMEA', exact: true }).click({ timeout: 30_000 })
+    await sheet.locator('.receipt', { hasText: 'Received TEST tMEMEA' }).waitFor({ timeout: 60_000 })
+    await sheet.locator('dd', { hasText: 'Next at' }).first().waitFor({ timeout: 30_000 })
+    if (!(await sheet.getByRole('button', { name: 'Get tMEMEB', exact: true }).count())) throw new Error('tMEMEB faucet should still be available')
+    await sheet.locator('.icon-btn[aria-label="Close"]').click()
   })
   await step('activity shows 6-decimal amounts correctly', async () => {
     await go('#/activity')

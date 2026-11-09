@@ -3,6 +3,7 @@ import { fmtToken, shortAddr } from '../model'
 import type { Ctx } from '../ctx'
 import { discoverWallets, detectHoldings, requestAccount, switchToRobinhood, type Holding, type Holdings, type WalletOption } from '../wallet'
 import { ROBINHOOD_CHAIN } from '../tokenlist'
+import { MODE } from '../envtext'
 
 const GROUPS: { key: Holding['group']; title: string; empty: string }[] = [
   { key: 'supported', title: 'Supported on Robinhood Chain', empty: 'None yet: no Rixor Locker is deployed on Robinhood Chain.' },
@@ -48,7 +49,8 @@ export function HoldingsCard({ ctx }: { ctx: Ctx }) {
     try { setHoldings(await detectHoldings(account.address, import.meta.env.VITE_RIXOR_LOCKER_4663 || undefined)) } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
   }
   const doSwitch = async () => {
-    if (!chosen) return
+    // Never in testnet mode: switching the wallet to mainnet would disconnect the testnet session.
+    if (!chosen || MODE === 'testnet') return
     try { await switchToRobinhood(chosen); setAccount(await requestAccount(chosen)) } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }
 
@@ -72,7 +74,11 @@ export function HoldingsCard({ ctx }: { ctx: Ctx }) {
       {account && (
         <dl className="rows">
           <div><dt>Address</dt><dd className="mono">{shortAddr(account.address)}</dd></div>
-          <div><dt>Wallet network</dt><dd>{account.chainId === ROBINHOOD_CHAIN.chainId ? 'Robinhood Chain' : <>Chain {account.chainId} <button type="button" className="text-btn" onClick={() => void doSwitch()}>Switch to Robinhood Chain</button></>}</dd></div>
+          <div><dt>Wallet network</dt><dd>{account.chainId === ROBINHOOD_CHAIN.chainId
+            ? 'Robinhood Chain'
+            : MODE === 'testnet'
+              ? <>Chain {account.chainId}. Your wallet stays on testnet; these mainnet balances are read directly from Robinhood Chain.</>
+              : <>Chain {account.chainId} <button type="button" className="text-btn" onClick={() => void doSwitch()}>Switch to Robinhood Chain</button></>}</dd></div>
           {holdings && <div><dt>ETH (gas)</dt><dd>{fmtToken(holdings.eth, 18)} ETH</dd></div>}
           {holdings && <div><dt>Read at</dt><dd>Robinhood Chain block {holdings.block.toLocaleString('en-US')}</dd></div>}
         </dl>

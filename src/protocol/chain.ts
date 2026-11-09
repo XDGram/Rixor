@@ -3,6 +3,8 @@ import lockerAbi from './abi/RixorLocker.json'
 import challengesAbi from './abi/RixorChallenges.json'
 import rewardsAbi from './abi/RixorRewards.json'
 import type { Manifest } from './env'
+import { MODE } from './envtext'
+import { fmtDate } from './model'
 
 export const ERC20_ABI = [
   'function symbol() view returns (string)', 'function decimals() view returns (uint8)',
@@ -57,6 +59,9 @@ export async function browserWalletFrom(eip1193: Eip1193Provider, address: strin
 
 /** TEST tokens on testnet expose a public, rate-limited faucet. */
 export const TEST_FAUCET_ABI = ['function faucet() returns (uint256)', 'function lastFaucet(address) view returns (uint256)']
+/** RixorTestToken.FAUCET_COOLDOWN: one faucet claim per token per address per day. */
+export const FAUCET_COOLDOWN = 86_400
+const testTokenIface = new Interface(['error FaucetCooldown(uint256 availableAt)', 'error MainnetNotAllowed()'])
 
 // ------------------------------------------------------------------ errors
 
@@ -118,6 +123,11 @@ export function describeError(error: unknown): string {
   if (e?.code === 'ACTION_REJECTED') return 'You rejected the request in your wallet.'
   const data = e?.data ?? e?.info?.error?.data ?? e?.error?.data
   if (typeof data === 'string' && data.startsWith('0x') && data.length >= 10) {
+    try {
+      const parsed = testTokenIface.parseError(data)
+      if (parsed?.name === 'FaucetCooldown') return `This faucet allows one claim per day. It is available again at ${fmtDate(Number(parsed.args[0]))}.`
+      if (parsed?.name === 'MainnetNotAllowed') return 'TEST tokens cannot be used on Robinhood Chain mainnet.'
+    } catch { /* not a TEST token error */ }
     for (const iface of [challengesIface, lockerIface, rewardsIface]) {
       try {
         const parsed = iface.parseError(data)
@@ -126,6 +136,10 @@ export function describeError(error: unknown): string {
     }
   }
   const msg = e?.shortMessage ?? e?.message ?? 'Something went wrong.'
-  if (/insufficient funds/i.test(msg)) return 'This demo wallet cannot pay for that. Use "Get demo tokens".'
+  if (/insufficient funds/i.test(msg)) {
+    return MODE === 'testnet'
+      ? 'Your wallet does not have enough Robinhood Chain testnet ETH to pay for gas. Add a little testnet ETH and try again.'
+      : 'This demo wallet cannot pay for that. Use "Get demo tokens".'
+  }
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg
 }
