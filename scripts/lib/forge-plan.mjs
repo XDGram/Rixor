@@ -2,7 +2,7 @@
 // scripts/plan-testnet.mjs) against a LOCAL chain with `--unlocked`, then returns Forge's own broadcast records: the
 // exact transactions a real deployment sends. Never used against a real network: the caller passes a local RPC.
 import { spawnSync } from 'node:child_process'
-import { readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +17,7 @@ export function runForgePlan({ rpc, chainId, deployer, owners, guardians, tag = 
   const env = { ...process.env, RIXOR_EXPECTED_CHAIN_ID: String(chainId), RIXOR_OUTPUT_TAG: tag, RIXOR_OWNER_SIGNERS: owners.join(','), RIXOR_GUARDIAN_SIGNERS: guardians.join(',') }
   const common = ['--rpc-url', rpc, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
   const records = []
+  mkdirSync(join(ROOT, 'deployments'), { recursive: true }) // the scripts write their config/manifest here (absent in a fresh clone)
   const run = (script, extra = {}) => {
     const r = spawnSync(process.execPath, [FORGE, 'script', `script/${script}.s.sol`, ...common], { cwd: ROOT, env: { ...env, ...extra }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     if (r.status !== 0) throw new Error(`${script} failed:\n${r.stdout.slice(-2500)}\n${r.stderr.slice(-1500)}`)
