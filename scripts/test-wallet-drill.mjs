@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Signature, Transaction, TypedDataEncoder, Wallet, getAddress } from 'ethers'
 import { TYPES, hashesOf } from './lib/safe-typed.mjs'
-import { PINNED, RPC_ALLOWED, anvilArgs, canonicalDrill, checkDrillSignature, rpcRequestCheck } from './lib/wallet-drill-core.mjs'
+import { PINNED, RPC_ALLOWED, anvilArgs, canonicalDrill, checkDrillSignature, maskAddress, rpcRequestCheck } from './lib/wallet-drill-core.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const arch = process.arch === 'x64' ? 'amd64' : process.arch
@@ -148,6 +148,66 @@ try {
     await new Promise((r) => setTimeout(r, 300))
     t('its Anvil is stopped with the station', children && spawnSync('kill', ['-0', children]).status !== 0)
   }
+
+  // 9. Argument refusals for the new modes.
+  for (const [name, a] of [['http:// public URL', ['--public-url', 'http://example.test']], ['public URL with a path', ['--public-url', 'https://example.test/x']],
+    ['public URL with credentials', ['--public-url', 'https://u:p@example.test']], ['public URL with a query', ['--public-url', 'https://example.test/?a=1']]]) {
+    const r = spawnSync(process.execPath, [join(ROOT, 'scripts/wallet-drill.mjs'), '--expect', 'page', ...a], { encoding: 'utf8' })
+    t(`station refuses a ${name}`, r.status === 1 && /--public-url/.test(r.stderr), r.stderr)
+  }
+  t('maskAddress shows only the first 6 and last 4 characters', maskAddress(w.address) === `${w.address.slice(0, 6)}...${w.address.slice(-4)}`)
+
+  // 10. Page-entry mode behind a public HTTPS origin (as in a temporary Vercel Sandbox).
+  let out2 = ''
+  station = spawn(process.execPath, [join(ROOT, 'scripts/wallet-drill.mjs'), '--expect', 'page', '--public-url', 'https://drill.example.test', '--port', '0', '--host', '127.0.0.1', '--minutes', '5'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  station.stdout.on('data', (c) => { out2 += c }); station.stderr.on('data', (c) => { out2 += c })
+  let port2, token2
+  for (let i = 0; i < 200 && !port2; i++) { const m = out2.match(/STATION_READY (\d+) ([0-9a-f]{32})/); if (m) [, port2, token2] = m; else await new Promise((r) => setTimeout(r, 100)) }
+  t('page-entry station starts', Boolean(port2), out2)
+  const base2 = `http://127.0.0.1:${port2}/${token2}/`
+  const req2 = async (path, body) => { const r = await fetch(`${base2}${path}`, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, body: await r.json() } }
+  t('public mode prints only the HTTPS links (no local-network addresses)', out2.includes(`https://drill.example.test/${token2}/rpc`) && out2.includes(`https://drill.example.test/${token2}/`) && !/On the iPhone \(network/.test(out2))
+  let st = await req2('status')
+  t('status: page-entry mode, address not yet set', st.body.pageEntry === true && st.body.expectSet === false && st.body.expected === null)
+  t('stage 1 is refused before the address is set', (await req2('stage1', { chainId: '0x7a69', account: w.address })).status === 409)
+  t('check is refused before the address is set', (await req2('check', { signature: sigEthers, account: w.address })).status === 409)
+  t('an invalid address is refused', (await req2('expect', { address: '0x1234' })).status === 400)
+  const badChecksum = w.address.slice(0, 2) + [...w.address.slice(2)].map((c) => (/[a-f]/.test(c) ? c.toUpperCase() : /[A-F]/.test(c) ? c.toLowerCase() : c)).join('')
+  t('a mixed-case address with a wrong checksum is refused', badChecksum === w.address || (await req2('expect', { address: badChecksum })).status === 400)
+  t('still unset after refused attempts', (await req2('status')).body.expectSet === false)
+  const set = await req2('expect', { address: ` ${w.address.toLowerCase()} ` })
+  t('a valid address is accepted and returned only shortened', set.status === 200 && set.body.expected === maskAddress(w.address))
+  const again = await req2('expect', { address: other.address })
+  t('the address cannot be changed once set (409, original kept)', again.status === 409 && again.body.expected === maskAddress(w.address))
+  st = await req2('status')
+  t('status shows only the shortened address', st.body.expectSet === true && st.body.expected === maskAddress(w.address) && !JSON.stringify(st.body).includes(w.address.slice(6, -4)))
+  const s1p = await req2('stage1', { wallet: 'Test', chainId: '0x7a69', account: w.address })
+  t('stage 1 after set: matching account on 31337 -> ok', s1p.body.accountMatchesExpected === true && s1p.body.onDrillChain === true)
+  for (const [name, [sig, want]] of Object.entries(cases)) {
+    const r = await req2('check', { signature: sig, account: w.address })
+    t(`page-entry check ${name} -> ${want}`, r.body.result === want && r.body.matchesExpected === (want === 'PASS'), JSON.stringify(r.body))
+  }
+  t('page-entry check against a signature from the other key fails even if the other key is "connected"', (await req2('check', { signature: sigOther, account: other.address })).body.result === 'FAIL')
+  t('rpc still refuses eth_sendRawTransaction in public mode', ((await req2('rpc', { jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [rawTx] })).body.error || {}).code === -32601)
+  const lower = out2.toLowerCase()
+  t('page-entry output never contains the full expected address', !lower.includes(w.address.toLowerCase().slice(2)) && !lower.includes(w.address.slice(6, -4).toLowerCase()))
+  t('page-entry output never contains a signature', secrets.every((x) => !lower.includes(x)))
+  t('public mode never logs client IP addresses', !/127\.0\.0\.1/.test(out2.replace(/STATION_READY.*/, '').replace(/Anvil: 127\.0\.0\.1 only/, '')))
+  t('page-entry output logs the shortened address once set', out2.includes(maskAddress(w.address)))
+  station.kill('SIGTERM')
+  t('page-entry station stops cleanly', (await new Promise((r) => station.on('exit', r))) === 0)
+  station = null
+
+  // 11. A station started with --expect 0x... does not accept a page-entered address.
+  let out3 = ''
+  station = spawn(process.execPath, [join(ROOT, 'scripts/wallet-drill.mjs'), '--expect', w.address, '--port', '0', '--host', '127.0.0.1', '--minutes', '5'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  station.stdout.on('data', (c) => { out3 += c })
+  let port3, token3
+  for (let i = 0; i < 200 && !port3; i++) { const m = out3.match(/STATION_READY (\d+) ([0-9a-f]{32})/); if (m) [, port3, token3] = m; else await new Promise((r) => setTimeout(r, 100)) }
+  const r3 = await fetch(`http://127.0.0.1:${port3}/${token3}/expect`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address: other.address }) })
+  const s3 = await (await fetch(`http://127.0.0.1:${port3}/${token3}/status`)).json()
+  t('--expect 0x… mode refuses a page-entered address', r3.status === 404 && s3.pageEntry === false && s3.expectSet === true && s3.expected === null)
+  station.kill('SIGTERM'); await new Promise((r) => station.on('exit', r)); station = null
 } catch (e) {
   t('unexpected error', false, e.stack)
 } finally {

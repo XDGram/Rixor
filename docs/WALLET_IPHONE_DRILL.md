@@ -3,6 +3,8 @@
 **Status (9 Nov 2026):**
 - This drill has **not yet been run on a physical iPhone**. Every step marked **[DEVICE TEST]** below is unconfirmed.
 - The **physical Ledger drill** (`docs/LEDGER_WINDOWS_CMD.md` §3) is **also still untested** on a real device.
+- **No PC?** Section 9 describes the iPhone-only variant: the operator runs the same station in a temporary cloud
+  sandbox behind HTTPS, and you enter your expected address on the page.
 - This drill does **not** change the testnet signing requirements. Real Safe signatures still follow
   `docs/TESTNET_DEPLOYMENT.md` and `docs/LEDGER_WINDOWS_CMD.md` (`safe-tx.mjs` with `cast … --ledger`). Using a phone
   wallet for real Safe signatures would be a separate decision with its own review.
@@ -186,6 +188,63 @@ The page flow was also exercised once in headless Chromium at iPhone size with a
 switch refused, network added through the station's RPC, Stage 1 PASS, and a signed drill giving Stage 2 PASS. A real
 Zerion app has not been tested.
 
+Page-entry and public modes (section 9) are covered by the same suite. It checks that:
+- the address is required before Stage 1 or a check;
+- invalid or bad-checksum addresses are refused;
+- the address is set once and can't be changed (409);
+- it appears only shortened in status and logs;
+- every signature case gives the same PASS/FAIL as with `--expect 0x…`;
+- `--public-url` refuses `http://`, paths, queries and credentials;
+- public mode prints only the HTTPS links and never logs client IP addresses;
+- a station started with `--expect 0x…` refuses a page-entered address.
+
 The station adds new files only (`scripts/wallet-drill.mjs`, `scripts/wallet-drill/`, `scripts/lib/wallet-drill-core.mjs`,
 `scripts/test-wallet-drill.mjs`, this guide). It runs the unchanged `safe-tx.mjs drill` and uses `signatureProblem`
 and `typedProblems` from the unchanged `scripts/lib/safe-typed.mjs`.
+
+## 9. iPhone-only variant: cloud station (no PC)
+
+Use this when you have only an iPhone. The operator (who runs the Rixor repository) starts the **same station** in a
+temporary cloud sandbox that has an HTTPS address. You only use Zerion. Everything in "What keeps it harmless" still
+applies, with these differences:
+
+- **Expected address entered on the page.** The station runs with `--expect page`. Before Stage 1 you type your own
+  public address on the page (Step 0). The station:
+  - keeps it only in memory;
+  - shows and logs it only shortened (`0x1234...abcd`);
+  - refuses any later change until it stops.
+
+  You never send the address in chat. The check is unchanged: the signature must recover, under EIP-712, to exactly
+  that address (65 bytes, v = 27/28).
+- **HTTPS links with a secret path.** The station runs with `--public-url https://<sandbox host>` and prints:
+  - a Page link: `https://<sandbox host>/<32 random characters>/`;
+  - a Network RPC link: the same address followed by `rpc`.
+
+  The random part is the access secret. Zerion's custom-network form cannot send a password, so a secret URL is the
+  only authentication it supports. Do not share or screenshot the links. In this mode the station never logs client IP
+  addresses.
+- **Isolation.** In the sandbox:
+  - Anvil still listens on 127.0.0.1 only, chain 31337, with no accounts;
+  - the RPC relay still refuses every send/sign/state-changing method;
+  - the sandbox's outbound network is set to deny-all once dependencies are installed.
+- **What the hosting provider sees.** The provider terminates TLS, so it can see requests in transit, including the
+  drill signature. That signature is valid on no network and for no Safe. The station never logs, saves or shows it.
+- **Lifetime.** The sandbox has a hard timeout and the station has its own `--minutes` limit. When the drill ends the
+  operator stops the sandbox, which destroys the VM, Anvil and the URL.
+
+On the iPhone:
+1. **Add the network.** In Zerion, add the network manually with:
+   - name `Rixor Drill (local)`;
+   - RPC URL: the Network RPC link;
+   - chain ID `31337`;
+   - symbol `ETH`.
+
+   Then select it.
+2. **Open the page.** In Zerion's **Browser** tab, open the Page link.
+3. **Step 0.** Type or paste your own public address and tap **Set address**. Check that the shortened address shown
+   matches yours. If it doesn't, tell the operator to restart the station.
+4. **Stage 1 and Stage 2.** Continue as in sections 3 and 4. The page shows PASS/FAIL; the operator sees the same
+   result in the station log (with no address or signature).
+5. **Clean up.** Tell the operator you are done. Then delete the drill network in Zerion and close the browser tab.
+
+Report back as in section 6, minus the PC items.

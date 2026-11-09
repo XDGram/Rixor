@@ -1,7 +1,8 @@
 // Drill page served by scripts/wallet-drill.mjs. Uses only the wallet's EIP-1193 provider. It requests accounts, reads
 // the chain, may ask the wallet to switch to or add the local drill network, and requests ONE eth_signTypedData_v4
 // signature over the canonical drill. It never requests a transaction. The signature is sent only to this station's
-// `check` endpoint and is never displayed or stored.
+// `check` endpoint and is never displayed or stored. In page-entry mode (--expect page) the person first sets the
+// expected address once (Step 0); the station keeps it in memory and shows it only shortened.
 'use strict'
 const $ = (id) => document.getElementById(id)
 const steps = []
@@ -93,7 +94,8 @@ async function stage1() {
   } finally {
     let verdict = { accountMatchesExpected: false, onDrillChain: false }
     try { verdict = await post('stage1', { wallet: wallet.name, rdns: wallet.rdns, chainId: chain, account, steps }) } catch (e) { log(`Could not reach the station: ${errText(e)}`, 'bad') }
-    if (account) log(verdict.accountMatchesExpected ? 'Account matches the address typed on the PC' : 'Account does NOT match the address typed on the PC (--expect). Select the right account, then run Stage 1 again.', verdict.accountMatchesExpected ? 'ok' : 'bad')
+    if (verdict.error) log(`Station: ${verdict.error}`, 'bad')
+    else if (account) log(verdict.accountMatchesExpected ? 'Account matches the expected address' : 'Account does NOT match the expected address. Select the right account, then run Stage 1 again.', verdict.accountMatchesExpected ? 'ok' : 'bad')
     stage1Pass = Boolean(account && verdict.onDrillChain && verdict.accountMatchesExpected)
     log(stage1Pass ? 'Stage 1 PASS: Stage 2 is enabled' : 'Stage 1 not passed: Stage 2 stays disabled', stage1Pass ? 'ok' : 'bad')
     $('stage2').disabled = !stage1Pass
@@ -109,7 +111,8 @@ async function stage2() {
     try { signature = await provider.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typed)] }) } catch (e) { return setResult(`Signing rejected or failed: ${errText(e)}`, false) }
     const verdict = await post('check', { signature, account })
     signature = undefined
-    setResult(`${verdict.result}: ${verdict.reason}. matchesExpected ${verdict.matchesExpected}`, verdict.result === 'PASS')
+    if (verdict.error) setResult(`Station: ${verdict.error}`, false)
+    else setResult(`${verdict.result}: ${verdict.reason}. matchesExpected ${verdict.matchesExpected}`, verdict.result === 'PASS')
   } catch (e) {
     setResult(`Stage 2 error: ${errText(e)}`, false)
   } finally {
@@ -117,11 +120,40 @@ async function stage2() {
   }
 }
 
-;(async () => {
+function showExpected(masked) {
+  $('expect').hidden = true; $('setExpect').hidden = true
+  $('log0').textContent = ''
+  const li = document.createElement('li'); li.className = 'ok'; li.textContent = `Expected address set: ${masked} (locked for this session)`; $('log0').append(li)
+  $('stage1').disabled = false
+}
+
+async function setExpect() {
+  $('setExpect').disabled = true
+  $('log0').textContent = ''
   try {
-    ;[typed, pinned] = await Promise.all([fetch('drill.json').then((r) => r.json()), fetch('pinned.json').then((r) => r.json())])
+    const r = await post('expect', { address: $('expect').value })
+    if (r.expected && !r.error) return showExpected(r.expected)
+    const li = document.createElement('li'); li.className = 'bad'; li.textContent = r.error || 'not accepted'; $('log0').append(li)
+    if (r.expected) showExpected(r.expected) // already locked earlier in this session
+  } catch (e) {
+    const li = document.createElement('li'); li.className = 'bad'; li.textContent = `Could not reach the station: ${errText(e)}`; $('log0').append(li)
+  } finally {
+    $('setExpect').disabled = false
+  }
+}
+
+;(async () => {
+  let status
+  try {
+    ;[typed, pinned, status] = await Promise.all(['drill.json', 'pinned.json', 'status'].map((f) => fetch(f).then((r) => r.json())))
     render()
   } catch (e) { setResult(`Could not load the drill from the station: ${errText(e)}`, false); return }
+  if (status.pageEntry) {
+    $('stage0').hidden = false
+    if (status.expectSet) showExpected(status.expected)
+    else $('stage1').disabled = true
+  }
+  $('setExpect').addEventListener('click', setExpect)
   $('stage1').addEventListener('click', stage1)
   $('stage2').addEventListener('click', stage2)
 })()

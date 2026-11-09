@@ -2,6 +2,14 @@
 // Mobile-wallet signing drill station (Zerion Wallet on iPhone, or any wallet with an in-app browser). DRILL ONLY.
 //
 //   node scripts/wallet-drill.mjs --expect 0xYOUR_ADDRESS [--port 8787] [--host 0.0.0.0] [--minutes 60]
+//   node scripts/wallet-drill.mjs --expect page --public-url https://<host> [--port 8787] [--minutes 45]
+//
+// Modes:
+//   --expect 0x…   the expected address is typed on the PC running the station (printed in full there).
+//   --expect page  the person types the expected address on the drill page before Stage 1. It is set ONCE, kept only in
+//                  memory, shown and logged only shortened (0x1234...abcd), and cannot be changed without restarting.
+//   --public-url   for a station behind an HTTPS front end (e.g. a temporary Vercel Sandbox): prints only the HTTPS
+//                  links (origin + random one-time path) and never logs client IP addresses.
 //
 // What it does, on the operator's own PC:
 //   1. Creates the drill file with the unchanged `safe-tx.mjs drill`, and refuses to start unless it is byte-identical
@@ -24,15 +32,24 @@ import { networkInterfaces, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getAddress } from 'ethers'
-import { DRILL_CHAIN_HEX, DUMMY_CONTRACT, PINNED, anvilArgs, canonicalDrill, checkDrillSignature, rpcRequestCheck } from './lib/wallet-drill-core.mjs'
+import { DRILL_CHAIN_HEX, DUMMY_CONTRACT, PINNED, anvilArgs, canonicalDrill, checkDrillSignature, maskAddress, rpcRequestCheck } from './lib/wallet-drill-core.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const opt = (k) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined }
 const die = (m) => { console.error(`error: ${m}`); process.exit(1) }
 
-let EXPECT
-try { EXPECT = getAddress(opt('expect') ?? die('--expect 0xYOUR_ADDRESS is required (your own public address, typed on this PC)')) } catch { die('--expect is not a valid address') }
+const EXPECT_ARG = opt('expect') ?? die('--expect 0xYOUR_ADDRESS (or --expect page) is required')
+const PAGE_ENTRY = EXPECT_ARG === 'page'
+let EXPECT = null // set from --expect, or once from the page in --expect page mode
+if (!PAGE_ENTRY) { try { EXPECT = getAddress(EXPECT_ARG) } catch { die('--expect is not a valid address (or use --expect page)') } }
+let PUBLIC_URL = null
+if (opt('public-url') !== undefined) {
+  let u
+  try { u = new URL(opt('public-url')) } catch { die('--public-url is not a URL') }
+  if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '')) die('--public-url must be a bare https:// origin (no path, query or credentials)')
+  PUBLIC_URL = u.origin
+}
 const PORT = Number(opt('port') ?? 8787)
 const HOST = opt('host') ?? '0.0.0.0'
 const MINUTES = Number(opt('minutes') ?? 60)
@@ -96,12 +113,13 @@ const seenMethods = new Set()
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://station')
-  const from = clean(req.socket.remoteAddress, 60)
+  const from = PUBLIC_URL ? 'the page' : clean(req.socket.remoteAddress, 60) // no client IPs in public mode
   if (url.pathname === `/${TOKEN}`) { res.writeHead(301, { location: BASE }); return res.end() }
   if (!url.pathname.startsWith(BASE)) return send(res, 404, 'text/plain', 'not found')
   const path = url.pathname.slice(BASE.length)
   try {
     if (req.method === 'GET' && Object.hasOwn(ASSETS, path)) { const [type, body] = ASSETS[path]; return send(res, 200, type, body) }
+    if (req.method === 'GET' && path === 'status') return json(res, 200, { pageEntry: PAGE_ENTRY, expectSet: EXPECT !== null, expected: EXPECT && PAGE_ENTRY ? maskAddress(EXPECT) : null })
     if (req.method !== 'POST') return send(res, 404, 'text/plain', 'not found')
     let body
     try { body = JSON.parse(await readBody(req)) } catch (e) { return json(res, e.status ?? 400, { error: e.status === 413 ? 'request too large' : 'invalid JSON' }) }
@@ -116,6 +134,16 @@ const server = createServer(async (req, res) => {
       for (const r of Array.isArray(body) ? body : [body]) if (!seenMethods.has(r.method)) { seenMethods.add(r.method); console.log(`rpc first ${r.method} from ${from}`) }
       return send(res, 200, 'application/json; charset=utf-8', await rpcUpstream(JSON.stringify(body)))
     }
+    if (path === 'expect') {
+      if (!PAGE_ENTRY) return json(res, 404, { error: 'the expected address is set on the PC (--expect)' })
+      if (EXPECT !== null) return json(res, 409, { error: 'the expected address is already set; restart the station to change it', expected: maskAddress(EXPECT) })
+      let addr
+      try { addr = getAddress(String(body?.address ?? '').trim()) } catch { return json(res, 400, { error: 'not a valid address (check every character; mixed-case addresses must have a valid checksum)' }) }
+      EXPECT = addr
+      console.log(`expected address set from the page: ${maskAddress(EXPECT)} (locked until the station stops)`)
+      return json(res, 200, { expected: maskAddress(EXPECT) })
+    }
+    if ((path === 'stage1' || path === 'check') && EXPECT === null) return json(res, 409, { error: 'enter the expected address first' })
     if (path === 'stage1') {
       let accountMatchesExpected = false
       try { accountMatchesExpected = getAddress(body.account) === EXPECT } catch {}
@@ -149,15 +177,16 @@ setTimeout(() => shutdown(`${MINUTES}-minute limit`), MINUTES * 60_000).unref()
 
 server.listen(PORT, HOST, () => {
   const port = server.address().port
-  const ips = HOST === '0.0.0.0'
+  const ips = PUBLIC_URL ? [] : HOST === '0.0.0.0'
     ? Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address)
     : [HOST]
   console.log(`Rixor wallet drill station: DRILL ONLY (chain 31337, dummy contract ${DUMMY_CONTRACT}; valid on no network)`)
-  console.log(`Expected address (from --expect): ${EXPECT}`)
+  console.log(PAGE_ENTRY ? 'Expected address: entered once on the drill page (shown only shortened; locked until the station stops)' : `Expected address (from --expect): ${EXPECT}`)
   console.log(`Drill file SHA-256 ${PINNED.fileSha256} (matches the published drill)`)
   console.log(`  Domain hash  ${PINNED.domainHash}\n  Message hash ${PINNED.messageHash}`)
   console.log(`Anvil: 127.0.0.1 only, chain 31337, no accounts. RPC relay: read-only; transaction methods refused.`)
-  if (!ips.length) console.log('No local network address found. Connect this PC to Wi-Fi (or your phone hotspot) and restart.')
+  if (PUBLIC_URL) console.log(`\nPublic HTTPS links (the random path is the access secret; do not share or screenshot):\n  Network RPC URL: ${PUBLIC_URL}${BASE}rpc\n  Page (open in the wallet's browser): ${PUBLIC_URL}${BASE}`)
+  else if (!ips.length) console.log('No local network address found. Connect this PC to Wi-Fi (or your phone hotspot) and restart.')
   for (const ip of ips) console.log(`\nOn the iPhone (network ${ip}):\n  Network RPC URL: http://${ip}:${port}${BASE}rpc\n  Page (open in the wallet's browser): http://${ip}:${port}${BASE}`)
   console.log(`\nStops after ${MINUTES} minutes or with Ctrl+C. The signature is never shown, logged or saved.`)
   console.log(`STATION_READY ${port} ${TOKEN}`)

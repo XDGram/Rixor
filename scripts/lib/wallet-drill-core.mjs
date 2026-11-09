@@ -35,6 +35,9 @@ export function canonicalDrill(bytes) {
   return { typed, hashes }
 }
 
+/** Shortened address for display and logs in page-entry mode: 0x1234...abcd (never the full address). */
+export const maskAddress = (a) => { const x = getAddress(a); return `${x.slice(0, 6)}...${x.slice(-4)}` }
+
 /** Strict check of a wallet signature over the canonical drill: the same rules as `safe-tx.mjs check`
  *  (65 bytes, v = 27/28, EIP-712 recovery; EIP-191 signatures never recover to the signer). Never returns or logs the
  *  signature. */

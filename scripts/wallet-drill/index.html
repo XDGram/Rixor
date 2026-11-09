@@ -16,6 +16,7 @@
   .note { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
   section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 16px 0; }
   button { width: 100%; padding: 14px; border-radius: 999px; border: 0; background: var(--lime); color: #111; font-weight: 700; font-size: 16px; }
+  input { width: 100%; padding: 12px; margin: 0 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
   button:disabled { background: #3a3a3d; color: var(--muted); }
   ul { padding-left: 18px; margin: 12px 0 0; font-size: 14px; }
   li.ok { color: var(--lime); } li.bad { color: var(--bad); }
@@ -33,6 +34,14 @@
 <main>
   <h1><span>RIXOR</span> wallet signing drill</h1>
   <p class="note">Drill only: local chain 31337 and dummy contract 0x…dEaD. The signature is valid on no network and for no Safe. Nothing is sent to any blockchain.</p>
+
+  <section id="stage0" hidden>
+    <h2>Step 0: the address you will sign with</h2>
+    <p class="note">Type or paste your wallet's public address. It is set once for this session, shown only shortened, and cannot be changed without restarting the station. Never enter a recovery phrase or private key anywhere.</p>
+    <input id="expect" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x...">
+    <button id="setExpect">Set address</button>
+    <ul id="log0"></ul>
+  </section>
 
   <section>
     <h2>Stage 1: connect and check the network (no signing)</h2>
