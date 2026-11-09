@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "composite": true, "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.remotion.tsbuildinfo",
+    "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "skipLibCheck": true,
+    "strict": true, "module": "ESNext", "moduleResolution": "Bundler", "isolatedModules": true,
+    "resolveJsonModule": true, "jsx": "react-jsx", "noEmit": true
+  },
+  "include": ["remotion"]
+}

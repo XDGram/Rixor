@@ -44,6 +44,11 @@ The current build supports **Sepolia** and **Robinhood Chain Testnet**. It is a 
 
 ![Rixor security section](docs/screenshots/security.png)
 
+## Motion video
+
+Brand and product videos are built with [Remotion](https://www.remotion.dev) in [`remotion/`](remotion/README.md).
+Run `npm run video:studio` to preview them or `npm run video:render` to export `out/rixor-intro.mp4`.
+
 ## Smart-contract behavior
 
 The current Solidity contract is `contracts/RixorSavings.sol`.
