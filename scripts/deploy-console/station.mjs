@@ -24,9 +24,9 @@ import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import { extname, join, normalize, resolve } from 'node:path'
 import { Transaction, getAddress, parseEther } from 'ethers'
-import { fundLocal, startRehearsalChain, REHEARSAL_CHAIN_ID } from '../lib/rehearsal-chain.mjs'
-import { validateBundle } from '../../src/deploy/core.ts'
-import { TESTNET_RPC } from '../../src/deploy/expected.ts'
+import { fundLocal, fundLocalWif, startRehearsalChain, REHEARSAL_CHAIN_ID } from '../lib/rehearsal-chain.mjs'
+import { PROFILES, validateBundle } from '../../src/deploy/core.ts'
+import { MAINNET_APPROVE_TOTAL } from '../../src/deploy/expected.ts'
 
 const args = process.argv.slice(2)
 const opt = (k) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined }
@@ -38,7 +38,9 @@ if (!existsSync(join(dist, 'deploy.html'))) die(`${dist}/deploy.html not found (
 const BUNDLE_BYTES = readFileSync(bundlePath)
 const bundle = JSON.parse(BUNDLE_BYTES)
 const REHEARSAL = bundle.rehearsal === true && bundle.chainId === REHEARSAL_CHAIN_ID
-if (!REHEARSAL && bundle.chainId !== 46630) die('only a rehearsal bundle (31337) or a final testnet bundle (46630) can be served')
+const MAINNET = bundle.network === 'mainnet'
+const LIVE = PROFILES[MAINNET ? 'mainnet' : 'testnet']
+if (!REHEARSAL && bundle.chainId !== LIVE.liveChainId) die('only a rehearsal bundle (31337) or a final testnet (46630) / mainnet (4663) bundle can be served')
 const problems = validateBundle(bundle)
 if (problems.length) die(`the bundle fails the console's validation:\n  - ${problems.join('\n  - ')}`)
 const DEPLOYER = getAddress(bundle.deployer)
@@ -54,8 +56,11 @@ if (opt('public-url')) {
 }
 if (!(MINUTES > 0 && MINUTES <= 240)) die('--minutes must be between 1 and 240')
 
-const chain = REHEARSAL ? await startRehearsalChain({ impersonate: false }) : null
+// Mainnet-profile rehearsal: a local FORK of mainnet (chain id 31337); the deployer gets local-only ETH and the plan's
+// WIF budget written on the fork. Testnet-profile rehearsal: a fresh chain with the Safe snapshot.
+const chain = REHEARSAL ? await startRehearsalChain({ impersonate: false, fork: MAINNET ? 'mainnet' : undefined }) : null
 if (chain) await fundLocal(chain.provider, DEPLOYER, FUND) // local rehearsal chain only
+if (chain && MAINNET) await fundLocalWif(chain.provider, DEPLOYER, MAINNET_APPROVE_TOTAL) // local fork only
 const TOKEN = randomBytes(16).toString('hex')
 const BASE = `/${TOKEN}/`
 
@@ -93,7 +98,7 @@ const headers = (type) => ({
   'content-type': type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
   // Rehearsal: the console talks only to this station. Testnet: the console also reads the official testnet RPC
   // (the only RPC a testnet bundle may name), straight from the phone.
-  'content-security-policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'${REHEARSAL ? '' : ` ${TESTNET_RPC}`}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+  'content-security-policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'${REHEARSAL ? '' : ` ${LIVE.rpc}`}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
 })
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://station')
@@ -132,11 +137,13 @@ server.listen(PORT, HOST, () => {
   const port = server.address().port
   const origins = PUBLIC_URL ? [PUBLIC_URL] : (HOST === '0.0.0.0' ? Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => `http://${i.address}:${port}`) : [`http://${HOST}:${port}`])
   if (REHEARSAL) {
-    console.log('Rixor Deploy Console REHEARSAL: local chain 31337 only (no real network; chain-31337 signatures are valid nowhere else)')
+    console.log(`Rixor Deploy Console REHEARSAL${MAINNET ? ' (MAINNET profile: local fork of Robinhood Chain mainnet)' : ''}: local chain 31337 only (no real network; chain-31337 signatures are valid nowhere else)`)
     console.log(`Bundle ${bundle.bundleHash} · deployer ${DEPLOYER} (funded with local-only ETH)`)
     for (const o of origins) console.log(`  Wallet network RPC URL: ${o}${BASE}rpc   (chain ID 31337)\n  Console page:           ${o}${BASE}deploy.html`)
   } else {
-    console.log('Rixor Deploy Console: ROBINHOOD CHAIN TESTNET (46630) bundle, serve-only (no relay; the wallet sends to the official testnet RPC)')
+    console.log(MAINNET
+      ? 'Rixor Deploy Console: ROBINHOOD CHAIN MAINNET (4663) bundle, serve-only (no relay). The console refuses to sign unless this build has MAINNET_PLAN_APPROVED.'
+      : 'Rixor Deploy Console: ROBINHOOD CHAIN TESTNET (46630) bundle, serve-only (no relay; the wallet sends to the official testnet RPC)')
     console.log(`Bundle ${bundle.bundleHash} · deployer ${DEPLOYER}`)
     for (const o of origins) console.log(`  Console page: ${o}${BASE}deploy.html`)
   }

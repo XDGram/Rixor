@@ -2,7 +2,7 @@
 // bundle cannot change them. Every value mirrors a deployment-script constant or the reviewed Forge build, and
 // scripts/test-deploy-console.mjs fails if any of them drifts from script/*.s.sol or out/*.json.
 
-/** Chains the console will ever talk to. Mainnet (4663) is always refused. */
+/** Chains the console will ever talk to. Mainnet (4663) only with a mainnet-profile bundle AND MAINNET_PLAN_APPROVED. */
 export const TESTNET_CHAIN_ID = 46630
 export const REHEARSAL_CHAIN_ID = 31337
 export const MAINNET_CHAIN_ID = 4663
@@ -79,3 +79,55 @@ export const STEP_LAYOUT = [
  *  many times larger than the plan stops the console (something differs from what was reviewed). */
 export const GAS_MARGIN_BPS = 13_000n // 1.3x
 export const GAS_ESTIMATE_MAX_FACTOR = 3n
+
+// ================================================================== MAINNET PROFILE (real $WIF)
+// Robinhood Chain mainnet (4663). Same contracts and Safe v1.5.0 deployment; no TEST tokens: the reward token is the
+// official $WIF and the listed tokens are existing mainnet tokens. Mirrors script/CreateMainnetSafes.s.sol,
+// script/SeedMainnetRewards.s.sol and deploy/config/mainnet.candidate.json (scripts/test-deploy-console.mjs fails on
+// drift). Rehearsal: a local fork of mainnet with chain id 31337.
+
+/**
+ * The single switch for real mainnet signing. While false the console verifies, displays and rehearses a mainnet bundle
+ * (on a chain-31337 fork) but refuses to ask a wallet to sign anything on chain 4663. It is set to true only in a
+ * reviewed commit made after the project owner's written approval of exactly the plan below (listings, units, caps,
+ * reward budgets, minimum hold).
+ */
+export const MAINNET_PLAN_APPROVED = false
+
+/** Official endpoints (docs.robinhood.com/chain/connecting). */
+export const MAINNET_RPC = 'https://rpc.mainnet.chain.robinhood.com'
+export const MAINNET_EXPLORER = 'https://robinhoodchain.blockscout.com'
+export const MAINNET_SAFE_SALT_LABELS = { owner: 'rixor.mainnet.owner-safe.v1', guardian: 'rixor.mainnet.guardian-safe.v1' } as const
+
+const E18 = 10n ** 18n
+/** Existing mainnet tokens, pinned by address AND runtime code hash (checked before step 1 and on every resume). */
+export const MAINNET_TOKENS = {
+  WIF: { address: '0x5173b8eA6923c2d40267890D45C46a3480954773', name: 'World is Flat', symbol: 'WIF', decimals: 18, runtimeHash: '0xbd9466af58a95576282f8a67fe81c5ed8b78c22c362be48c511608a30652f59f' },
+  HOOKR: { address: '0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c', name: 'Hookr.fun', symbol: 'HOOKR', decimals: 18, runtimeHash: '0xd9346eaf1a9878650549765e1d4ce8b3d0516d93d3203e1c8b99e382428ebc8d' },
+  TORCH: { address: '0x000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111', name: 'Torch', symbol: 'TORCH', decimals: 18, runtimeHash: '0xb0fa838cbdc6954847ba655756962fbfaec782836d3dfc78a14c3a97b13e6007' },
+} as const
+export type MainnetTokenKey = keyof typeof MAINNET_TOKENS
+
+/** CANDIDATE listings (constructor, no timelock: nobody can have locked anything yet). Units ~$20, caps ~$50k (9 Nov 2026). */
+export const MAINNET_LISTINGS = [
+  { token: 'HOOKR', unitAmount: 1_000n * E18, maxTotalLocked: 2_500_000n * E18, riskClass: 2 },
+  { token: 'TORCH', unitAmount: 5_000n * E18, maxTotalLocked: 10_000_000n * E18, riskClass: 2 },
+] as const
+export const MAINNET_MIN_HOLD_SECONDS = 86_400n
+/** CANDIDATE reward budget: the contract minimum per stream (10,000 WIF), 14 days each, funded by the deployer. */
+export const MAINNET_STREAMS = [
+  { token: 'HOOKR', amount: 10_000n * E18, days: 14n },
+  { token: 'TORCH', amount: 10_000n * E18, days: 14n },
+] as const
+export const MAINNET_APPROVE_TOTAL = 20_000n * E18
+
+export const MAINNET_STEP_LAYOUT = [
+  { kind: 'safe', role: 'owner', label: 'Create the owner Safe (2-of-3)' },
+  { kind: 'safe', role: 'guardian', label: 'Create the guardian Safe (2-of-3)' },
+  { kind: 'locker', label: 'Deploy RixorLocker (lists HOOKR and TORCH, Class B)' },
+  { kind: 'rewards', label: 'Deploy RixorRewards (pays the official WIF)' },
+  { kind: 'challenges', label: 'Deploy RixorChallenges (pays the official WIF)' },
+  { kind: 'approve', label: 'Approve 20,000 WIF for RixorRewards' },
+  { kind: 'fund', stream: 0, label: 'Fund the HOOKR stream: 10,000 WIF over 14 days' },
+  { kind: 'fund', stream: 1, label: 'Fund the TORCH stream: 10,000 WIF over 14 days' },
+] as const

@@ -9,10 +9,14 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FORGE = join(ROOT, 'scripts/forge.mjs')
 export const SCRIPTS = ['CreateTestnetSafes', 'DeployTestnetTokens', 'DeployRixorV2', 'SeedTestnetRewards']
+/** Mainnet profile: no TEST tokens; the reviewed config names the official WIF and the listed mainnet tokens. */
+export const MAINNET_SCRIPTS = ['CreateMainnetSafes', 'DeployRixorV2', 'SeedMainnetRewards']
+export const MAINNET_CONFIG = 'deploy/config/mainnet.candidate.json'
 
 const isLocal = (rpc) => /^http:\/\/127\.0\.0\.1:\d+$/.test(rpc)
 
-export function runForgePlan({ rpc, chainId, deployer, owners, guardians, tag = 'bundle' }) {
+export function runForgePlan({ rpc, chainId, deployer, owners, guardians, tag = 'bundle', network = 'testnet' }) {
+  if (network === 'mainnet') return runMainnetPlan({ rpc, chainId, deployer, owners, guardians, tag })
   if (!isLocal(rpc)) throw new Error(`runForgePlan only runs against a local chain (got ${rpc})`)
   const env = { ...process.env, RIXOR_EXPECTED_CHAIN_ID: String(chainId), RIXOR_OUTPUT_TAG: tag, RIXOR_OWNER_SIGNERS: owners.join(','), RIXOR_GUARDIAN_SIGNERS: guardians.join(',') }
   const common = ['--rpc-url', rpc, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
@@ -43,5 +47,39 @@ export function runForgePlan({ rpc, chainId, deployer, owners, guardians, tag = 
     // Never leave broadcast records or manifests from a plan behind: they could be mistaken for a real deployment.
     for (const s of SCRIPTS) rmSync(join(ROOT, 'broadcast', `${s}.s.sol`, String(chainId)), { recursive: true, force: true })
     for (const f of [`deployments/${chainId}-${tag}-testnet-config.json`, `deployments/${chainId}-${tag}.json`]) rmSync(join(ROOT, f), { force: true })
+  }
+}
+
+/** Mainnet plan on a LOCAL fork of mainnet (chain id 31337, so the scripts' mainnet guard is the local-fork branch and
+ *  no authorisation sentence is ever supplied by a tool). */
+function runMainnetPlan({ rpc, chainId, deployer, owners, guardians, tag }) {
+  if (!isLocal(rpc)) throw new Error(`runForgePlan only runs against a local chain (got ${rpc})`)
+  if (chainId !== 31337) throw new Error('the mainnet plan runs on a local fork with chain id 31337 only')
+  const env = { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', RIXOR_OUTPUT_TAG: tag, RIXOR_OWNER_SIGNERS: owners.join(','), RIXOR_GUARDIAN_SIGNERS: guardians.join(','), RIXOR_CONFIRM_MAINNET: '' }
+  const common = ['--rpc-url', rpc, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
+  const records = []
+  mkdirSync(join(ROOT, 'deployments'), { recursive: true })
+  const run = (script, extra = {}) => {
+    const r = spawnSync(process.execPath, [FORGE, 'script', `script/${script}.s.sol`, ...common], { cwd: ROOT, env: { ...env, ...extra }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    if (r.status !== 0) throw new Error(`${script} failed:\n${r.stdout.slice(-2500)}\n${r.stderr.slice(-1500)}`)
+    const bc = JSON.parse(readFileSync(join(ROOT, 'broadcast', `${script}.s.sol`, String(chainId), 'run-latest.json'), 'utf8'))
+    bc.transactions.forEach((tx, i) => records.push({ script, type: tx.transactionType, contractName: tx.contractName ?? '', fn: tx.function ?? '', transaction: tx.transaction, receipt: bc.receipts[i] }))
+    return r.stdout
+  }
+  const manifestPath = `deployments/${chainId}-${tag}.json`
+  try {
+    const safesOut = run('CreateMainnetSafes')
+    const ownerSafe = safesOut.match(/owner Safe\s+(0x[0-9a-fA-F]{40})/)[1]
+    const guardianSafe = safesOut.match(/guardian Safe\s+(0x[0-9a-fA-F]{40})/)[1]
+    run('DeployRixorV2', { RIXOR_CONFIG: MAINNET_CONFIG, RIXOR_OWNER_SAFE: ownerSafe, RIXOR_GUARDIAN_SAFE: guardianSafe })
+    const v = spawnSync(process.execPath, [FORGE, 'script', 'script/VerifyRixorV2.s.sol', '--rpc-url', rpc], { cwd: ROOT, env: { ...env, RIXOR_DEPLOYMENT: manifestPath, RIXOR_CONFIG: MAINNET_CONFIG }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    if (!/verification passed/.test(v.stdout)) throw new Error(`VerifyRixorV2 failed on the plan:\n${v.stdout.slice(-2000)}`)
+    run('SeedMainnetRewards', { RIXOR_DEPLOYMENT: manifestPath, RIXOR_CONFIG: MAINNET_CONFIG })
+    const cfg = JSON.parse(readFileSync(join(ROOT, MAINNET_CONFIG), 'utf8'))
+    const manifest = JSON.parse(readFileSync(join(ROOT, manifestPath), 'utf8'))
+    return { records, ownerSafe, guardianSafe, cfg, manifest }
+  } finally {
+    for (const s of MAINNET_SCRIPTS) rmSync(join(ROOT, 'broadcast', `${s}.s.sol`, String(chainId)), { recursive: true, force: true })
+    rmSync(join(ROOT, manifestPath), { force: true })
   }
 }

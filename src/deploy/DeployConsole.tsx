@@ -1,4 +1,4 @@
-// Rixor Deploy Console: review and sign the 11 planned testnet deployment transactions from a phone wallet
+// Rixor Deploy Console: review and sign the planned deployment transactions (testnet: 11, mainnet: 8) from a phone wallet
 // (Zerion Browser), one explicit tap per wallet request. All checks live in ./core.ts; this file is only UI.
 //
 // It never signs or broadcasts on its own: each step needs two taps by the user ("Check step N", then "Ask wallet to
@@ -6,10 +6,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { discoverWallets, switchToChain, type WalletOption } from '../protocol/wallet'
 import {
-  assess, explorerAddress, explorerTx, manifestFor, preflight, rpcFromEip1193, validateBundle, verifySent,
+  assess, explorerAddress, explorerTx, manifestFor, preflight, rpcFromEip1193, sentStatus, validateBundle, verifySent,
   type Assessment, type Bundle, type CheckResult, type Preflight, type Rpc,
 } from './core'
-import { MAINNET_CHAIN_ID, REHEARSAL_CHAIN_ID } from './expected'
+import { MAINNET_CHAIN_ID, MAINNET_PLAN_APPROVED, REHEARSAL_CHAIN_ID } from './expected'
 
 // ------------------------------------------------------------------ helpers
 
@@ -132,7 +132,7 @@ export function DeployConsole() {
     if (!wallet || !bundle || !rpcUrl) return
     setMessage(null)
     try {
-      await switchToChain(wallet, { chainId: bundle.chainId, name: bundle.rehearsal ? 'Rixor Rehearsal (local, 31337)' : 'Robinhood Chain Testnet', rpc: rpcUrl })
+      await switchToChain(wallet, { chainId: bundle.chainId, name: bundle.rehearsal ? 'Rixor Rehearsal (local, 31337)' : bundle.chainId === MAINNET_CHAIN_ID ? 'Robinhood Chain' : 'Robinhood Chain Testnet', rpc: rpcUrl })
       setWalletChain(Number(await wallet.provider.request({ method: 'eth_chainId' })))
     } catch (e) { setMessage(errText(e)) }
   }
@@ -172,11 +172,25 @@ export function DeployConsole() {
     if (!bundle || !node) return
     const since = Date.now()
     setPhase({ kind: 'mining', i, hash, since })
+    let replacedSeen = 0
     for (;;) {
-      try {
-        const rc = await node('eth_getTransactionReceipt', [hash])
-        if (rc) break
-      } catch { /* keep waiting */ }
+      let st: Awaited<ReturnType<typeof sentStatus>> = 'pending'
+      try { st = await sentStatus(node, bundle, i, hash) } catch { /* RPC hiccup: keep waiting */ }
+      if (st === 'mined') break
+      // The step's nonce was used by another transaction (wallet "speed up" or "cancel"): our hash will never be mined.
+      // Only the chain decides what happened: the step's durable checks must pass, otherwise everything stops.
+      if (st === 'replaced' && ++replacedSeen >= 2) {
+        const now = await assess(node, bundle).catch(() => null)
+        setA(now)
+        if (now && now.steps[i]?.state === 'done') {
+          setPhase({ kind: 'verified', i, hash, ok: true, checks: [{ label: 'This step was completed by a replacement transaction from your wallet (for example "speed up"). The original hash will never be mined; the result on chain matches the plan.', ok: true }, ...now.steps[i].checks] })
+        } else {
+          setPhase({ kind: 'error', i, message: `STOP. The deployer's nonce ${bundle.transactions[i].nonce} was used by a different transaction (for example a wallet "cancel"), and step ${i + 1} is not on chain as planned. Do not send anything else from the deployer; re-plan from the current chain state.` })
+        }
+        return
+      }
+      if (st !== 'replaced') replacedSeen = 0
+      if (st === 'unseen' && Date.now() - since > 10 * 60_000) setMessage(`The RPC has not seen transaction ${short(hash)} for 10 minutes. It may have been dropped. Do not send this step again from another app: check your wallet's activity, then press Refresh.`)
       await sleep(2500)
     }
     try {
@@ -223,9 +237,9 @@ export function DeployConsole() {
       <p className="sub">Each step: check, then ask your wallet to sign. Nothing is ever sent automatically.</p>
 
       {bundle.chainId === MAINNET_CHAIN_ID
-        ? <div className="banner banner--bad"><strong>Mainnet refused</strong>This console never deploys to Robinhood Chain mainnet.</div>
+        ? <div className="banner banner--bad" role="note"><strong>ROBINHOOD CHAIN MAINNET · chain 4663</strong>Real ETH and real $WIF. {MAINNET_PLAN_APPROVED ? 'Every step still needs your explicit tap and your wallet\'s approval.' : 'Signing is DISABLED in this build: the mainnet plan has not been approved. You can review the plan; nothing can be sent.'}</div>
         : bundle.rehearsal
-          ? <div className="banner banner--rehearsal" role="note"><strong>REHEARSAL · local chain 31337</strong>A private local chain. Nothing here reaches Robinhood Chain testnet or mainnet, and signatures for chain 31337 are not valid on any real network.</div>
+          ? <div className="banner banner--rehearsal" role="note"><strong>REHEARSAL · local chain 31337{bundle.network === 'mainnet' ? ' · mainnet plan on a local fork' : ''}</strong>A private local chain{bundle.network === 'mainnet' ? ' copied from Robinhood Chain mainnet (real WIF, HOOKR and TORCH code; local balances only)' : ''}. Nothing here reaches Robinhood Chain testnet or mainnet, and signatures for chain 31337 are not valid on any real network.</div>
           : <div className="banner banner--testnet" role="note"><strong>ROBINHOOD CHAIN TESTNET · chain 46630</strong>Real testnet transactions, signed by your wallet. Testnet ETH and TEST tokens only; nothing has value.</div>}
 
       <section className="card">
@@ -268,7 +282,7 @@ export function DeployConsole() {
             <dt>Network</dt><dd>chain {walletChain ?? '?'}</dd>
           </dl>
         )}
-        {wallet && walletChain === MAINNET_CHAIN_ID && <div className="banner banner--bad" role="alert"><strong>Mainnet refused</strong>Your wallet is on Robinhood Chain mainnet. Switch to {bundle.rehearsal ? 'the rehearsal chain' : 'Robinhood Chain testnet'}.</div>}
+        {wallet && walletChain === MAINNET_CHAIN_ID && bundle.chainId !== MAINNET_CHAIN_ID && <div className="banner banner--bad" role="alert"><strong>Mainnet refused</strong>Your wallet is on Robinhood Chain mainnet. Switch to {bundle.rehearsal ? 'the rehearsal chain' : 'Robinhood Chain testnet'}.</div>}
         {wrongChain && <button type="button" className="btn btn--ghost" onClick={() => void switchNetwork()}>Switch wallet to chain {bundle.chainId}</button>}
         {wrongAccount && <div className="banner banner--bad" role="alert"><strong>Wrong account</strong>Select the planned deployer {short(bundle.deployer)} in your wallet. Never use a Safe signer's account to deploy.</div>}
         {message && <div className="banner banner--bad" role="alert">{message}</div>}
@@ -280,7 +294,7 @@ export function DeployConsole() {
         <div className="status-line" style={{ margin: '8px 0' }}>
           {assessing && <span className="spinner" aria-hidden="true" />}
           <span>{!a ? 'Reading the chain…'
-            : a.status === 'complete' ? 'All 11 steps are on chain and verified.'
+            : a.status === 'complete' ? `All ${n} steps are on chain and verified.`
               : a.status === 'pending' ? 'A transaction from the deployer is pending. Waiting for it; nothing else can be sent.'
                 : a.status === 'halt' ? 'STOPPED: the chain does not match the plan.'
                   : `Next: step ${a.next + 1} of ${n}.`}</span>
@@ -352,9 +366,10 @@ export function DeployConsole() {
       )}
 
       <p className="sub" style={{ marginTop: 20 }}>
-        Safety: this page holds no keys and never signs. It rebuilds every transaction from pinned constants, refuses mainnet (4663), checks the chain, account, nonce, calldata,
-        destination, value, empty address, gas and balance before each request, and verifies the receipt, address, bytecode hash and contract state after it.
-        {bundle.chainId === REHEARSAL_CHAIN_ID ? ' Rehearsal: nothing reaches a real network.' : ' Testnet ETH and TEST tokens have no value.'}
+        Safety: this page holds no keys and never signs. It rebuilds every transaction from pinned constants, refuses mainnet (4663) unless the bundle is the pinned mainnet plan and this
+        build approves it, checks the chain, account, nonce, calldata, destination, value, empty address, gas and balance before each request, and verifies the receipt, address,
+        bytecode hash and contract state after it.
+        {bundle.chainId === REHEARSAL_CHAIN_ID ? ' Rehearsal: nothing reaches a real network.' : bundle.chainId === MAINNET_CHAIN_ID ? ' Mainnet: real ETH for gas and real WIF for the reward streams.' : ' Testnet ETH and TEST tokens have no value.'}
       </p>
     </main>
   )
