@@ -7,9 +7,14 @@
 //      node scripts/safe-tx.mjs prepare --rpc <url> --safe <safe> --to <target> --data <calldata> [--out file.json]
 //    Writes the EIP-712 SafeTx (operation CALL, value 0, no refund parameters) and prints the safeTxHash, cross-checked
 //    against the Safe contract's own getTransactionHash.
-// 2) Each signer, on their own machine with their Ledger:
-//      cast wallet sign --ledger --data --from-file <file.json>
-//    The Ledger shows the typed data (domain chain id 46630 and the Safe address). Returns a 65-byte signature.
+// 2) Each signer, on their own machine: recompute the hashes offline, then sign with their Ledger:
+//      node scripts/safe-tx.mjs inspect --tx <file.json>
+//      cast wallet sign --ledger --mnemonic-derivation-path "m/44'/60'/<N>'/0/0" --data --from-file <file.json>
+//    Cast 1.7.1 signs EIP-712 typed data (never EIP-191 or a raw hash). With --ledger it computes the domain separator
+//    and the SafeTx struct hash on the computer and sends ONLY those two hashes to the Ethereum app (SIGN_ETH_EIP_712,
+//    P2 = 0x00, "v0" mode). The device therefore displays only "Domain hash" and "Message hash" (no chain ID, Safe
+//    address or fields) and refuses unless the app's Blind signing setting is enabled. The signer compares both
+//    hashes with `inspect` output from their own machine. Returns a 65-byte signature r||s||v with v = 27 or 28.
 // Drill (before deployment, no effect anywhere): node scripts/safe-tx.mjs drill ; each signer signs the file with
 //    their Ledger; node scripts/safe-tx.mjs check --tx safe-signing-drill.json --sig <sig> --expect <their address>.
 // 3) Assemble and check (anyone):
@@ -18,25 +23,25 @@
 //    with eth_call, and prints the `cast send ... --ledger` command for any one signer (or the deployer) to send.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { Contract, JsonRpcProvider, TypedDataEncoder, getAddress, verifyTypedData, ZeroAddress, Interface } from 'ethers'
+import { ALLOWED, DEVICE_NOTE, TYPES, hashesOf, signatureProblem, typedProblems } from './lib/safe-typed.mjs'
 
 const args = process.argv.slice(2)
 const cmd = args[0]
 const opt = (k) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined }
 const all = (k) => args.flatMap((a, i) => (a === `--${k}` ? [args[i + 1]] : []))
-const ALLOWED = new Set([46630, 31337])
 const SAFE_ABI = [
   'function nonce() view returns (uint256)', 'function getThreshold() view returns (uint256)', 'function domainSeparator() view returns (bytes32)', 'function getOwners() view returns (address[])',
   'function getTransactionHash(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 _nonce) view returns (bytes32)',
   'function execTransaction(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,bytes signatures) payable returns (bool)',
 ]
-const TYPES = {
-  SafeTx: [
-    { name: 'to', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'data', type: 'bytes' }, { name: 'operation', type: 'uint8' },
-    { name: 'safeTxGas', type: 'uint256' }, { name: 'baseGas', type: 'uint256' }, { name: 'gasPrice', type: 'uint256' },
-    { name: 'gasToken', type: 'address' }, { name: 'refundReceiver', type: 'address' }, { name: 'nonce', type: 'uint256' },
-  ],
-}
 const die = (m) => { console.error(`error: ${m}`); process.exit(1) }
+const loadTyped = (file) => {
+  let typed
+  try { typed = JSON.parse(readFileSync(file, 'utf8')) } catch (e) { die(`cannot read ${file}: ${e.message}`) }
+  const p = typedProblems(typed)
+  if (p.length) die(`${file} is not a canonical SafeTx file:\n  - ${p.join('\n  - ')}`)
+  return typed
+}
 
 async function connect(rpc) {
   if (!rpc) die('--rpc is required')
@@ -65,19 +70,19 @@ if (cmd === 'prepare') {
   if (domainHash !== (await safe.domainSeparator())) die('domain hash differs from the Safe contract\'s domainSeparator()')
   const messageHash = TypedDataEncoder.from(TYPES).hash(message)
   console.log(JSON.stringify({ file: out, chainId, safe: safeAddr, nonce: nonce.toString(), to, data, safeTxHash: hash, ledgerDomainHash: domainHash, ledgerMessageHash: messageHash, threshold: Number(await safe.getThreshold()) }, null, 2))
-  console.log(`\nEach signer, on their own machine (Ledger connected, Ethereum app open):\n  cast wallet sign --ledger --mnemonic-derivation-path "m/44'/60'/<account>'/0/0" --data --from-file ${out}`)
-  console.log('The Ledger must show this domain hash and message hash (compare every character). Reject otherwise:')
-  console.log(`  domain hash  ${domainHash}\n  message hash ${messageHash}`)
+  console.log(`\nEach signer, on their own machine: first recompute the hashes offline from the file they received,\n  node scripts/safe-tx.mjs inspect --tx ${out}\nthen sign (Ledger connected, Ethereum app open, Ledger Live closed):\n  cast wallet sign --ledger --mnemonic-derivation-path "m/44'/60'/<N>'/0/0" --data --from-file ${out}`)
+  console.log(DEVICE_NOTE)
+  console.log(`  Domain hash  ${domainHash}\n  Message hash ${messageHash}\nReject on the device if either differs.`)
 } else if (cmd === 'exec') {
   const { p, chainId } = await connect(opt('rpc'))
-  const typed = JSON.parse(readFileSync(opt('tx') ?? die('--tx required'), 'utf8'))
+  const typed = loadTyped(opt('tx') ?? die('--tx required'))
   if (Number(typed.domain.chainId) !== chainId) die(`file is for chain ${typed.domain.chainId}, RPC is chain ${chainId}`)
   const safe = new Contract(typed.domain.verifyingContract, SAFE_ABI, p)
   const m = typed.message
   if (BigInt(m.nonce) !== (await safe.nonce())) die('the Safe nonce changed since this transaction was prepared')
   const owners = (await safe.getOwners()).map((a) => a.toLowerCase())
   const threshold = Number(await safe.getThreshold())
-  const sigs = all('sig').map((sig) => ({ sig, signer: verifyTypedData(typed.domain, { SafeTx: typed.types.SafeTx }, m, sig).toLowerCase() }))
+  const sigs = all('sig').map((sig) => { const bad = signatureProblem(sig); if (bad) die(bad); return { sig, signer: verifyTypedData(typed.domain, TYPES, m, sig).toLowerCase() } })
   for (const s of sigs) if (!owners.includes(s.signer)) die(`signature from ${s.signer}, which is not an owner of this Safe`)
   if (new Set(sigs.map((s) => s.signer)).size !== sigs.length) die('duplicate signer')
   if (sigs.length < threshold) die(`need ${threshold} signatures, got ${sigs.length}`)
@@ -96,15 +101,28 @@ if (cmd === 'prepare') {
   const typed = { types: { EIP712Domain: [{ name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }], ...TYPES }, primaryType: 'SafeTx', domain, message }
   const out = opt('out') ?? 'safe-signing-drill.json'
   writeFileSync(out, JSON.stringify(typed, null, 2))
-  console.log(JSON.stringify({ file: out, note: 'DRILL ONLY: local chain 31337, dummy contract; valid nowhere', ledgerDomainHash: TypedDataEncoder.hashDomain(domain), ledgerMessageHash: TypedDataEncoder.from(TYPES).hash(message) }, null, 2))
+  const h = hashesOf(typed)
+  console.log(JSON.stringify({ file: out, note: 'DRILL ONLY: local chain 31337, dummy contract; valid nowhere', ledgerDomainHash: h.domainHash, ledgerMessageHash: h.messageHash }, null, 2))
+  console.log(`\n${DEVICE_NOTE}\n  Domain hash  ${h.domainHash}\n  Message hash ${h.messageHash}`)
 } else if (cmd === 'check') {
   // Recover the signer of a signature over a prepared or drill file (no network access).
-  const typed = JSON.parse(readFileSync(opt('tx') ?? die('--tx required'), 'utf8'))
-  const signer = verifyTypedData(typed.domain, { SafeTx: typed.types.SafeTx }, typed.message, opt('sig') ?? die('--sig required'))
+  const typed = loadTyped(opt('tx') ?? die('--tx required'))
+  const sig = opt('sig') ?? die('--sig required')
+  const bad = signatureProblem(sig)
+  if (bad) die(bad)
+  // EIP-712 recovery over keccak256(0x1901 || domainHash || messageHash): exactly what Cast/the Ledger signed.
+  const signer = verifyTypedData(typed.domain, TYPES, typed.message, sig)
   const expect = opt('expect')
   console.log(JSON.stringify({ signer, matchesExpected: expect ? getAddress(expect) === signer : undefined }, null, 2))
   if (expect && getAddress(expect) !== signer) process.exit(1)
+} else if (cmd === 'inspect') {
+  // Offline: validate a received file and recompute what the Ledger will display. No network, no device.
+  const typed = loadTyped(opt('tx') ?? die('--tx required'))
+  const h = hashesOf(typed)
+  const drill = Number(typed.domain.chainId) === 31337 && typed.domain.verifyingContract === '0x000000000000000000000000000000000000dEaD'
+  console.log(JSON.stringify({ kind: drill ? 'DRILL (local chain 31337, dummy contract; valid nowhere)' : 'SafeTx', chainId: Number(typed.domain.chainId), safe: typed.domain.verifyingContract, to: typed.message.to, value: typed.message.value, data: typed.message.data, operation: 'CALL', nonce: typed.message.nonce, safeTxHash: h.safeTxHash }, null, 2))
+  console.log(`\n${DEVICE_NOTE}\n  Domain hash  ${h.domainHash}\n  Message hash ${h.messageHash}`)
 } else {
-  console.log('usage: node scripts/safe-tx.mjs prepare|exec|drill|check ... (see header)')
+  console.log('usage: node scripts/safe-tx.mjs prepare|exec|drill|check|inspect ... (see header)')
   process.exit(cmd ? 1 : 0)
 }

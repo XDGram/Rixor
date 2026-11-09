@@ -97,15 +97,29 @@ LEDGER=(--ledger --sender "$D" --mnemonic-derivation-paths "$DPATH")   # forge s
 **Never pass `--chain` to `forge script`**: it overrides the script's `block.chainid` view. The scripts therefore
 also query the RPC's own `eth_chainId` and refuse unless both equal 46630.
 
-### 5.2 Ledger signing drill (each of the six signers; no effect anywhere)
+### 5.2 Ledger signing drill (each of the six signers and the deployer; no effect anywhere)
+
+Windows Command Prompt version: `docs/LEDGER_WINDOWS_CMD.md`.
 
 ```bash
 node scripts/safe-tx.mjs drill                                     # chain 31337, dummy contract: valid nowhere
+node scripts/safe-tx.mjs inspect --tx safe-signing-drill.json      # offline: validates the file, prints the hashes
 $CAST wallet sign --ledger --mnemonic-derivation-path "m/44'/60'/<N>'/0/0" --data --from-file safe-signing-drill.json
 node scripts/safe-tx.mjs check --tx safe-signing-drill.json --sig 0x<signature> --expect 0x<their address>
 ```
 
-Proves each device produces Safe EIP-712 signatures and shows the signer what the device displays.
+What is signed (verified in the Cast 1.7.1 / foundry-wallets 0.1.0 / alloy-signer-ledger 2.0.0 sources and by
+`npm run test:safe-signing`): `--data --from-file` signs **EIP-712 typed data**, never EIP-191 or a raw hash. With
+`--ledger`, Cast computes the domain hash and message hash on the computer and sends only those two values to the
+Ethereum app (`SIGN_ETH_EIP_712`, P2 = `0x00`, "v0"). The device therefore shows **only "Domain hash" and "Message
+hash"**: it cannot show the chain ID, the Safe address or any field. The Ethereum app (1.12.0 and later) refuses
+this mode unless **Blind signing** is enabled in its settings. Drill hashes: domain
+`0xb1d7214fcc497f10f1d3856096eb3488620f3bf807fbce3d2b736a6d60644130`, message
+`0xb55a82e23ac7c0476cc3abb0ad7a160811c811401e1db2f8a9f00e787db9cc22`. `check` recovers the signer with EIP-712 over
+`keccak256(0x1901 || domain hash || message hash)`, refuses non-canonical files and requires v = 27/28.
+
+Proves each device produces Safe EIP-712 signatures. The exact screens (wording, order, hex formatting) depend on the
+device model and app version and are confirmed only by this physical-device drill.
 
 ### 5.3 Final plan with real addresses (no broadcast)
 
@@ -151,13 +165,18 @@ RIXOR_DEPLOYMENT=deployments/46630.json RIXOR_CONFIG=deployments/46630-testnet-c
 
 | Transactions | Expect on the device |
 |---|---|
-| 1–2 (create Safes) | Review transaction · **Network / Chain ID 46630** · To `0x14F2982D601c9458F93bd70B218933A6f8165e7b` · Amount 0 ETH · blind-signing warning (contract data) · max fees a tiny fraction of ETH |
+| 1–2 (create Safes) | Review transaction · **Network / Chain ID 46630** (not yet confirmed on a device: see note) · To `0x14F2982D601c9458F93bd70B218933A6f8165e7b` · Amount 0 ETH · blind-signing warning (contract data) · max fees a tiny fraction of ETH |
 | 3–8 (deployments) | Review transaction · **Chain ID 46630** · contract creation (no To address) · Amount 0 · blind-signing warning |
 | 9 (approve) | **Chain ID 46630** · To = tWIF address from the plan · Amount 0 |
 | 10–11 (fund) | **Chain ID 46630** · To = RixorRewards address from the plan · Amount 0 |
-| Safe signatures (later) | Typed message: either clear-signed fields with chainId 46630 and the Safe address, or a **domain hash and message hash** that must equal the values printed by `safe-tx.mjs prepare` |
+| Safe signatures (later) | Typed message, blind-signing warning, then **only "Domain hash" and "Message hash"**. Both must equal the values printed by `safe-tx.mjs inspect` on the signer's own machine (and by `prepare`). The device does not show the chain ID or the Safe address; those are bound inside the domain hash, which `prepare` checks against the Safe's own `domainSeparator()`. |
 
-Blind signing must be enabled in the Ledger Ethereum app for transactions 1–8. Disable it again afterwards.
+Blind signing must be enabled in the Ledger Ethereum app for transactions 1–8 and for every Safe signature. Disable
+it again afterwards.
+
+Note: the transaction rows (1–11) describe what the Ethereum app is expected to show for a forge/Cast transaction on
+a network it does not know by name; they have **not** been confirmed on a physical device. Confirm them on the first
+testnet transaction and reject if the chain ID shown is anything other than 46630.
 
 ### 5.6 Verification after deployment
 
@@ -195,7 +214,9 @@ Blind signing must be enabled in the Ledger Ethereum app for transactions 1–8.
 2. `DeployRixorV2` refuses 4663 without a written-authorisation sentence that is never used here, and even then needs
    genuine Safes; `RixorTestToken` reverts on chain 4663; `safe-tx.mjs` refuses any chain but 46630/31337 and binds
    signatures to chain 46630 through the EIP-712 domain; `preflight-testnet.mjs` stops on a mainnet RPC.
-3. Every transaction is EIP-155 signed for chain 46630 and the Ledger displays the chain.
+3. Every transaction is EIP-155 signed for chain 46630 (the chain ID is part of what the Ledger signs; how the device
+   displays it is confirmed on the first real testnet transaction). Safe signatures are bound to 46630 through the
+   EIP-712 domain hash, which the device displays and the signer compares.
 
 ## 8. Secrets
 
