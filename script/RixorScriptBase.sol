@@ -15,6 +15,12 @@ abstract contract RixorScriptBase is Script {
     uint256 internal constant MAINNET = 4663;
     uint256 internal constant TESTNET = 46630;
     uint256 internal constant LOCAL = 31337;
+    /// @dev Official World Is Flat ($WIF) token on Robinhood Chain mainnet (Sourcify-verified PonsV2LauncherToken:
+    ///      plain OpenZeppelin ERC20 + ERC20Burnable, 18 decimals, fixed supply, no owner, no proxy).
+    address internal constant OFFICIAL_WIF = 0x5173b8eA6923c2d40267890D45C46a3480954773;
+    /// @dev Every broadcast on Robinhood Chain mainnet requires this exact sentence in RIXOR_CONFIRM_MAINNET.
+    string internal constant MAINNET_CONFIRMATION =
+        "I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet";
     /// @dev Foundry's built-in default sender (used when `--sender` is omitted). Never a real deployer.
     address internal constant FOUNDRY_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
 
@@ -22,6 +28,21 @@ abstract contract RixorScriptBase is Script {
     function _pinTestnet() internal returns (uint256 chainId) {
         chainId = _pin();
         require(chainId == TESTNET || chainId == LOCAL, "testnet (46630) or local rehearsal (31337) only");
+    }
+
+    /// @dev Mainnet scripts: Robinhood Chain mainnet with the written-authorisation sentence, or a LOCAL fork of
+    ///      mainnet (chain id 31337, where the official $WIF exists) for planning and rehearsal.
+    function _pinMainnet() internal returns (uint256 chainId) {
+        chainId = _pin();
+        if (chainId == MAINNET) {
+            require(
+                keccak256(bytes(vm.envOr("RIXOR_CONFIRM_MAINNET", string("")))) == keccak256(bytes(MAINNET_CONFIRMATION)),
+                "mainnet requires RIXOR_CONFIRM_MAINNET with the exact written-authorisation sentence"
+            );
+        } else {
+            require(chainId == LOCAL, "mainnet (4663) or a local mainnet fork (31337) only");
+            require(OFFICIAL_WIF.code.length > 0, "local chain is not a fork of Robinhood Chain mainnet (no official WIF)");
+        }
     }
 
     function _pin() internal returns (uint256 chainId) {

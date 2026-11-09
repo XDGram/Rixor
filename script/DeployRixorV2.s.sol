@@ -30,9 +30,6 @@ interface ISafeView {
 contract DeployRixorV2 is RixorScriptBase {
     using stdJson for string;
 
-    string internal constant MAINNET_CONFIRMATION =
-        "I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet";
-
     struct Deployed {
         address locker;
         address rewards;
@@ -51,6 +48,8 @@ contract DeployRixorV2 is RixorScriptBase {
 
         _guardRoles(owner, guardian);
         require(wif.code.length > 0, "reward token has no code on this chain");
+        // On mainnet the reward token is the official $WIF and nothing else.
+        if (block.chainid == MAINNET) require(wif == OFFICIAL_WIF, "mainnet reward token must be the official WIF");
 
         console2.log("chain", block.chainid);
         console2.log("owner Safe", owner);

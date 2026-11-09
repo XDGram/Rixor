@@ -27,6 +27,7 @@
     "demo:verify": "node scripts/verify-browser-evm.mjs",
     "deploy:local-fork": "node scripts/deploy-local-fork.mjs",
     "rehearse:testnet": "node scripts/rehearse-testnet.mjs",
+    "rehearse:mainnet": "node scripts/rehearse-mainnet.mjs",
     "plan:testnet": "node scripts/plan-testnet.mjs",
     "preflight:testnet": "node scripts/preflight-testnet.mjs",
     "audit:mainnet-guards": "node scripts/audit-mainnet-guards.mjs",

@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-// MAINNET GUARD AUDIT: proves no deployment script can run against Robinhood Chain mainnet (4663).
-// Every script is SIMULATED (no --broadcast, so forge cannot send anything) against the real mainnet RPC under
-// every pin/flag combination, and each run must FAIL. Also runs the Safe CLI against mainnet (must refuse).
+// MAINNET GUARD AUDIT: proves no script can run against Robinhood Chain mainnet (4663) without the exact
+// written-authorisation sentence. Every script is SIMULATED (no --broadcast, so forge cannot send anything) against
+// the real mainnet RPC under every pin/flag combination:
+//   - testnet scripts must be refused in EVERY variant (they never touch mainnet);
+//   - mainnet scripts (CreateMainnetSafes, SeedMainnetRewards) must be refused in every variant except the one that
+//     carries the exact sentence, where a read-only simulation is allowed (that is the authorised path);
+//   - DeployRixorV2 must be refused (here its owner/guardian are EOAs, so even the sentence cannot pass its guards).
+// Also runs the Safe CLI against mainnet (must refuse).
 //   npm run audit:mainnet-guards
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
@@ -18,12 +23,15 @@ const baseEnv = {
   RIXOR_CONFIG: 'deploy/config/mainnet.template.json', RIXOR_OWNER_SAFE: sender, RIXOR_GUARDIAN_SAFE: sender,
   RIXOR_DEPLOYMENT: 'deploy/config/mainnet.template.json',
 }
-const scripts = ['CreateTestnetSafes', 'DeployTestnetTokens', 'DeployRixorV2', 'SeedTestnetRewards']
+const scripts = ['CreateTestnetSafes', 'DeployTestnetTokens', 'DeployRixorV2', 'SeedTestnetRewards', 'CreateMainnetSafes', 'SeedMainnetRewards']
+const MAINNET_SCRIPTS = new Set(['CreateMainnetSafes', 'SeedMainnetRewards'])
 const variants = [
   { name: 'pin 4663', env: { RIXOR_EXPECTED_CHAIN_ID: '4663' }, flags: [] },
   { name: 'pin 46630', env: { RIXOR_EXPECTED_CHAIN_ID: '46630' }, flags: [] },
   { name: 'pin 46630 + --chain 46630', env: { RIXOR_EXPECTED_CHAIN_ID: '46630' }, flags: ['--chain', '46630'] },
-  { name: 'pin 4663 + mainnet sentence', env: { RIXOR_EXPECTED_CHAIN_ID: '4663', RIXOR_CONFIRM_MAINNET: 'I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet' }, flags: [] },
+  { name: 'pin 4663 + wrong sentence', env: { RIXOR_EXPECTED_CHAIN_ID: '4663', RIXOR_CONFIRM_MAINNET: 'I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet.' }, flags: [] },
+  { name: 'pin 4663 + --chain 31337', env: { RIXOR_EXPECTED_CHAIN_ID: '31337' }, flags: ['--chain', '31337'] },
+  { name: 'pin 4663 + mainnet sentence', sentence: true, env: { RIXOR_EXPECTED_CHAIN_ID: '4663', RIXOR_CONFIRM_MAINNET: 'I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet' }, flags: [] },
 ]
 let bad = 0
 for (const s of scripts) {
@@ -36,8 +44,9 @@ for (const s of scripts) {
     }
     const reason = (r.stdout + r.stderr).match(/script failed: ([^\n]+)/)?.[1] ?? (r.status === 0 ? 'SUCCEEDED' : 'failed')
     const refused = r.status !== 0
-    if (!refused) bad++
-    console.log(`${refused ? 'REFUSED' : 'NOT REFUSED'}  ${s.padEnd(20)} ${v.name.padEnd(30)} ${reason}`)
+    const allowed = v.sentence && MAINNET_SCRIPTS.has(s) // authorised path: simulation may proceed
+    if (!refused && !allowed) bad++
+    console.log(`${refused ? 'REFUSED' : allowed ? 'ALLOWED (sentence)' : 'NOT REFUSED'}  ${s.padEnd(20)} ${v.name.padEnd(30)} ${reason}`)
   }
 }
 const cli = spawnSync(process.execPath, [join(ROOT, 'scripts/safe-tx.mjs'), 'prepare', '--rpc', MAINNET, '--safe', sender, '--to', sender, '--data', '0x'], { encoding: 'utf8' })

@@ -1,0 +1,13 @@
+{
+  "_note": "CANDIDATE mainnet plan, NOT approved. Listings and reward budgets need the project owner's written approval. Prices 9 Nov 2026: HOOKR ~$0.021, TORCH ~$0.0048, WIF ~$0.00128. Units ~$20; caps ~$50k (raisable only through the 48-hour timelock, at most 2x per step).",
+  "wif": "0x5173b8eA6923c2d40267890D45C46a3480954773",
+  "minHoldSeconds": 86400,
+  "listings": [
+    { "token": "0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c", "unitAmount": "1000000000000000000000", "maxTotalLocked": "2500000000000000000000000", "riskClass": 2 },
+    { "token": "0x000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111", "unitAmount": "5000000000000000000000", "maxTotalLocked": "10000000000000000000000000", "riskClass": 2 }
+  ],
+  "streams": [
+    { "token": "0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c", "amount": "10000000000000000000000", "days": 14 },
+    { "token": "0x000050E18ffa3F8F7aD170Eb9CeF160eb3Ed1111", "amount": "10000000000000000000000", "days": 14 }
+  ]
+}
