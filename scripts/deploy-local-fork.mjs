@@ -16,7 +16,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Contract, JsonRpcProvider, parseEther, parseUnits, formatUnits } from 'ethers'
+import { Contract, JsonRpcProvider, getAddress, id as labelHash, parseEther, parseUnits, formatUnits } from 'ethers'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const UPSTREAM = process.env.RH_MAINNET_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com'
@@ -40,11 +40,16 @@ function forge(args, env = {}) {
 }
 const logged = (out, label) => out.match(new RegExp(`${label}\\s+(0x[0-9a-fA-F]{40})`))?.[1]
 
-const anvil = spawn(process.execPath, [ANVIL, '--fork-url', UPSTREAM, '--chain-id', '31337', '--port', String(PORT), '--silent'], { stdio: 'ignore' })
+const anvil = spawn(process.execPath, [ANVIL, '--fork-url', UPSTREAM, '--chain-id', '31337', '--port', String(PORT), '--silent', '--auto-impersonate'], { stdio: 'ignore' })
 const provider = new JsonRpcProvider(LOCAL, 31337, { staticNetwork: true, cacheTimeout: -1 })
 try {
   for (let i = 0; ; i++) { try { await provider.getBlockNumber(); break } catch { if (i > 60) throw new Error('anvil did not start'); await sleep(500) } }
-  const [deployer] = await provider.send('eth_accounts', [])
+  // Throwaway deployer: an address derived from a label (no key exists), impersonated by the local anvil fork. anvil's
+  // default account is EIP-7702-delegated on Robinhood mainnet, so the deploy scripts refuse it as a deployer.
+  const [anvilDefault] = await provider.send('eth_accounts', [])
+  const deployer = getAddress('0x' + labelHash('rixor.local.dry-run.deployer').slice(26))
+  await provider.send('anvil_setBalance', [deployer, '0x' + (10n ** 19n).toString(16)])
+  await provider.send('anvil_impersonateAccount', [deployer])
   const unlocked = ['--rpc-url', LOCAL, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
   rmSync(join(ROOT, 'deployments', '31337.json'), { force: true })
   mkdirSync(join(ROOT, 'deployments'), { recursive: true })
@@ -59,17 +64,19 @@ try {
   const manifest = JSON.parse(readFileSync(join(ROOT, 'deployments', '31337.json'), 'utf8'))
   check('DeployRixorV2 deployed Locker, Rewards, Challenges and wrote the manifest', manifest.locker && manifest.rewards && manifest.challenges && /RixorLocker\s+0x/.test(deployOut))
 
-  const verifyOut = forge(['script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { RIXOR_DEPLOYMENT: 'deployments/31337.json' })
+  const verifyOut = forge(['script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { RIXOR_DEPLOYMENT: 'deployments/31337.json', RIXOR_CONFIG: 'deploy/config/local-fork.json' })
   check('VerifyRixorV2: wiring, roles, code hash and listings', /verification passed/.test(verifyOut))
 
   // Guards: the deploy script must refuse an EOA owner, and refuse to list the reward token.
-  const refuse = (extraEnv) => spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env, ...extraEnv }, encoding: 'utf8' })
+  const refuse = (extraEnv) => spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL, '--sender', deployer], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env, ...extraEnv }, encoding: 'utf8' })
   // anvil's default account is EIP-7702-delegated on Robinhood mainnet (23 bytes of code): it must still be refused.
-  check('guard: EIP-7702-delegated EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: deployer }).status !== 0)
+  check('guard: EIP-7702-delegated EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: anvilDefault }).status !== 0)
+  check('guard: delegated deployer (anvil default account) rejected', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL, '--sender', anvilDefault], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env }, encoding: 'utf8' }).status !== 0)
+  check('guard: Foundry default sender rejected', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', ...env }, encoding: 'utf8' }).status !== 0)
   check('guard: plain EOA owner rejected', refuse({ RIXOR_OWNER_SAFE: '0x00000000000000000000000000000000000Be111' }).status !== 0)
   check('guard: non-Safe contract owner rejected', refuse({ RIXOR_OWNER_SAFE: WIF }).status !== 0)
   check('guard: guardian sharing every owner signer rejected', refuse({ RIXOR_GUARDIAN_SAFE: logged(safesOut, 'LOCAL shared-signer Safe') }).status !== 0)
-  check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '4663', ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
+  check('guard: unsupported chain id refused', spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorV2.s.sol', '--rpc-url', UPSTREAM, '--sender', deployer], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '4663', ...env }, encoding: 'utf8' }).status !== 0, 'mainnet without the written-authorisation sentence')
   check('guard: chain pin mismatch refused', refuse({ RIXOR_EXPECTED_CHAIN_ID: '46630' }).status !== 0, 'local RPC with RIXOR_EXPECTED_CHAIN_ID=46630')
 
   // ------------------------------------------------------------------ smoke journey (impersonated holders)

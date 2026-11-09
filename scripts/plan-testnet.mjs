@@ -12,7 +12,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { JsonRpcProvider, getAddress, id as labelHash, Wallet, formatEther } from 'ethers'
+import { AbiCoder, Contract, Interface, JsonRpcProvider, concat, getAddress, getCreate2Address, getCreateAddress, id as labelHash, keccak256, solidityPacked, Wallet, formatEther, ZeroAddress } from 'ethers'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const TESTNET_RPC = process.env.RH_TESTNET_RPC_URL || 'https://rpc.testnet.chain.robinhood.com'
@@ -65,9 +65,31 @@ try {
   const cfg = JSON.parse(readFileSync(join(ROOT, cfgPath), 'utf8'))
   run('DeployRixorV2', { RIXOR_CONFIG: cfgPath, RIXOR_OWNER_SAFE: ownerSafe, RIXOR_GUARDIAN_SAFE: guardianSafe })
   const manifest = JSON.parse(readFileSync(join(ROOT, 'deployments', '46630-plan.json'), 'utf8'))
-  const v = spawnSync(process.execPath, [FORGE, 'script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, RIXOR_DEPLOYMENT: 'deployments/46630-plan.json' }, encoding: 'utf8' })
+  const v = spawnSync(process.execPath, [FORGE, 'script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { cwd: ROOT, env: { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '46630', RIXOR_DEPLOYMENT: 'deployments/46630-plan.json', RIXOR_CONFIG: cfgPath }, encoding: 'utf8' })
   if (!/verification passed/.test(v.stdout)) throw new Error('VerifyRixorV2 failed on the plan')
   run('SeedTestnetRewards', { RIXOR_DEPLOYMENT: 'deployments/46630-plan.json', RIXOR_CONFIG: cfgPath })
+
+  // Independent recomputation of every address (ethers, not forge): CREATE from the deployer's nonces, and Safe's
+  // CREATE2 formula from the signer lists, threshold, fallback handler and salts used by CreateTestnetSafes.
+  const FACTORY = '0x14F2982D601c9458F93bd70B218933A6f8165e7b'
+  const SINGLETON = '0xEdd160fEBBD92E350D4D398fb636302fccd67C7e'
+  const FALLBACK = '0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4'
+  const proxyCode = await new Contract(FACTORY, ['function proxyCreationCode() pure returns (bytes)'], upstream).proxyCreationCode()
+  const setup = new Interface(['function setup(address[],uint256,address,bytes,address,address,uint256,address)'])
+  const safeAddr = (signers, saltLabel) => {
+    const init = setup.encodeFunctionData('setup', [signers, 2, ZeroAddress, '0x', FALLBACK, ZeroAddress, 0, ZeroAddress])
+    const salt = keccak256(solidityPacked(['bytes32', 'uint256'], [keccak256(init), BigInt(labelHash(saltLabel))]))
+    return getCreate2Address(FACTORY, salt, keccak256(concat([proxyCode, AbiCoder.defaultAbiCoder().encode(['uint256'], [SINGLETON])])))
+  }
+  const create = (k) => getCreateAddress({ from: deployer, nonce: startNonce + k })
+  const expected = {
+    ownerSafe: safeAddr(owners, 'rixor.testnet.owner-safe.v1'), guardianSafe: safeAddr(guardians, 'rixor.testnet.guardian-safe.v1'),
+    tMEMEA: create(2), tMEMEB: create(3), tWIF: create(4), RixorLocker: create(5), RixorRewards: create(6), RixorChallenges: create(7),
+  }
+  const actual = { ownerSafe, guardianSafe, tMEMEA: cfg.listings[0].token, tMEMEB: cfg.listings[1].token, tWIF: cfg.wif, RixorLocker: manifest.locker, RixorRewards: manifest.rewards, RixorChallenges: manifest.challenges }
+  const mismatches = Object.keys(expected).filter((k) => getAddress(expected[k]) !== getAddress(actual[k]))
+  const nonceOk = steps.every((x, i) => x.nonce === startNonce + i)
+  if (mismatches.length || !nonceOk) throw new Error(`independent address check failed: ${mismatches.join(', ') || 'nonce sequence'}`)
 
   const totalGas = steps.reduce((s, x) => s + x.gasUsed, 0n)
   const cost = (mult) => formatEther(totalGas * gasPrice * BigInt(mult))
@@ -80,6 +102,7 @@ try {
       tMEMEA: cfg.listings[0].token, tMEMEB: cfg.listings[1].token, tWIF: cfg.wif,
       RixorLocker: manifest.locker, RixorRewards: manifest.rewards, RixorChallenges: manifest.challenges,
     },
+    independentAddressCheck: 'all 8 addresses recomputed with ethers (CREATE from deployer nonces, Safe CREATE2) and matched; nonces sequential',
     listings: cfg.listings, minHoldSeconds: cfg.minHoldSeconds,
     transactions: steps.map((s, i) => ({ n: i + 1, nonce: s.nonce, script: s.script, action: s.kind === 'CREATE' ? `deploy ${s.contract}` : `${s.contract || 'call'}.${s.fn.split('(')[0] || '?'}`, address: s.to, gasUsed: s.gasUsed.toString() })),
     gas: { total: totalGas.toString(), gasPriceWei: gasPrice.toString() },

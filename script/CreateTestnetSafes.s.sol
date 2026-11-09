@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {Script, console2} from "forge-std/Script.sol";
+import {console2} from "forge-std/Script.sol";
+import {RixorScriptBase} from "./RixorScriptBase.sol";
 
 interface ISafeFactory {
     function createProxyWithNonce(address singleton, bytes memory initializer, uint256 saltNonce)
@@ -37,7 +38,7 @@ interface ISafe {
 /// factory and depend only on the signer lists, threshold and the fixed salt, never on who sends the transaction.
 /// Checks: signers distinct, non-zero, plain EOAs (no code), at least one guardian signer not an owner signer,
 /// the broadcasting deployer is not a signer, threshold 2-of-3.
-contract CreateTestnetSafes is Script {
+contract CreateTestnetSafes is RixorScriptBase {
     address internal constant SINGLETON_L2 = 0xEdd160fEBBD92E350D4D398fb636302fccd67C7e; // Safe v1.5.0 (SafeL2)
     address internal constant FACTORY = 0x14F2982D601c9458F93bd70B218933A6f8165e7b;
     address internal constant FALLBACK = 0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4;
@@ -46,8 +47,8 @@ contract CreateTestnetSafes is Script {
     uint256 internal constant GUARDIAN_SALT = uint256(keccak256("rixor.testnet.guardian-safe.v1"));
 
     function run() external returns (address ownerSafe, address guardianSafe) {
-        require(block.chainid == 46630 || block.chainid == 31337, "testnet (46630) or local rehearsal (31337) only");
-        require(block.chainid == vm.envUint("RIXOR_EXPECTED_CHAIN_ID"), "RPC chain id differs from RIXOR_EXPECTED_CHAIN_ID");
+        _pinTestnet();
+        _requireRealSender();
         require(SINGLETON_L2.code.length > 0 && FACTORY.code.length > 0 && FALLBACK.code.length > 0, "Safe v1.5.0 not deployed here");
         require(keccak256(bytes(ISafe(SINGLETON_L2).VERSION())) == keccak256("1.5.0"), "unexpected Safe singleton version");
 

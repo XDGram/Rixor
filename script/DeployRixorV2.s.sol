@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {Script, console2} from "forge-std/Script.sol";
+import {console2} from "forge-std/Script.sol";
+import {RixorScriptBase} from "./RixorScriptBase.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {RixorLocker} from "../contracts/RixorLocker.sol";
 import {RixorRewards} from "../contracts/RixorRewards.sol";
@@ -26,12 +27,9 @@ interface ISafeView {
 ///     deployer as a signer;
 ///   - the reward token must be a contract and must not appear in the listings.
 /// The script sets no gas limits: every transaction uses the node's eth_estimateGas.
-contract DeployRixorV2 is Script {
+contract DeployRixorV2 is RixorScriptBase {
     using stdJson for string;
 
-    uint256 internal constant MAINNET = 4663;
-    uint256 internal constant TESTNET = 46630;
-    uint256 internal constant LOCAL = 31337;
     string internal constant MAINNET_CONFIRMATION =
         "I have written authorisation to deploy Rixor V2 to Robinhood Chain mainnet";
 
@@ -71,16 +69,17 @@ contract DeployRixorV2 is Script {
         _writeManifest(d, owner, guardian, wif, minHold, configPath, listings.length);
     }
 
-    function _guardChain() internal view {
-        // Mandatory pin: the operator states the intended chain; a mis-pointed RPC fails before anything is signed.
-        require(block.chainid == vm.envUint("RIXOR_EXPECTED_CHAIN_ID"), "RPC chain id differs from RIXOR_EXPECTED_CHAIN_ID");
-        if (block.chainid == MAINNET) {
+    function _guardChain() internal {
+        // Dual pin: block.chainid AND the RPC's own eth_chainId must equal RIXOR_EXPECTED_CHAIN_ID.
+        uint256 chainId = _pin();
+        _requireRealSender();
+        if (chainId == MAINNET) {
             require(
                 keccak256(bytes(vm.envOr("RIXOR_CONFIRM_MAINNET", string("")))) == keccak256(bytes(MAINNET_CONFIRMATION)),
                 "mainnet deployment requires RIXOR_CONFIRM_MAINNET with the exact written-authorisation sentence"
             );
         } else {
-            require(block.chainid == TESTNET || block.chainid == LOCAL, "unsupported chain id");
+            require(chainId == TESTNET || chainId == LOCAL, "unsupported chain id");
         }
     }
 

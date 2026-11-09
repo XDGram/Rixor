@@ -15,7 +15,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Contract, Interface, JsonRpcProvider, Wallet, formatUnits, id as labelHash, parseUnits } from 'ethers'
+import { Contract, Interface, JsonRpcProvider, Wallet, formatUnits, getAddress, id as labelHash, parseUnits } from 'ethers'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const UPSTREAM = process.env.RH_MAINNET_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com'
@@ -35,13 +35,17 @@ function forge(args, env = {}) {
 }
 const logged = (out, label) => out.match(new RegExp(`${label}\\s+(0x[0-9a-fA-F]{40})`))?.[1]
 
-const anvil = spawn(process.execPath, [ANVIL, '--fork-url', UPSTREAM, '--chain-id', '31337', '--port', String(PORT), '--silent'], { stdio: 'ignore', detached: KEEP })
+const anvil = spawn(process.execPath, [ANVIL, '--fork-url', UPSTREAM, '--chain-id', '31337', '--port', String(PORT), '--silent', '--auto-impersonate'], { stdio: 'ignore', detached: KEEP })
 const provider = new JsonRpcProvider(LOCAL, 31337, { staticNetwork: true, cacheTimeout: -1 })
 let failed = false
 try {
   for (let i = 0; ; i++) { try { await provider.getBlockNumber(); break } catch { if (i > 60) throw new Error('anvil did not start'); await sleep(500) } }
   const accounts = await provider.send('eth_accounts', [])
-  const [deployer, , tester] = accounts
+  const tester = accounts[2]
+  // Throwaway deployer address (no key exists), impersonated by the local chain; must be a plain EOA.
+  const deployer = getAddress('0x' + labelHash('rixor.local.rehearsal.deployer').slice(26))
+  await provider.send('anvil_setBalance', [deployer, '0x' + (10n ** 19n).toString(16)])
+  await provider.send('anvil_impersonateAccount', [deployer])
   const unlocked = ['--rpc-url', LOCAL, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
   mkdirSync(join(ROOT, 'deployments'), { recursive: true })
 
@@ -72,7 +76,7 @@ try {
   const env = { RIXOR_CONFIG: cfgPath, RIXOR_OWNER_SAFE: ownerSafe, RIXOR_GUARDIAN_SAFE: guardianSafe }
   forge(['script', 'script/DeployRixorV2.s.sol', ...unlocked], env)
   const manifest = JSON.parse(readFileSync(join(ROOT, 'deployments', '31337.json'), 'utf8'))
-  const verify = forge(['script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { RIXOR_DEPLOYMENT: 'deployments/31337.json' })
+  const verify = forge(['script', 'script/VerifyRixorV2.s.sol', '--rpc-url', LOCAL], { RIXOR_DEPLOYMENT: 'deployments/31337.json', RIXOR_CONFIG: cfgPath })
   check('DeployRixorV2 + VerifyRixorV2', /verification passed/.test(verify))
 
   forge(['script', 'script/SeedTestnetRewards.s.sol', ...unlocked], { RIXOR_DEPLOYMENT: 'deployments/31337.json', RIXOR_CONFIG: cfgPath })

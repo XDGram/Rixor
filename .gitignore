@@ -31,3 +31,6 @@ deployments/31337-testnet-config.json
 public/testnet/
 deployments/31337-safe-tx-*.json
 deployments/*-plan*.json
+deployments/46630-plan-summary.json
+safe-tx-*.json
+safe-signing-drill.json

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {Script, console2} from "forge-std/Script.sol";
+import {console2} from "forge-std/Script.sol";
+import {RixorScriptBase} from "./RixorScriptBase.sol";
 import {RixorTestToken} from "../contracts/testtokens/RixorTestToken.sol";
 
 /// @notice TESTNET / LOCAL ONLY. Deploys the three valueless TEST tokens for the Robinhood Chain testnet demo and
@@ -17,10 +18,10 @@ import {RixorTestToken} from "../contracts/testtokens/RixorTestToken.sol";
 ///   tWIF    "Rixor Test Reward (TEST)"  18 decimals  supply 1,000,000,000  faucet 250,000/day  reward token only
 ///   Challenges minimum hold: 3,600 s (the contract's lower bound; production uses 86,400 s).
 /// The whole initial supply goes to the broadcasting deployer, which later seeds TEST reward streams.
-contract DeployTestnetTokens is Script {
+contract DeployTestnetTokens is RixorScriptBase {
     function run() external returns (address memeA, address memeB, address reward) {
-        require(block.chainid == 46630 || block.chainid == 31337, "TEST tokens are for Robinhood Chain testnet or a local chain only");
-        require(block.chainid == vm.envUint("RIXOR_EXPECTED_CHAIN_ID"), "RPC chain id differs from RIXOR_EXPECTED_CHAIN_ID");
+        _pinTestnet();
+        _requireRealSender();
         address deployer = msg.sender;
         vm.startBroadcast();
         memeA = address(new RixorTestToken("Rixor Test Meme A (TEST)", "tMEMEA", 18, 1_000_000_000e18, deployer, 100_000e18));
