@@ -1,0 +1,21 @@
+{
+  "_instructions": "PUBLIC ADDRESSES ONLY. Never put a private key, seed phrase, recovery phrase or passphrase here or anywhere else. Copy this file to deployments/addresses.json (git-ignored), fill in the seven addresses, then run: node scripts/export-deploy-bundle.mjs --addresses deployments/addresses.json",
+  "_rules": [
+    "Seven different addresses.",
+    "Owner signers O1-O3 and guardian signers G1-G3: six distinct people, each with their own wallet. No address in both Safes.",
+    "Each signer address must be a plain wallet account: no contract, no EIP-7702 delegation (checked on testnet).",
+    "The deployer D is a separate, dedicated account that is none of the six signers and is used for nothing else until the deployment is complete (its next nonce fixes every contract address).",
+    "Each person reads their own address from their own wallet and sends only that public address."
+  ],
+  "deployer": { "address": "0x0000000000000000000000000000000000000000", "holder": "name of the operator (you)", "wallet": "e.g. Zerion, dedicated account" },
+  "ownerSafeSigners": [
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person O1", "wallet": "" },
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person O2", "wallet": "" },
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person O3", "wallet": "" }
+  ],
+  "guardianSafeSigners": [
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person G1", "wallet": "" },
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person G2", "wallet": "" },
+    { "address": "0x0000000000000000000000000000000000000000", "holder": "person G3", "wallet": "" }
+  ]
+}

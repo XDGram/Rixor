@@ -74,7 +74,9 @@ challenges, and move the simulation clock forward to see a full challenge finish
   both challenge outcomes, refunds and exits.
 - **Testnet:** **not deployed yet.** The deployment is scripted and rehearsed: on a local chain, the rehearsal passes
   13/13 checks and the testnet-mode browser journey passes 11/11 steps (connect, faucet, lock, rewards, claim, early
-  exit). Real testnet transactions will be linked here once the contracts are deployed.
+  exit). Real testnet transactions will be linked here once the contracts are deployed. A mobile Deploy Console
+  (`docs/DEPLOY_CONSOLE.md`) can send the same 11 deployment transactions from a phone wallet; it is tested on local
+  chains only.
 - **Mainnet:** not deployed, and **no production token is listed or approved**. HOOKR and TORCH appear in the
   simulation only, as candidate Class B tokens under review.
 

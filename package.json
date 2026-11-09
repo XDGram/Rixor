@@ -29,7 +29,12 @@
     "rehearse:testnet": "node scripts/rehearse-testnet.mjs",
     "plan:testnet": "node scripts/plan-testnet.mjs",
     "preflight:testnet": "node scripts/preflight-testnet.mjs",
-    "audit:mainnet-guards": "node scripts/audit-mainnet-guards.mjs"
+    "audit:mainnet-guards": "node scripts/audit-mainnet-guards.mjs",
+    "build:deploy-console": "vite build --base ./ --outDir dist-console --emptyOutDir",
+    "deploy:bundle": "node scripts/export-deploy-bundle.mjs",
+    "deploy:station": "node scripts/deploy-console/station.mjs",
+    "test:deploy-console": "node scripts/test-deploy-console.mjs",
+    "test:deploy-console-e2e": "node scripts/test-deploy-console-e2e.mjs"
   },
   "dependencies": {
     "@ethereumjs/block": "10.1.3",

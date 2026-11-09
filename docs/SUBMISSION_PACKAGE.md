@@ -27,6 +27,20 @@ Source: worldisflat.fun/build/rules, read 9 Nov 2026.
 testnet deployment gives real, verifiable transactions on Robinhood Chain (chain 46630), but with a TEST token that
 merely plays $WIF's role. Only the organisers can say whether that counts. Ask before relying on it.
 
+Re-checked 9 Nov 2026 (every FAQ answer opened individually, plus `/build/terms`):
+- FAQ "do i need to hold $wif to enter?": "no, you need to build with it, not hold it."
+- FAQ "what is $wif here?": "$wif is the token used to vote here, and it comes with no promise of value or return."
+- Terms 4: projects can be disqualified for "faked transactions or proof".
+- The official site names $WIF as `0x5173b8eA6923c2d40267890D45C46a3480954773`, the address in
+  `src/protocol/tokenlist.ts`.
+- Nothing mentions testnet, test tokens or mainnet explicitly. The literal reading points to the real $WIF token;
+  whether a testnet stand-in counts is **unverified**.
+
+Short version of the question (not sent):
+
+> Does a Robinhood Chain **testnet** deployment, with a test token standing in for $WIF and real testnet
+> transactions, satisfy rules 3 and 5, or must the submission use real $WIF on mainnet?
+
 **[APPROVAL] Draft message to the organisers.** Not sent. Send it from your own account to contact@worldisflat.fun, or
 via X (@wifonrh):
 
@@ -84,7 +98,12 @@ The real ones are produced by re-running the plan with the seven real addresses.
   article. It sits behind a browser check, so its limits couldn't be read here; claim it in your own browser.
   Alternative: bridge Sepolia ETH (per Robinhood's docs).
 - **Deployer D:** forge needs a **PC with the Ledger on USB** (Windows CMD, `docs/LEDGER_WINDOWS_CMD.md` and
-  `docs/TESTNET_DEPLOYMENT.md` §5). An iPhone cannot run the deployment.
+  `docs/TESTNET_DEPLOYMENT.md` §5).
+  - **Alternative, [APPROVAL]:** the **Deploy Console** (`docs/DEPLOY_CONSOLE.md`) sends the same 11 transactions
+    from a dedicated Zerion account on the iPhone.
+  - It is built and tested locally (79 + 37 tests) and is awaiting the Zerion rehearsal.
+  - Using a hot-wallet deployer instead of a Ledger is a change to the approved process (analysis in §3 of that
+    document). The deployer keeps no authority after deployment.
 - **Zerion on iPhone** is for using the app (judges and you), not for deploying:
   - Open the V2 URL in Zerion's in-app browser.
   - The app adds and switches to chain 46630 itself; that logic is tested against six wallet error styles
@@ -115,6 +134,20 @@ The real ones are produced by re-running the plan with the seven real addresses.
    - The branch URL `rixor-git-claude-nice-gauss-bjmvku-…vercel.app` becomes public and updates with each push.
    - Downside: every past and future preview of the project becomes public.
 3. A Vercel share link: these expire, so they are unsuitable for a demo that must stay live until 16 Nov.
+4. **Branch domain on project `rixor`**, for example `rixor-v2-demo.vercel.app` assigned to git branch
+   `claude/nice-gauss-bjmvku`.
+   - Only that hostname is affected; other previews stay protected and V1 production is untouched.
+   - Rollback: remove the domain.
+   - Evidence it would be public: the project's existing domain `rixor-eight.vercel.app` returns 200 while generated
+     preview URLs return 302 under the same setting. Vercel's docs do not state this explicitly, so verify with a
+     request right after adding it.
+
+For any option, verify public access from a logged-out client before sharing:
+- `/` returns 200 with the V2 title;
+- `/deploy.html` returns 200;
+- `rixor-eight.vercel.app` still serves V1.
+
+Cost: free on Hobby (static build, no functions).
 
 ## 6. Shortest practical execution plan
 
@@ -136,7 +169,7 @@ The real ones are produced by re-running the plan with the seven real addresses.
 | B2 | No public V2 URL | Judges can't try V2 | §5 approval |
 | B3 | Seven distinct public addresses (six signers on separate devices, recommended six people) | Testnet deployment can't start | You gather them. The scripts refuse any overlap. |
 | B4 | Testnet ETH for D (≥ 0.005) | Deployment can't start | Faucet (§4) |
-| B5 | Deployment authorisation and a PC with D's Ledger | No real transactions | You |
+| B5 | Deployment authorisation, and either a PC with D's Ledger or **[APPROVAL]** the Zerion Deploy Console after its rehearsal (`docs/DEPLOY_CONSOLE.md`) | No real transactions | You |
 | B6 | Demo video not recorded | Rule 5 | You record (§8 script) |
 | B7 | Forge/Ledger transaction screens unconfirmed on a device | Possible confusion while signing | Reject unless chain ID 46630 is shown; report what the screen shows |
 | B8 | Real Safari/WebKit not tested; iPhone checked by Chromium emulation only | Small layout or wallet risk | Open the public URL on your iPhone (Safari and Zerion) once B2 is resolved |

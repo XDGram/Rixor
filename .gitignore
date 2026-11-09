@@ -34,3 +34,7 @@ deployments/*-plan*.json
 deployments/46630-plan-summary.json
 safe-tx-*.json
 safe-signing-drill.json
+# Deploy Console: generated bundles and the seven-address input (public addresses, but reviewed before any commit)
+deployments/*-deploy-bundle*.json
+deployments/addresses*.json
+dist-console/
