@@ -34,8 +34,9 @@ export const INITCODE_HASH = {
   RixorLocker: '0x25c37a99e723adaf680bc422a864b6cca8d238cdb420f67bd4fb698b2aec7715',
   RixorRewards: '0x9f85a8f8b47cc19f601d546984eb9cd275ad1916fdb02caab0419a715f2317b5',
   RixorChallenges: '0xf59dc41f161d4ea3e5cdd9ee566a8f0b0c5ae95ef694fa5b23cb01da6bb7e852',
+  RixorLite: '0x8bc3a6122bee64d3c518a868f92e3a2c4682a87bb6c9dc7436f695d6dc7a7c9d',
 } as const
-export const INITCODE_BYTES = { RixorTestToken: 2885, RixorLocker: 19201, RixorRewards: 9484, RixorChallenges: 15274 } as const
+export const INITCODE_BYTES = { RixorTestToken: 2885, RixorLocker: 19201, RixorRewards: 9484, RixorChallenges: 15274, RixorLite: 4753 } as const
 /** The Locker has no immutables, so its runtime code is identical on every chain (VerifyRixorV2 relies on this too). */
 export const LOCKER_RUNTIME_HASH = '0xeeda456a7d3ea255b3b9c08c083117be611edcfb4c2d7c1c55913876b10b3aa6'
 
@@ -130,4 +131,27 @@ export const MAINNET_STEP_LAYOUT = [
   { kind: 'approve', label: 'Approve 20,000 WIF for RixorRewards' },
   { kind: 'fund', stream: 0, label: 'Fund the HOOKR stream: 10,000 WIF over 14 days' },
   { kind: 'fund', stream: 1, label: 'Fund the TORCH stream: 10,000 WIF over 14 days' },
+] as const
+
+// ================================================================== LITE PROFILE (the $5 hackathon demo)
+// One contract (contracts/RixorLite.sol), one lockable token (HOOKR), rewards in the official $WIF paid from a
+// separate reward wallet, which is the deployer. Two transactions. Mirrors script/DeployRixorLite.s.sol
+// (scripts/test-deploy-console-lite.mjs fails on drift). RixorLite has no owner, so the plan has no Safes.
+
+/** The single switch for real mainnet signing of the Lite plan. Set to true only in a reviewed commit made after the
+ *  project owner's written approval of exactly the parameters below. */
+export const LITE_PLAN_APPROVED = false
+
+export const LITE = {
+  token: 'HOOKR',
+  budget: 1_000n * E18, // WIF the reward wallet commits
+  durationSeconds: 7n * 86_400n, // rewards run for 7 days from deployment
+  lockSeconds: 86_400n, // each lock or top-up is held for 1 day
+  minLock: 10n * E18,
+  cap: 100_000n * E18, // the most HOOKR the contract will ever hold
+} as const
+
+export const LITE_STEP_LAYOUT = [
+  { kind: 'lite', label: 'Deploy RixorLite (lock HOOKR, earn WIF)' },
+  { kind: 'approve', label: 'Approve 1,000 WIF for RixorLite rewards' },
 ] as const

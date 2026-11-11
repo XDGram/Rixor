@@ -44,13 +44,15 @@ contract RixorLite {
     /// @notice WIF wei per second shared by all lockers while at least one token is locked.
     uint256 public immutable rate;
     uint256 public immutable budget;
-    uint256 public immutable startTime;
-    uint256 public immutable endTime;
     uint256 public immutable lockSeconds;
     uint256 public immutable minLock;
     /// @notice Most tokens this contract will ever hold at once (limits what is at risk in unaudited code).
     uint256 public immutable cap;
 
+    /// @notice Set once in the constructor; there is no function that changes them. They are storage rather than
+    ///         immutables so the deployed bytecode does not depend on the deployment time and can be verified.
+    uint256 public startTime;
+    uint256 public endTime;
     uint256 public totalLocked;
     uint256 public totalClaimed;
     uint256 public accPerToken;

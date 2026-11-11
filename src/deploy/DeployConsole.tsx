@@ -6,10 +6,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { discoverWallets, switchToChain, type WalletOption } from '../protocol/wallet'
 import {
-  assess, explorerAddress, explorerTx, manifestFor, preflight, rpcFromEip1193, sentStatus, validateBundle, verifySent,
+  assess, explorerAddress, explorerTx, manifestFor, planApproved, preflight, rpcFromEip1193, sentStatus, validateBundle, verifySent,
   type Assessment, type Bundle, type CheckResult, type Preflight, type Rpc,
 } from './core'
-import { MAINNET_CHAIN_ID, MAINNET_PLAN_APPROVED, REHEARSAL_CHAIN_ID } from './expected'
+import { MAINNET_CHAIN_ID, REHEARSAL_CHAIN_ID } from './expected'
 
 // ------------------------------------------------------------------ helpers
 
@@ -229,7 +229,8 @@ export function DeployConsole() {
   const wrongChain = wallet && walletChain !== null && walletChain !== bundle.chainId
   const wrongAccount = wallet && account && account.toLowerCase() !== bundle.deployer.toLowerCase()
   const ready = problems.length === 0 && wallet && !wrongChain && !wrongAccount && a?.status === 'ready'
-  const lockerStep = bundle.transactions.findIndex((t) => t.creates?.address.toLowerCase() === bundle.addresses.locker.toLowerCase())
+  const mainContract = (bundle.addresses.lite ?? bundle.addresses.locker ?? '').toLowerCase()
+  const lockerStep = bundle.transactions.findIndex((t) => t.creates?.address.toLowerCase() === mainContract)
 
   return (
     <main className="dc">
@@ -237,9 +238,9 @@ export function DeployConsole() {
       <p className="sub">Each step: check, then ask your wallet to sign. Nothing is ever sent automatically.</p>
 
       {bundle.chainId === MAINNET_CHAIN_ID
-        ? <div className="banner banner--bad" role="note"><strong>ROBINHOOD CHAIN MAINNET · chain 4663</strong>Real ETH and real $WIF. {MAINNET_PLAN_APPROVED ? 'Every step still needs your explicit tap and your wallet\'s approval.' : 'Signing is DISABLED in this build: the mainnet plan has not been approved. You can review the plan; nothing can be sent.'}</div>
+        ? <div className="banner banner--bad" role="note"><strong>ROBINHOOD CHAIN MAINNET · chain 4663</strong>Real ETH and real $WIF. {planApproved(bundle) ? 'Every step still needs your explicit tap and your wallet\'s approval.' : 'Signing is DISABLED in this build: the mainnet plan has not been approved. You can review the plan; nothing can be sent.'}</div>
         : bundle.rehearsal
-          ? <div className="banner banner--rehearsal" role="note"><strong>REHEARSAL · local chain 31337{bundle.network === 'mainnet' ? ' · mainnet plan on a local fork' : ''}</strong>A private local chain{bundle.network === 'mainnet' ? ' copied from Robinhood Chain mainnet (real WIF, HOOKR and TORCH code; local balances only)' : ''}. Nothing here reaches Robinhood Chain testnet or mainnet, and signatures for chain 31337 are not valid on any real network.</div>
+          ? <div className="banner banner--rehearsal" role="note"><strong>REHEARSAL · local chain 31337{bundle.network !== 'testnet' ? ' · mainnet plan on a local fork' : ''}</strong>A private local chain{bundle.network !== 'testnet' ? ' copied from Robinhood Chain mainnet (real token code; local balances only)' : ''}. Nothing here reaches Robinhood Chain testnet or mainnet, and signatures for chain 31337 are not valid on any real network.</div>
           : <div className="banner banner--testnet" role="note"><strong>ROBINHOOD CHAIN TESTNET · chain 46630</strong>Real testnet transactions, signed by your wallet. Testnet ETH and TEST tokens only; nothing has value.</div>}
 
       <section className="card">

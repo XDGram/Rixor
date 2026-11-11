@@ -17,6 +17,7 @@ const isLocal = (rpc) => /^http:\/\/127\.0\.0\.1:\d+$/.test(rpc)
 
 export function runForgePlan({ rpc, chainId, deployer, owners, guardians, tag = 'bundle', network = 'testnet' }) {
   if (network === 'mainnet') return runMainnetPlan({ rpc, chainId, deployer, owners, guardians, tag })
+  if (network === 'lite') return runLitePlan({ rpc, chainId, deployer, tag })
   if (!isLocal(rpc)) throw new Error(`runForgePlan only runs against a local chain (got ${rpc})`)
   const env = { ...process.env, RIXOR_EXPECTED_CHAIN_ID: String(chainId), RIXOR_OUTPUT_TAG: tag, RIXOR_OWNER_SIGNERS: owners.join(','), RIXOR_GUARDIAN_SIGNERS: guardians.join(',') }
   const common = ['--rpc-url', rpc, '--broadcast', '--unlocked', '--sender', deployer, '--slow']
@@ -81,5 +82,25 @@ function runMainnetPlan({ rpc, chainId, deployer, owners, guardians, tag }) {
   } finally {
     for (const s of MAINNET_SCRIPTS) rmSync(join(ROOT, 'broadcast', `${s}.s.sol`, String(chainId)), { recursive: true, force: true })
     rmSync(join(ROOT, manifestPath), { force: true })
+  }
+}
+
+/** Lite plan (one contract, one approval) on a LOCAL fork of mainnet with chain id 31337. */
+function runLitePlan({ rpc, chainId, deployer, tag }) {
+  if (!isLocal(rpc)) throw new Error(`runForgePlan only runs against a local chain (got ${rpc})`)
+  if (chainId !== 31337) throw new Error('the lite plan runs on a local fork with chain id 31337 only')
+  const env = { ...process.env, RIXOR_EXPECTED_CHAIN_ID: '31337', RIXOR_OUTPUT_TAG: tag, RIXOR_CONFIRM_MAINNET: '' }
+  mkdirSync(join(ROOT, 'deployments'), { recursive: true })
+  const manifestPath = join(ROOT, 'deployments', `${chainId}-${tag}-lite.json`)
+  const bcDir = join(ROOT, 'broadcast', 'DeployRixorLite.s.sol', String(chainId))
+  try {
+    const r = spawnSync(process.execPath, [FORGE, 'script', 'script/DeployRixorLite.s.sol', '--rpc-url', rpc, '--broadcast', '--unlocked', '--sender', deployer, '--slow'], { cwd: ROOT, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    if (r.status !== 0) throw new Error(`DeployRixorLite failed:\n${r.stdout.slice(-2500)}\n${r.stderr.slice(-1500)}`)
+    const bc = JSON.parse(readFileSync(join(bcDir, 'run-latest.json'), 'utf8'))
+    const records = bc.transactions.map((tx, i) => ({ script: 'DeployRixorLite', type: tx.transactionType, contractName: tx.contractName ?? '', fn: tx.function ?? '', transaction: tx.transaction, receipt: bc.receipts[i] }))
+    return { records, manifest: JSON.parse(readFileSync(manifestPath, 'utf8')) }
+  } finally {
+    rmSync(bcDir, { recursive: true, force: true })
+    rmSync(manifestPath, { force: true })
   }
 }

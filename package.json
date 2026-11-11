@@ -37,7 +37,8 @@
     "deploy:station": "node scripts/deploy-console/station.mjs",
     "test:deploy-console": "node scripts/test-deploy-console.mjs",
     "test:deploy-console-e2e": "node scripts/test-deploy-console-e2e.mjs",
-    "test:deploy-console-mainnet": "node scripts/test-deploy-console-mainnet.mjs"
+    "test:deploy-console-mainnet": "node scripts/test-deploy-console-mainnet.mjs",
+    "test:deploy-console-lite": "node scripts/test-deploy-console-lite.mjs"
   },
   "dependencies": {
     "@ethereumjs/block": "10.1.3",

@@ -26,7 +26,6 @@ import { extname, join, normalize, resolve } from 'node:path'
 import { Transaction, getAddress, parseEther } from 'ethers'
 import { fundLocal, fundLocalWif, startRehearsalChain, REHEARSAL_CHAIN_ID } from '../lib/rehearsal-chain.mjs'
 import { PROFILES, validateBundle } from '../../src/deploy/core.ts'
-import { MAINNET_APPROVE_TOTAL } from '../../src/deploy/expected.ts'
 
 const args = process.argv.slice(2)
 const opt = (k) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined }
@@ -38,8 +37,8 @@ if (!existsSync(join(dist, 'deploy.html'))) die(`${dist}/deploy.html not found (
 const BUNDLE_BYTES = readFileSync(bundlePath)
 const bundle = JSON.parse(BUNDLE_BYTES)
 const REHEARSAL = bundle.rehearsal === true && bundle.chainId === REHEARSAL_CHAIN_ID
-const MAINNET = bundle.network === 'mainnet'
-const LIVE = PROFILES[MAINNET ? 'mainnet' : 'testnet']
+const LIVE = PROFILES[bundle.network] ?? PROFILES.testnet
+const MAINNET = LIVE.liveChainId === 4663 // mainnet and lite plans rehearse on a local fork of mainnet
 if (!REHEARSAL && bundle.chainId !== LIVE.liveChainId) die('only a rehearsal bundle (31337) or a final testnet (46630) / mainnet (4663) bundle can be served')
 const problems = validateBundle(bundle)
 if (problems.length) die(`the bundle fails the console's validation:\n  - ${problems.join('\n  - ')}`)
@@ -60,7 +59,7 @@ if (!(MINUTES > 0 && MINUTES <= 240)) die('--minutes must be between 1 and 240')
 // WIF budget written on the fork. Testnet-profile rehearsal: a fresh chain with the Safe snapshot.
 const chain = REHEARSAL ? await startRehearsalChain({ impersonate: false, fork: MAINNET ? 'mainnet' : undefined }) : null
 if (chain) await fundLocal(chain.provider, DEPLOYER, FUND) // local rehearsal chain only
-if (chain && MAINNET) await fundLocalWif(chain.provider, DEPLOYER, MAINNET_APPROVE_TOTAL) // local fork only
+if (chain && MAINNET) await fundLocalWif(chain.provider, DEPLOYER, LIVE.approveTotal) // local fork only
 const TOKEN = randomBytes(16).toString('hex')
 const BASE = `/${TOKEN}/`
 

@@ -10,7 +10,8 @@
 // the user compares out of band), the planned gas and labels.
 import { AbiCoder, Interface, ZeroAddress, concat, dataLength, dataSlice, getAddress, getCreate2Address, getCreateAddress, id, isAddress, keccak256, solidityPacked, toUtf8Bytes } from 'ethers'
 import {
-  APPROVE_TOTAL, GAS_ESTIMATE_MAX_FACTOR, GAS_MARGIN_BPS, INITCODE_BYTES, INITCODE_HASH, LISTINGS, LOCKER_RUNTIME_HASH, MAINNET_APPROVE_TOTAL, MAINNET_CHAIN_ID,
+  APPROVE_TOTAL, GAS_ESTIMATE_MAX_FACTOR, GAS_MARGIN_BPS, INITCODE_BYTES, INITCODE_HASH, LISTINGS, LITE, LITE_PLAN_APPROVED, LITE_STEP_LAYOUT, LOCKER_RUNTIME_HASH,
+  MAINNET_APPROVE_TOTAL, MAINNET_CHAIN_ID,
   MAINNET_EXPLORER, MAINNET_LISTINGS, MAINNET_MIN_HOLD_SECONDS, MAINNET_PLAN_APPROVED, MAINNET_RPC, MAINNET_SAFE_SALT_LABELS, MAINNET_STEP_LAYOUT, MAINNET_STREAMS,
   MAINNET_TOKENS, MIN_HOLD_SECONDS, REHEARSAL_CHAIN_ID, REHEARSAL_RPC_PATH, SAFE, SAFE_PROXY_RUNTIME_HASH, STEP_LAYOUT, STREAMS, TESTNET_CHAIN_ID, TESTNET_EXPLORER,
   TESTNET_RPC, TOKENS, type MainnetTokenKey,
@@ -28,6 +29,7 @@ export type Check =
   | { kind: 'call'; label: string; to: string; data: string; expect: string; words?: number[] }
   | { kind: 'approveAccounted'; label: string; token: string; owner: string; spender: string; total: string; streamTokens: string[] }
   | { kind: 'stream'; label: string; rewards: string; id: number; funder: string; token: string; amount: string; days: number }
+  | { kind: 'liteAllowance'; label: string; wif: string; owner: string; lite: string; total: string }
 
 export type BundleTx = {
   index: number // 1..11
@@ -43,8 +45,9 @@ export type BundleTx = {
 }
 
 /** Testnet bundles also deploy three TEST tokens; mainnet bundles use existing tokens pinned in expected.ts. */
-export type Addresses = { ownerSafe: string; guardianSafe: string; locker: string; rewards: string; challenges: string; tMEMEA?: string; tMEMEB?: string; tWIF?: string }
-export type Network = 'testnet' | 'mainnet'
+export type Addresses = { ownerSafe: string; guardianSafe: string; locker: string; rewards: string; challenges: string; tMEMEA?: string; tMEMEB?: string; tWIF?: string; lite?: string }
+/** `lite`: the one-contract demo on mainnet (its bundle's only address is `lite`). */
+export type Network = 'testnet' | 'mainnet' | 'lite'
 
 export type Bundle = {
   format: typeof BUNDLE_FORMAT
@@ -78,7 +81,7 @@ const hex = (n: bigint | number) => '0x' + BigInt(n).toString(16)
 
 // ------------------------------------------------------------------ profiles (pinned plans)
 
-type Step = { kind: 'safe' | 'token' | 'locker' | 'rewards' | 'challenges' | 'approve' | 'fund'; label: string; role?: 'owner' | 'guardian'; token?: string; stream?: number }
+type Step = { kind: 'safe' | 'token' | 'locker' | 'rewards' | 'challenges' | 'approve' | 'fund' | 'lite'; label: string; role?: 'owner' | 'guardian'; token?: string; stream?: number }
 type Profile = {
   network: Network
   liveChainId: number
@@ -94,22 +97,44 @@ type Profile = {
   tokenAddr: (a: Addresses, key: string) => string
   decimalsOf: (key: string) => number
   reward: (a: Addresses) => string
+  /** The contract the WIF approval is given to. */
+  spender: (a: Addresses) => string
+  /** Whether the plan creates the two Safes (and therefore needs six signers). */
+  safes: boolean
+  /** Whether the plan relies on the pinned mainnet tokens (checked on every assessment). */
+  pins: boolean
+  /** Whether this build may ask a wallet to sign on the live chain. */
+  approved: boolean
 }
 export const PROFILES: Record<Network, Profile> = {
   testnet: {
     network: 'testnet', liveChainId: TESTNET_CHAIN_ID, rpc: TESTNET_RPC, explorer: TESTNET_EXPLORER, layout: STEP_LAYOUT as readonly Step[],
     salts: { owner: SAFE.ownerSaltLabel, guardian: SAFE.guardianSaltLabel }, listings: LISTINGS, streams: STREAMS, approveTotal: APPROVE_TOTAL, minHold: MIN_HOLD_SECONDS,
     rewardSymbol: 'tWIF', tokenAddr: (a, key) => (a as Record<string, string>)[key], decimalsOf: (key) => TOKENS.find((t) => t.key === key)!.decimals, reward: (a) => a.tWIF!,
+    spender: (a) => a.rewards, safes: true, pins: false, approved: true,
   },
   mainnet: {
     network: 'mainnet', liveChainId: MAINNET_CHAIN_ID, rpc: MAINNET_RPC, explorer: MAINNET_EXPLORER, layout: MAINNET_STEP_LAYOUT as readonly Step[],
     salts: MAINNET_SAFE_SALT_LABELS, listings: MAINNET_LISTINGS, streams: MAINNET_STREAMS, approveTotal: MAINNET_APPROVE_TOTAL, minHold: MAINNET_MIN_HOLD_SECONDS,
     rewardSymbol: 'WIF', tokenAddr: (_a, key) => MAINNET_TOKENS[key as MainnetTokenKey].address, decimalsOf: (key) => MAINNET_TOKENS[key as MainnetTokenKey].decimals,
-    reward: () => MAINNET_TOKENS.WIF.address,
+    reward: () => MAINNET_TOKENS.WIF.address, spender: (a) => a.rewards, safes: true, pins: true, approved: MAINNET_PLAN_APPROVED,
+  },
+  lite: {
+    network: 'lite', liveChainId: MAINNET_CHAIN_ID, rpc: MAINNET_RPC, explorer: MAINNET_EXPLORER, layout: LITE_STEP_LAYOUT as readonly Step[],
+    salts: { owner: '', guardian: '' }, listings: [], streams: [], approveTotal: LITE.budget, minHold: 0n,
+    rewardSymbol: 'WIF', tokenAddr: (_a, key) => MAINNET_TOKENS[key as MainnetTokenKey].address, decimalsOf: (key) => MAINNET_TOKENS[key as MainnetTokenKey].decimals,
+    reward: () => MAINNET_TOKENS.WIF.address, spender: (a) => a.lite!, safes: false, pins: true, approved: LITE_PLAN_APPROVED,
   },
 }
+const LITE_IFACE = new Interface([
+  'function token() view returns (address)', 'function wif() view returns (address)', 'function rewardWallet() view returns (address)',
+  'function budget() view returns (uint256)', 'function rate() view returns (uint256)', 'function lockSeconds() view returns (uint256)',
+  'function minLock() view returns (uint256)', 'function cap() view returns (uint256)', 'function totalClaimed() view returns (uint256)',
+])
 /** Bundles without `network` (tests' partial skeletons) are testnet. validateBundle requires it explicitly. */
 export const profileOf = (b: { network?: Network }): Profile => PROFILES[b.network ?? 'testnet']
+/** Whether this build may ask a wallet to sign this bundle on its live chain (rehearsals are always allowed). */
+export const planApproved = (b: { network?: Network }) => profileOf(b).approved
 const whole = (v: bigint) => (v / 10n ** 18n).toLocaleString('en-US')
 
 /** Deterministic JSON (sorted keys) used for the bundle hash. */
@@ -167,6 +192,7 @@ type ExpectedTx = { to: string | null; data?: string; createKind?: keyof typeof 
 export function expectedAddresses(deployer: string, startNonce: number, owner: string[], guardian: string[], network: Network = 'testnet'): Addresses {
   const c = (k: number) => predictCreate(deployer, startNonce + k)
   const P = PROFILES[network]
+  if (network === 'lite') return { lite: c(0) } as unknown as Addresses
   const safes = { ownerSafe: predictSafe(owner, P.salts.owner), guardianSafe: predictSafe(guardian, P.salts.guardian) }
   // A reverted step still consumes its nonce, so CREATE addresses depend only on the step position.
   if (network === 'mainnet') return { ...safes, locker: c(2), rewards: c(3), challenges: c(4) }
@@ -198,8 +224,13 @@ export function expectedTx(b: Pick<Bundle, 'deployer' | 'signers' | 'addresses'>
       return { to: null, createKind: 'RixorRewards', creates: a.rewards, ctorArgs: coder.encode(['address', 'address'], [a.locker, P.reward(a)]) }
     case 'challenges':
       return { to: null, createKind: 'RixorChallenges', creates: a.challenges, ctorArgs: coder.encode(['address', 'address', 'uint256'], [a.locker, P.reward(a), P.minHold]) }
+    case 'lite':
+      return {
+        to: null, createKind: 'RixorLite', creates: a.lite!,
+        ctorArgs: coder.encode(['address', 'address', 'address', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256'], [tokenAddr(a, LITE.token), P.reward(a), b.deployer, LITE.budget, LITE.durationSeconds, LITE.lockSeconds, LITE.minLock, LITE.cap]),
+      }
     case 'approve':
-      return { to: P.reward(a), data: ERC20.encodeFunctionData('approve', [a.rewards, P.approveTotal]), creates: null }
+      return { to: P.reward(a), data: ERC20.encodeFunctionData('approve', [P.spender(a), P.approveTotal]), creates: null }
     case 'fund': {
       const s = P.streams[L.stream!]
       return { to: a.rewards, data: REWARDS.encodeFunctionData('fund', [tokenAddr(a, s.token), s.amount, s.days]), creates: null }
@@ -268,7 +299,22 @@ export function expectedChecks(b: Pick<Bundle, 'deployer' | 'signers' | 'address
         call(`Challenges pays ${P.rewardSymbol}`, a.challenges, CHALLENGES, 'wif', [], [P.reward(a)]),
         call(`Challenges minimum hold is ${P.minHold.toLocaleString('en-US')} s`, a.challenges, CHALLENGES, 'minHold', [], [P.minHold]),
       ]
+    case 'lite': {
+      const lite = a.lite!
+      return [
+        { kind: 'code', label: 'RixorLite code', address: lite, codeHash: created?.codeHash ?? '' },
+        call(`Locks ${LITE.token}`, lite, LITE_IFACE, 'token', [], [tokenAddr(a, LITE.token)]),
+        call('Pays the official WIF', lite, LITE_IFACE, 'wif', [], [P.reward(a)]),
+        call('Reward wallet is the deployer', lite, LITE_IFACE, 'rewardWallet', [], [b.deployer]),
+        call(`Reward budget is ${whole(LITE.budget)} WIF`, lite, LITE_IFACE, 'budget', [], [LITE.budget]),
+        call('Reward rate is budget / 7 days', lite, LITE_IFACE, 'rate', [], [LITE.budget / LITE.durationSeconds]),
+        call('Lock period is 1 day', lite, LITE_IFACE, 'lockSeconds', [], [LITE.lockSeconds]),
+        call(`Minimum lock is ${whole(LITE.minLock)} ${LITE.token}`, lite, LITE_IFACE, 'minLock', [], [LITE.minLock]),
+        call(`Cap is ${whole(LITE.cap)} ${LITE.token}`, lite, LITE_IFACE, 'cap', [], [LITE.cap]),
+      ]
+    }
     case 'approve':
+      if (P.network === 'lite') return [{ kind: 'liteAllowance', label: `Reward allowance: ${whole(P.approveTotal)} WIF (remaining allowance + WIF already claimed)`, wif: P.reward(a), owner: b.deployer, lite: a.lite!, total: P.approveTotal.toString() }]
       return [{ kind: 'approveAccounted', label: `Approval for ${whole(P.approveTotal)} ${P.rewardSymbol} (remaining allowance + funded streams)`, token: P.reward(a), owner: b.deployer, spender: a.rewards, total: P.approveTotal.toString(), streamTokens: P.streams.map((s) => tokenAddr(a, s.token)) }]
     case 'fund': {
       const s = P.streams[L.stream!]
@@ -298,9 +344,9 @@ export function validateBundle(b: Bundle, opts: { exporterSelfCheckOfPlaceholder
   const p: string[] = []
   if (!b || typeof b !== 'object') return ['not a bundle']
   if (b.format !== BUNDLE_FORMAT) p.push(`unknown bundle format ${String(b.format)}`)
-  if (b.network !== 'testnet' && b.network !== 'mainnet') return [...p, `unknown network ${String(b.network)}: a bundle must say "testnet" or "mainnet"`]
+  if (b.network !== 'testnet' && b.network !== 'mainnet' && b.network !== 'lite') return [...p, `unknown network ${String(b.network)}: a bundle must say "testnet", "mainnet" or "lite"`]
   const P = PROFILES[b.network]
-  if (b.chainId === MAINNET_CHAIN_ID && b.network !== 'mainnet') return ['REFUSED: Robinhood Chain mainnet (4663) with a testnet bundle. Only a mainnet-profile bundle may name chain 4663.']
+  if (b.chainId === MAINNET_CHAIN_ID && P.liveChainId !== MAINNET_CHAIN_ID) return ['REFUSED: Robinhood Chain mainnet (4663) with a testnet bundle. Only a mainnet-profile bundle may name chain 4663.']
   if (b.chainId !== P.liveChainId && b.chainId !== REHEARSAL_CHAIN_ID) return [`unsupported chain ${String(b.chainId)} for a ${b.network} bundle: only ${P.liveChainId} (${b.network}) or 31337 (local rehearsal)`]
   if (b.rehearsal !== (b.chainId === REHEARSAL_CHAIN_ID)) p.push('the rehearsal flag does not match the chain id')
   if (b.chainId === P.liveChainId && !b.final && !opts.exporterSelfCheckOfPlaceholder) p.push(`not a final bundle: it was made with placeholder addresses and cannot be used on ${b.network}`)
@@ -308,7 +354,8 @@ export function validateBundle(b: Bundle, opts: { exporterSelfCheckOfPlaceholder
   if (b.chainId === REHEARSAL_CHAIN_ID && b.rpc !== REHEARSAL_RPC_PATH) p.push(`a rehearsal bundle must use the same-origin RPC path "${REHEARSAL_RPC_PATH}"`)
   if (!isAddress(b.deployer) || getAddress(b.deployer) === ZeroAddress) return [...p, 'invalid deployer address']
   if (!Number.isInteger(b.startNonce) || b.startNonce < 0) p.push('invalid start nonce')
-  p.push(...signerProblems(b.deployer, b.signers?.owner, b.signers?.guardian))
+  if (P.safes) p.push(...signerProblems(b.deployer, b.signers?.owner, b.signers?.guardian))
+  else if (!Array.isArray(b.signers?.owner) || !Array.isArray(b.signers?.guardian) || b.signers.owner.length || b.signers.guardian.length) p.push('this plan has no Safes, so the bundle must list no signers')
   if (p.length) return p
   const want = expectedAddresses(b.deployer, b.startNonce, b.signers.owner, b.signers.guardian, b.network)
   for (const k of Object.keys(want) as (keyof Addresses)[]) if (!eq(b.addresses?.[k], want[k])) p.push(`address ${k} is ${b.addresses?.[k]}, but the approved plan gives ${want[k]}`)
@@ -376,6 +423,11 @@ export async function runCheck(rpc: Rpc, c: Check): Promise<CheckResult> {
         }
         return allowance + funded === BigInt(c.total) ? { label: c.label, ok: true } : { label: c.label, ok: false, detail: `allowance ${allowance} + funded ${funded} != ${c.total}` }
       }
+      case 'liteAllowance': {
+        const allowance = BigInt(String(await rpc('eth_call', [{ to: c.wif, data: ERC20.encodeFunctionData('allowance', [c.owner, c.lite]) }, 'latest'])))
+        const claimed = BigInt(String(await rpc('eth_call', [{ to: c.lite, data: LITE_IFACE.encodeFunctionData('totalClaimed', []) }, 'latest'])))
+        return allowance + claimed === BigInt(c.total) ? { label: c.label, ok: true } : { label: c.label, ok: false, detail: `allowance ${allowance} + claimed ${claimed} != ${c.total}` }
+      }
       case 'stream': {
         const n = Number(BigInt(String(await rpc('eth_call', [{ to: c.rewards, data: REWARDS.encodeFunctionData('streamCount', []) }, 'latest']))))
         if (n <= c.id) return { label: c.label, ok: false, detail: 'stream not found' }
@@ -407,9 +459,9 @@ export async function assess(rpc: Rpc, b: Bundle): Promise<Assessment> {
   const steps = b.transactions.map(() => ({ state: 'todo' as StepState, checks: [] as CheckResult[] }))
   const halt = (problems: string[], chainNonce = -1, next = 0): Assessment => ({ status: 'halt', next, steps, problems, chainNonce })
   const chain = Number(BigInt(String(await rpc('eth_chainId', []))))
-  if (chain === MAINNET_CHAIN_ID && b.network !== 'mainnet') return halt(['REFUSED: the RPC is Robinhood Chain mainnet (4663).'])
+  if (chain === MAINNET_CHAIN_ID && profileOf(b).liveChainId !== MAINNET_CHAIN_ID) return halt(['REFUSED: the RPC is Robinhood Chain mainnet (4663).'])
   if (chain !== b.chainId) return halt([`the RPC is chain ${chain}, the bundle is for chain ${b.chainId}`])
-  if (b.network === 'mainnet') {
+  if (profileOf(b).pins) {
     // The existing tokens the plan relies on must be exactly the pinned mainnet contracts (also proves that a 31337
     // rehearsal chain is a fork of Robinhood Chain mainnet).
     const bad: string[] = []
@@ -463,7 +515,7 @@ export async function preflight(node: Rpc, wallet: Rpc, b: Bundle, i: number): P
   if (!add(`Step ${i + 1} exists`, Boolean(t))) return fail()
 
   const P = profileOf(b)
-  if (b.chainId === MAINNET_CHAIN_ID && !add('Mainnet plan approved in this build', MAINNET_PLAN_APPROVED, 'REFUSED: this build has MAINNET_PLAN_APPROVED = false. The mainnet plan needs the project owner\'s written approval and a reviewed commit that enables it.')) return fail()
+  if (b.chainId === MAINNET_CHAIN_ID && !add('Mainnet plan approved in this build', P.approved, `REFUSED: this build has ${b.network === 'lite' ? 'LITE_PLAN_APPROVED' : 'MAINNET_PLAN_APPROVED'} = false. The plan needs the project owner's written approval and a reviewed commit that enables it.`)) return fail()
   const [walletChain, nodeChain] = await Promise.all([wallet('eth_chainId', []).then((v) => Number(BigInt(String(v)))).catch(() => -1), node('eth_chainId', []).then((v) => Number(BigInt(String(v)))).catch(() => -1)])
   if (b.chainId !== MAINNET_CHAIN_ID && (walletChain === MAINNET_CHAIN_ID || nodeChain === MAINNET_CHAIN_ID)) { add('Not Robinhood Chain mainnet', false, 'REFUSED: this bundle is not for mainnet (4663)'); return fail() }
   if (!add(`Wallet network is chain ${b.chainId}`, walletChain === b.chainId, `wallet is on chain ${walletChain}`)) return fail()
@@ -502,7 +554,7 @@ export async function preflight(node: Rpc, wallet: Rpc, b: Bundle, i: number): P
   const gasPrice = BigInt(String(await node('eth_gasPrice', [])))
   const costWei = gasLimit * gasPrice * 2n // twice the current price as headroom
   const balance = BigInt(String(await node('eth_getBalance', [b.deployer, 'latest'])))
-  if (b.network === 'mainnet') {
+  if (P.liveChainId === MAINNET_CHAIN_ID) {
     // Never start or continue a mainnet deployment that cannot be finished: ETH for every remaining step, and the
     // whole WIF budget until it has been approved and funded.
     let remaining = costWei
@@ -558,6 +610,7 @@ export async function sentStatus(node: Rpc, b: Bundle, i: number, hash: string):
 /** The app manifest (public/testnet/deployment.json) for a completed, verified deployment. Publishing it is a
  *  separate, explicitly approved step. */
 export function manifestFor(b: Bundle, block: number) {
+  if (b.network === 'lite') return { chainId: b.chainId, block, lite: b.addresses.lite, token: MAINNET_TOKENS[LITE.token].address, wif: MAINNET_TOKENS.WIF.address, rewardWallet: b.deployer }
   // Same fields as src/protocol/testnet.ts TestnetDeployment (the mainnet manifest uses the same shape).
   return {
     chainId: b.chainId, block, locker: b.addresses.locker, rewards: b.addresses.rewards, challenges: b.addresses.challenges,
