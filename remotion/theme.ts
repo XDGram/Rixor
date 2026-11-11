@@ -9,3 +9,17 @@ export const theme = {
 } as const
 
 export const VIDEO = { width: 1920, height: 1080, fps: 30 } as const
+
+// Rixor V2 dark theme (mirrors the V2 app's src/styles.css; the approved accent is #c8ff00).
+export const v2 = {
+  lime: '#c8ff00',
+  onLime: '#1c1a15',
+  bg: '#0c0b09',
+  paper: '#12110e',
+  surface: '#1b1915',
+  surface2: '#23211c',
+  line: '#2f2c26',
+  ink: '#f2f0e8',
+  inkSoft: '#bdb9ae',
+  inkMute: '#8a867c',
+} as const

@@ -12,12 +12,14 @@
     "contract:test": "npm run contract:compile && node scripts/test-contract.mjs",
     "video:studio": "remotion studio",
     "video:render": "remotion render RixorIntro out/rixor-intro.mp4",
+    "video:render:demo": "remotion render RixorDemo out/rixor-demo.mp4 --crf=16",
     "video:render:square": "remotion render RixorIntroSquare out/rixor-intro-square.mp4",
     "video:still": "remotion still RixorIntro out/rixor-intro.png --frame=60",
     "video:typecheck": "tsc -p tsconfig.remotion.json"
   },
   "dependencies": {
     "@fontsource/inter": "5.3.0",
+    "@fontsource/inter-tight": "5.3.0",
     "@remotion/animation-utils": "4.0.541",
     "@remotion/fonts": "4.0.541",
     "@remotion/layout-utils": "4.0.541",

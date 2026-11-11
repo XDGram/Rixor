@@ -9,6 +9,7 @@ Source lives in this folder; rendered files go to `out/` (git-ignored).
 | --- | --- |
 | `npm run video:studio` | Open Remotion Studio to preview and scrub compositions live |
 | `npm run video:render` | Render `RixorIntro` (1920×1080, 7.5s) to `out/rixor-intro.mp4` |
+| `npm run video:render:demo` | Render `RixorDemo`, the 25-second V2 product demo (1920×1080, 30 fps), to `out/rixor-demo.mp4` |
 | `npm run video:render:square` | Render the 1080×1080 social cut to `out/rixor-intro-square.mp4` |
 | `npm run video:still` | Export frame 60 of `RixorIntro` as a PNG |
 | `npm run video:typecheck` | Type-check the video sources |
@@ -22,7 +23,7 @@ Props can be overridden at render time, e.g.
 - `index.ts` – entry point (`registerRoot`)
 - `Root.tsx` – registers compositions (id, size, fps, duration, default props, zod schema)
 - `compositions/` – one file per video
-- `theme.ts` – brand tokens mirrored from `src/styles.css`
+- `theme.ts` – brand tokens mirrored from `src/styles.css` (`v2`: the V2 app's dark theme, accent `#c8ff00`)
 - `fonts.ts` – self-hosted Inter (via `@fontsource/inter` + `@remotion/fonts`), so renders work offline
 - `../remotion.config.ts` – CLI config (entry point, Tailwind v4, `public/` as static dir)
 
@@ -56,3 +57,12 @@ them to match. Upgrade them together with `npx remotion upgrade`.
   `REMOTION_BROWSER_EXECUTABLE=/path/to/chrome-headless-shell npm run video:render`.
 - Remotion is free for individuals and companies of up to 3 people; larger companies need a
   [company license](https://www.remotion.pro/license).
+
+## RixorDemo (V2, 25 s)
+
+Hook → logo → the four-step flow on a phone mock-up (connect wallet, lock, earn $WIF, claim) → three facts about the
+contracts → end card. Props: `token` (symbol shown in the mock-up, default `MEME`) and `event` (end-card line), e.g.
+`npx remotion render RixorDemo out/rixor-demo.mp4 --props='{"token":"HOOKR","event":"World Is Flat hackathon"}'`.
+
+Every balance and amount in the mock-up is an example, and the frame says so. The video shows the product flow; it is
+not transaction proof and shows no transaction hash or "confirmed on chain" claim. It has no audio track.

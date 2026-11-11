@@ -1,9 +1,20 @@
 import { Composition, Folder } from 'remotion'
 import { RixorIntro, rixorIntroSchema, RIXOR_INTRO_DURATION } from './compositions/RixorIntro'
+import { RixorDemo, rixorDemoSchema, RIXOR_DEMO_DURATION, RIXOR_DEMO_FPS } from './compositions/RixorDemo'
 import { VIDEO } from './theme'
 
 export const RemotionRoot = () => (
   <Folder name="Rixor">
+    <Composition
+      id="RixorDemo"
+      component={RixorDemo}
+      durationInFrames={RIXOR_DEMO_DURATION}
+      fps={RIXOR_DEMO_FPS}
+      width={1920}
+      height={1080}
+      schema={rixorDemoSchema}
+      defaultProps={{ token: 'MEME', event: 'Built for the World Is Flat hackathon · on Robinhood Chain' }}
+    />
     <Composition
       id="RixorIntro"
       component={RixorIntro}
