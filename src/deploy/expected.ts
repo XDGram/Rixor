@@ -138,9 +138,12 @@ export const MAINNET_STEP_LAYOUT = [
 // separate reward wallet, which is the deployer. Two transactions. Mirrors script/DeployRixorLite.s.sol
 // (scripts/test-deploy-console-lite.mjs fails on drift). RixorLite has no owner, so the plan has no Safes.
 
-/** The single switch for real mainnet signing of the Lite plan. Set to true only in a reviewed commit made after the
- *  project owner's written approval of exactly the parameters below. */
-export const LITE_PLAN_APPROVED = false
+/** The single switch for real mainnet signing of the Lite plan.
+ *  APPROVED by the project owner in writing on 11 Nov 2026: the Lite contract with the parameters below, without Safes
+ *  or signers, for the hackathon demo. This only lets the Deploy Console ASK a wallet to sign: every transaction still
+ *  needs the owner's own tap and their wallet's approval, a final bundle for their deployer, and a prefunded reward
+ *  wallet. Any change to a parameter below needs a new approval. */
+export const LITE_PLAN_APPROVED = true
 
 export const LITE = {
   token: 'HOOKR',

@@ -35,7 +35,7 @@ try {
   const art = JSON.parse(readFileSync(join(ROOT, 'out/RixorLite.sol/RixorLite.json'), 'utf8')).bytecode.object
   const { keccak256 } = await import('ethers')
   t('pinned RixorLite creation-code hash equals the Forge build', keccak256(art) === X.INITCODE_HASH.RixorLite && (art.length - 2) / 2 === X.INITCODE_BYTES.RixorLite)
-  t('this build does NOT approve mainnet signing (LITE_PLAN_APPROVED = false)', X.LITE_PLAN_APPROVED === false)
+  t('the Lite plan is approved in this build; the full-protocol mainnet plan is still off', X.LITE_PLAN_APPROVED === true && X.MAINNET_PLAN_APPROVED === false)
   t('RixorLite has no owner or admin function', !LITE_ABI.some((f) => f.type === 'function' && /owner|admin|pause|upgrade|sweep|rescue|set[A-Z]/.test(f.name)))
   t('the only state-changing functions are lock, exit and claim', LITE_ABI.filter((f) => f.type === 'function' && !['view', 'pure'].includes(f.stateMutability)).map((f) => f.name).sort().join() === 'claim,exit,lock')
 
@@ -68,7 +68,10 @@ try {
   const sends = []
   const stub = async (m, p) => { if (/send|sign/i.test(m)) { sends.push(m); throw new Error('must never be called') } if (m === 'eth_chainId') return '0x1237'; if (m === 'eth_accounts') return [F.deployer]; return mainnetRpc.send(m, p) }
   const gate = await preflight((m, p) => mainnetRpc.send(m, p), stub, F, 0)
-  t('preflight on real mainnet stops at the approval gate (nothing requested from the wallet)', !gate.ok && gate.request === null && gate.checks.some((c) => /plan approved/.test(c.label) && !c.ok && /LITE_PLAN_APPROVED/.test(c.detail)) && sends.length === 0)
+  // The plan is approved, so the gate passes; a deployer that holds no ETH and no WIF on real mainnet is still stopped
+  // by the funding checks, and the wallet is never asked for anything.
+  t('preflight on real mainnet: approval passes, an unfunded deployer is stopped before any wallet request', !gate.ok && gate.request === null && sends.length === 0 && gate.checks.some((c) => /plan approved/.test(c.label) && c.ok) && gate.checks.some((c) => !c.ok), JSON.stringify(gate.checks.map((c) => [c.label, c.ok])))
+  console.log(`     stopped at: ${gate.checks.find((c) => !c.ok)?.label}`)
 
   // ------------------------------------------------------------ 5. full run on a mainnet fork
   const c1 = await startRehearsalChain({ impersonate: true, fork: 'mainnet' }); chains.push(c1)
@@ -105,7 +108,12 @@ try {
   // A real user locks and claims: the approval check must still hold afterwards (allowance + claimed = budget).
   await c1.provider.send('anvil_setBalance', [HOOKR_HOLDER, '0x' + parseEther('1').toString(16)])
   const erc = new Interface(ERC20)
-  const sendAs = async (to, data) => c1.provider.waitForTransaction(await c1.provider.send('eth_sendTransaction', [{ from: HOOKR_HOLDER, to, data, gasPrice: price }]))
+  // The balance is set before every send: a forked anvil can re-read an impersonated account from upstream and drop a
+  // balance that was set only once (seen as a rare "insufficient funds" on the third transaction).
+  const sendAs = async (to, data) => {
+    await c1.provider.send('anvil_setBalance', [HOOKR_HOLDER, '0x' + parseEther('1').toString(16)])
+    return c1.provider.waitForTransaction(await c1.provider.send('eth_sendTransaction', [{ from: HOOKR_HOLDER, to, data, gasPrice: price }]))
+  }
   await sendAs(HOOKR, erc.encodeFunctionData('approve', [B.addresses.lite, 50n * 10n ** 18n]))
   await sendAs(B.addresses.lite, lite.interface.encodeFunctionData('lock', [50n * 10n ** 18n]))
   await c1.provider.send('evm_increaseTime', [600]); await c1.provider.send('evm_mine', [])

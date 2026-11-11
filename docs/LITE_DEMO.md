@@ -1,8 +1,10 @@
-# Rixor Lite: the $5 hackathon demo (prepared, NOT deployed)
+# Rixor Lite: the $5 hackathon demo (approved, NOT deployed)
 
-> **Nothing here has been executed on mainnet.** Nothing is deployed, signed, broadcast, bought or published. The
-> Deploy Console refuses to sign the Lite plan on chain 4663 while `LITE_PLAN_APPROVED = false`
-> (`src/deploy/expected.ts`). Every 🔒 step needs the project owner's written approval.
+> **Nothing here has been executed on mainnet.** Nothing is deployed, signed, broadcast, bought or published.
+> The project owner approved the Lite plan in writing on 11 Nov 2026 (this contract and these parameters, without
+> Safes or signers), so `LITE_PLAN_APPROVED = true` in `src/deploy/expected.ts`. That only lets the Deploy Console ask
+> the owner's wallet to sign; each transaction still needs the owner's own tap. Every 🔒 step below still needs the
+> owner's go-ahead.
 
 ## 1. What it is
 
@@ -20,6 +22,18 @@
 wallet to the claimer) → `exit` after the lock period (exact principal back).
 
 **Rewards start at deployment**, not at the next midnight, so the whole flow can be shown within minutes.
+
+### The app: Live and Demo
+
+The app opens on **Live**: the real HOOKR lock, with every number read from the chain. A switch at the top of every
+page opens **Demo**: the broader product (more tokens, tiers, challenges, portfolio, activity) running in a simulation
+on the visitor's device with demo tokens.
+
+- Every demo page carries a "Demo data" strip and "Demo" tags; simulated actions say "Simulated on this device · not an
+  onchain transaction" and show no transaction hash.
+- The demo never reads a real wallet. It uses a throwaway demo wallet that exists only inside the simulation.
+- The Live page shows no simulated token, balance or challenge. It links to the demo pages with a "Demo" tag.
+- The demo needs no contract, no deployment and no funds: it adds nothing to the budget.
 
 ### Safety properties (each one is tested)
 
@@ -42,7 +56,8 @@ wallet to the claimer) → `exit` after the lock period (exact principal back).
 | Hardware-wallet deployer | The deployer is also the reward wallet. Whether it is a hardware or phone wallet is your decision |
 | Pause and emergency exit | None. Exits always work after the lock period; there is no emergency switch |
 
-These replace decisions you made earlier (six signers, Safes, hardware signing). They need your explicit approval.
+These replace earlier decisions (six signers, Safes, hardware signing). The owner approved the Lite contract without
+Safes or signers on 11 Nov 2026.
 
 ## 2. Exact costs (prices read 11 Nov 2026: WIF $0.001255, HOOKR $0.0218, ETH $2,053, gas 0.0201 gwei)
 
@@ -81,7 +96,7 @@ These replace decisions you made earlier (six signers, Safes, hardware signing).
 
 ## 3. What you need to do (🔒 = needs your written approval first)
 
-1. 🔒 **Approve the plan** in §1 and the trust changes. I then commit `LITE_PLAN_APPROVED = true` for your review.
+1. ✅ **Plan approved** (11 Nov 2026). `LITE_PLAN_APPROVED = true`.
 2. **Two wallets** in your wallet app (I only ever need public addresses, never a key or phrase):
    - **Wallet A**: deployer and reward wallet. Must be a plain account (not upgraded to a smart account).
    - **Wallet B**: your demo wallet.
@@ -110,7 +125,7 @@ the lock, so it fits before the deadline only if you lock by 11 Nov 17:30 UTC; i
 | `test/RixorLite.t.sol` | 25 pass | Unit, fuzz and two invariants (exact custody; rewards bounded) |
 | `test/fork/RixorLiteFork.t.sol` | 3 pass | The full flow with the real HOOKR and WIF token code |
 | `npm run test:deploy-console-lite` | 32 pass | Pinned plan equals the script and build; tampering refused; approval gate on real mainnet; WIF and ETH gates; both steps on a fork; still verifies after claims |
-| `npm run demo:e2e:lite` | 12 pass | The real UI on a fork: not-deployed state, connect, minimum check, lock, live earnings, claim (real WIF from the reward wallet), exit, tampered deployments refused, old app hidden |
+| `npm run demo:e2e:lite` | 14 pass | The real UI on a fork: not-deployed state, connect, minimum check, lock, live earnings, claim (real WIF from the reward wallet), exit, tampered deployments refused; the Live page shows no demo data; the Demo side is tagged and never shows the real wallet |
 | `npm run audit:mainnet-guards` | pass | `DeployRixorLite` is refused on mainnet without the authorisation sentence, and without a prefunded reward wallet |
 | Full regression | pass | 156 contract tests, 11 fork tests, the testnet and mainnet console suites, and the hidden full app's journeys |
 
