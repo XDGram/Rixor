@@ -24,6 +24,7 @@
     "demo:backend": "cd demo/fork-backend && npm ci && STATE_DIR=./data npm start",
     "demo:e2e": "node demo/e2e/journey.mjs",
     "demo:e2e:mainnet": "node demo/e2e/mainnet-journey.mjs",
+    "demo:e2e:lite": "node demo/e2e/lite-journey.mjs",
     "demo:snapshot": "node scripts/build-browser-snapshot.mjs",
     "demo:verify": "node scripts/verify-browser-evm.mjs",
     "deploy:local-fork": "node scripts/deploy-local-fork.mjs",

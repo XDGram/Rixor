@@ -48,7 +48,7 @@ const go = async (hash) => { await page.evaluate((h) => { window.location.hash =
 
 try {
   await step('switch from Simulation to Testnet', async () => {
-    await page.goto(`${appUrl}/`)
+    await page.goto(`${appUrl}/?full`)
     await page.locator('.demo-strip .seg button', { hasText: 'Testnet' }).click({ timeout: 120_000 })
     await page.locator('.demo-strip', { hasText: 'TEST tokens only' }).waitFor({ timeout: 60_000 })
     await page.locator('.wallet-btn small', { hasText: 'Testnet' }).waitFor()

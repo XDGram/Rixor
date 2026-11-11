@@ -78,7 +78,7 @@ try {
     // Optional: a Vercel share link for a protected preview. Visiting it sets the access cookie.
     if (process.env.PRELOAD_URL) await page.goto(process.env.PRELOAD_URL)
     const t0 = Date.now()
-    await page.goto(`${appUrl}/`)
+    await page.goto(`${appUrl}/?full`)
     await page.locator('.demo-strip', { hasText: 'Not live Robinhood Chain' }).waitFor({ timeout: 120_000 })
     await page.locator('.challenge-link').first().waitFor({ timeout: 60_000 })
     metrics.firstVisitBootMs = Date.now() - t0

@@ -103,7 +103,7 @@ try {
   onFail = async () => { await shot('fail'); for (const n of await page.locator('.notice, .receipt, .field-error, .tx-progress').allInnerTexts()) console.log(`[mainnet-e2e]   ui: ${n.replace(/\s+/g, ' ').slice(0, 300)}`) }
 
   await step('Mainnet tab appears once a verified mainnet manifest is published; real-asset warning shown', async () => {
-    await page.goto(`${appUrl}/`)
+    await page.goto(`${appUrl}/?full`)
     await page.locator('.demo-strip .seg button', { hasText: 'Mainnet' }).click({ timeout: 120_000 })
     await page.locator('.demo-strip', { hasText: 'real assets' }).waitFor({ timeout: 90_000 })
     await page.locator('.wallet-btn small', { hasText: 'Mainnet' }).waitFor()
@@ -156,14 +156,14 @@ try {
   })
   await step('a tampered manifest (Rewards pays HOOKR) is refused: the Mainnet tab never appears', async () => {
     const bad = await newPage({ ...manifest, wif: HOOKR })
-    await bad.goto(`${appUrl}/`)
+    await bad.goto(`${appUrl}/?full`)
     await bad.locator('.demo-strip', { hasText: 'Not live Robinhood Chain' }).waitFor({ timeout: 120_000 })
     await bad.waitForTimeout(1500)
     if (await bad.locator('.demo-strip .seg button', { hasText: 'Mainnet' }).count()) throw new Error('Mainnet tab shown for a manifest with the wrong reward token')
   })
   await step('a manifest whose Locker is another contract is refused when Mainnet mode starts', async () => {
     const bad = await newPage({ ...manifest, locker: m.rewards })
-    await bad.goto(`${appUrl}/`)
+    await bad.goto(`${appUrl}/?full`)
     await bad.locator('.demo-strip .seg button', { hasText: 'Mainnet' }).click({ timeout: 120_000 })
     await bad.locator('.notice--error', { hasText: 'Mainnet deployment refused' }).waitFor({ timeout: 60_000 })
   })

@@ -1,11 +1,16 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import RixorApp from './protocol/RixorApp'
+import LiteApp from './lite/LiteApp'
 import './styles.css'
 
-// The active product is the multi-token conviction-locking protocol (src/protocol).
-// The previous ETH-savings / Diamond Hands / simulation experience (src/App.tsx, src/DiamondHands.tsx,
-// src/vault, src/pricing) is preserved in the repository but no longer mounted.
+// The hackathon demo is Rixor Lite (src/lite): one contract, lock one token, earn $WIF, on Robinhood Chain mainnet.
+//
+// The full multi-token protocol (tiers, challenges, the in-browser simulation and the testnet mode in src/protocol)
+// is not part of the demo. It is kept in the repository and hidden: it loads only with ?full in the address.
+// The older ETH-savings experience (src/App.tsx) stays unmounted.
+const FullApp = lazy(() => import('./protocol/RixorApp'))
+const full = new URLSearchParams(window.location.search).has('full')
+
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><RixorApp /></StrictMode>,
+  <StrictMode>{full ? <Suspense fallback={null}><FullApp /></Suspense> : <LiteApp />}</StrictMode>,
 )
