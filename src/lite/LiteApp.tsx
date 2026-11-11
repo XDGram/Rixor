@@ -1,6 +1,7 @@
 // Rixor Lite: the whole hackathon demo on one page. Connect → lock HOOKR → earn $WIF → claim (→ exit).
 // Real transactions on Robinhood Chain mainnet, signed by the visitor's own wallet. All reads and checks live in
-// ./lite.ts; this file is UI. The page never holds a key and never sets a gas limit (the wallet estimates gas).
+// ./lite.ts; this file is UI. The page never holds a key. For lock, claim and exit it asks the node for a gas estimate
+// and adds a 50% margin (see withMargin); unused gas is not charged.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BrowserProvider, Contract, formatUnits, type ContractTransactionResponse, type Eip1193Provider, type Signer } from 'ethers'
 import { icon } from '../ui'
@@ -9,6 +10,15 @@ import { fmtDate, fmtDuration, fmtToken, parseAmount, shortAddr } from '../proto
 import { discoverWallets, requestAccount, switchToChain, type WalletOption } from '../protocol/wallet'
 import { CHAIN, ERC20_ABI, LITE_ABI, PLAN, TOKEN, WIF, describeLiteError, earnedNow, loadDeployment, provider as makeProvider, readState, verifyDeployment, type Deployment, type LiteState } from './lite'
 import '../protocol/protocol.css'
+
+/**
+ * RixorLite writes its reward bookkeeping only when time has moved on. An estimate made in the same second as someone
+ * else's transaction is therefore too low for the next second, and the transaction would run out of gas (nothing is
+ * lost, but it fails). Measured with real transactions in scripts/test-deploy-console-lite.mjs: 6-8% more gas in
+ * normal use, and 40% in one edge case (the second lock ever, estimated in the very second of the first). A 50% margin
+ * over the node's estimate covers both.
+ */
+const withMargin = (estimate: bigint) => ({ gasLimit: (estimate * 150n) / 100n })
 
 type Tx = { key: string; status: 'awaiting-wallet' | 'pending' | 'confirmed' | 'failed'; step: string; hash?: string; error?: string }
 type Receipt = { label: string; hash: string }
@@ -219,12 +229,12 @@ export default function LiteApp({ envSwitch, goDemo }: { envSwitch?: ReactNode; 
     const steps = [
       // Exact approval: only the amount being locked, only for this contract.
       ...(u.tokenAllowance < amount ? [{ label: `Approve ${label}`, send: () => token.approve(deployment.lite, amount) as Promise<ContractTransactionResponse> }] : []),
-      { label: `Lock ${label}`, send: () => lite.lock(amount) as Promise<ContractTransactionResponse> },
+      { label: `Lock ${label}`, send: async () => lite.lock(amount, withMargin(await lite.lock.estimateGas(amount))) as Promise<ContractTransactionResponse> },
     ]
     if (await run('lock', steps, `Locked ${label}`)) setAmountText('')
   }
-  const doClaim = () => signer && run('claim', [{ label: 'Claim WIF', send: () => new Contract(deployment.lite, LITE_ABI, signer).claim() as Promise<ContractTransactionResponse> }], 'Claimed WIF')
-  const doExit = () => signer && u && run('exit', [{ label: `Exit ${fmtToken(u.locked, TOKEN.decimals)} ${TOKEN.symbol}`, send: () => new Contract(deployment.lite, LITE_ABI, signer).exit() as Promise<ContractTransactionResponse> }], `Exited ${TOKEN.symbol}`)
+  const doClaim = () => signer && run('claim', [{ label: 'Claim WIF', send: async () => { const lite = new Contract(deployment.lite, LITE_ABI, signer); return lite.claim(withMargin(await lite.claim.estimateGas())) as Promise<ContractTransactionResponse> } }], 'Claimed WIF')
+  const doExit = () => signer && u && run('exit', [{ label: `Exit ${fmtToken(u.locked, TOKEN.decimals)} ${TOKEN.symbol}`, send: async () => { const lite = new Contract(deployment.lite, LITE_ABI, signer); return lite.exit(withMargin(await lite.exit.estimateGas())) as Promise<ContractTransactionResponse> } }], `Exited ${TOKEN.symbol}`)
 
   const txNote = (key: string) => {
     if (!tx || tx.key !== key) return null

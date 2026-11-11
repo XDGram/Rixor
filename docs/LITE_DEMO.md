@@ -47,6 +47,12 @@ on the visitor's device with demo tokens.
 - **Exact tokens only.** A token that delivers less than the amount sent (fee-on-transfer) is refused.
 - **A cap** limits what unaudited code can hold.
 
+**Gas margin.** The contract writes its reward bookkeeping only when time has moved on, so the same call costs more one
+second after another RixorLite transaction than in the same second. An estimate made at the wrong moment would be too
+low and the transaction would run out of gas (nothing is lost; it just fails). Measured with real transactions: 6–8%
+more in normal use, and 40% in one edge case (the second lock ever, estimated in the very second of the first). The app
+therefore adds **50%** to the node's estimate for lock, claim and exit. Unused gas is not charged.
+
 ### What changed from the earlier plan, and what you are trusting
 
 | Earlier (full protocol) | Lite |
@@ -124,7 +130,7 @@ the lock, so it fits before the deadline only if you lock by 11 Nov 17:30 UTC; i
 |---|---|---|
 | `test/RixorLite.t.sol` | 25 pass | Unit, fuzz and two invariants (exact custody; rewards bounded) |
 | `test/fork/RixorLiteFork.t.sol` | 3 pass | The full flow with the real HOOKR and WIF token code |
-| `npm run test:deploy-console-lite` | 32 pass | Pinned plan equals the script and build; tampering refused; approval gate on real mainnet; WIF and ETH gates; both steps on a fork; still verifies after claims |
+| `npm run test:deploy-console-lite` | 36 pass | Pinned plan equals the script and build; tampering refused; an unfunded deployer is stopped on real mainnet before any wallet request; WIF and ETH gates; both steps on a fork; the app's gas margin measured with real transactions; still verifies after claims |
 | `npm run demo:e2e:lite` | 14 pass | The real UI on a fork: not-deployed state, connect, minimum check, lock, live earnings, claim (real WIF from the reward wallet), exit, tampered deployments refused; the Live page shows no demo data; the Demo side is tagged and never shows the real wallet |
 | `npm run audit:mainnet-guards` | pass | `DeployRixorLite` is refused on mainnet without the authorisation sentence, and without a prefunded reward wallet |
 | Full regression | pass | 156 contract tests, 11 fork tests, the testnet and mainnet console suites, and the hidden full app's journeys |

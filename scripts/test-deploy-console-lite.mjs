@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Contract, Interface, JsonRpcProvider, getAddress, parseEther } from 'ethers'
+import { Contract, Interface, JsonRpcProvider, getAddress, id as labelHash, parseEther } from 'ethers'
 import { fundLocal, fundLocalWif, startRehearsalChain } from './lib/rehearsal-chain.mjs'
 import { assess, bundleHashOf, manifestFor, preflight, validateBundle, verifySent } from '../src/deploy/core.ts'
 import * as X from '../src/deploy/expected.ts'
@@ -22,9 +22,12 @@ const rehash = (b) => { b.bundleHash = bundleHashOf(b); return b }
 const refused = (b, re) => { const p = validateBundle(b); return p.length > 0 && (!re || p.some((x) => re.test(x))) }
 const word = (v) => BigInt(v).toString(16).padStart(64, '0')
 const chains = []
+// Polls for the receipt. (ethers' waitForTransaction waits for a NEW block after its first look, which never comes on an
+// instant-mining chain if the transaction was mined in between.)
+const waitMined = async (provider, hash) => { for (;;) { const rc = await provider.getTransactionReceipt(hash); if (rc) return rc; await new Promise((r) => setTimeout(r, 40)) } }
 const WIF = X.MAINNET_TOKENS.WIF.address, HOOKR = X.MAINNET_TOKENS.HOOKR.address
 const HOOKR_HOLDER = '0xA522e716e1750702F775416f2Aa3Df620D9A1831' // existing mainnet holder, impersonated on the fork only
-const ERC20 = ['function balanceOf(address) view returns (uint256)', 'function allowance(address,address) view returns (uint256)', 'function approve(address,uint256) returns (bool)']
+const ERC20 = ['function balanceOf(address) view returns (uint256)', 'function allowance(address,address) view returns (uint256)', 'function approve(address,uint256) returns (bool)', 'function transfer(address,uint256) returns (bool)']
 const LITE_ABI = JSON.parse(readFileSync(join(ROOT, 'out/RixorLite.sol/RixorLite.json'), 'utf8')).abi
 
 try {
@@ -92,7 +95,7 @@ try {
     const why = p.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join('; ')
     if (!p.ok) { t(`step ${i + 1} passes preflight with 0.0003 ETH and 1,000 WIF`, false, why); continue }
     const hash = await wallet('eth_sendTransaction', [p.request])
-    await c1.provider.waitForTransaction(hash)
+    await waitMined(c1.provider, hash)
     const v = await verifySent(node, B, i, hash)
     t(`step ${i + 1} (${B.transactions[i].label}) passes preflight, is sent and verifies`, v.ok, v.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join('; '))
   }
@@ -108,19 +111,61 @@ try {
   // A real user locks and claims: the approval check must still hold afterwards (allowance + claimed = budget).
   await c1.provider.send('anvil_setBalance', [HOOKR_HOLDER, '0x' + parseEther('1').toString(16)])
   const erc = new Interface(ERC20)
-  // The balance is set before every send: a forked anvil can re-read an impersonated account from upstream and drop a
-  // balance that was set only once (seen as a rare "insufficient funds" on the third transaction).
-  const sendAs = async (to, data) => {
-    await c1.provider.send('anvil_setBalance', [HOOKR_HOLDER, '0x' + parseEther('1').toString(16)])
-    return c1.provider.waitForTransaction(await c1.provider.send('eth_sendTransaction', [{ from: HOOKR_HOLDER, to, data, gasPrice: price }]))
+  // An explicit gas limit, and every receipt checked. anvil fills in an exact estimate with no margin, and RixorLite
+  // needs a few thousand more gas in the second after another transaction than in the same second (section 6 below
+  // measures this; the app adds a 50% margin, see withMargin in src/lite/LiteApp.tsx).
+  const raw = (from, to, data, gasPrice = price) => c1.provider.send('eth_sendTransaction', [{ from, to, data, gasPrice, gas: '0x7a120' }])
+  const mined = async (hash) => { const rc = await waitMined(c1.provider, hash); if (rc.status !== 1) throw new Error('a user transaction reverted on the fork'); return rc }
+  const sendAs = async (to, data) => mined(await raw(HOOKR_HOLDER, to, data))
+
+  // ---------------------------------------------------------- 6. gas: why the app adds 50% to the node's estimate
+  // RixorLite writes `lastUpdate` and `accPerToken` only when time has moved. So the same call costs less in the same
+  // second as another RixorLite transaction (what an estimate made at that moment sees) than one second later (when it
+  // is mined). Measured here with real, separate transactions; the 50% margin must cover the difference every time.
+  const U2 = getAddress('0x' + labelHash('rixor.lite-test.user2').slice(26))
+  await c1.provider.send('anvil_setBalance', [U2, '0x' + parseEther('1').toString(16)])
+  const lockData = (n) => lite.interface.encodeFunctionData('lock', [BigInt(n) * 10n ** 18n])
+  await mined(await raw(HOOKR_HOLDER, HOOKR, erc.encodeFunctionData('transfer', [U2, 500n * 10n ** 18n])))
+  for (const who of [HOOKR_HOLDER, U2]) await mined(await raw(who, HOOKR, erc.encodeFunctionData('approve', [B.addresses.lite, 10n ** 30n])))
+  const price2 = '0x' + (BigInt(price) * 2n).toString(16)
+  /** gasUsed by `target` (from U2) when mined in the same block as `other` (from the holder), and when mined 1 s later. */
+  const sameVsNext = async (other, target) => {
+    const snap = await c1.provider.send('evm_snapshot', [])
+    await c1.provider.send('evm_setAutomine', [false])
+    const [, h2] = [await raw(HOOKR_HOLDER, B.addresses.lite, other, price2), await raw(U2, B.addresses.lite, target)] // the higher fee goes first
+    await c1.provider.send('evm_mine', [])
+    const same = (await mined(h2)).gasUsed
+    await c1.provider.send('evm_setAutomine', [true])
+    await c1.provider.send('evm_revert', [snap])
+    const snap2 = await c1.provider.send('evm_snapshot', [])
+    const rcOther = await mined(await raw(HOOKR_HOLDER, B.addresses.lite, other, price2))
+    await c1.provider.send('evm_setNextBlockTimestamp', [(await c1.provider.getBlock(rcOther.blockNumber)).timestamp + 1])
+    const next = (await mined(await raw(U2, B.addresses.lite, target))).gasUsed
+    await c1.provider.send('evm_revert', [snap2])
+    return { same, next }
   }
+  const covered = (name, g) => t(`gas margin covers ${name}: ${g.same} in the same second, ${g.next} one second later (+${Number(((g.next - g.same) * 1000n) / g.same) / 10}%)`, g.next > g.same && g.next <= (g.same * 150n) / 100n)
+  covered('the second lock ever (first accrual, the worst case)', await sameVsNext(lockData(50), lockData(50)))
+  // Steady state: both users are locked and rewards have accrued before.
+  await mined(await raw(HOOKR_HOLDER, B.addresses.lite, lockData(50)))
+  await mined(await raw(U2, B.addresses.lite, lockData(50)))
+  await c1.provider.send('evm_increaseTime', [3600]); await c1.provider.send('evm_mine', [])
+  covered('a top-up lock', await sameVsNext(lockData(1), lockData(1)))
+  covered('a claim', await sameVsNext(lockData(1), lite.interface.encodeFunctionData('claim', [])))
+  await c1.provider.send('evm_increaseTime', [86400]); await c1.provider.send('evm_mine', [])
+  covered('an exit', await sameVsNext(lite.interface.encodeFunctionData('claim', []), lite.interface.encodeFunctionData('exit', [])))
+  // Leave the fork as the next section expects: nothing locked, the holder's claims paid.
+  for (const who of [HOOKR_HOLDER, U2]) await mined(await raw(who, B.addresses.lite, lite.interface.encodeFunctionData('exit', [])))
+  for (const who of [HOOKR_HOLDER, U2]) await mined(await raw(who, B.addresses.lite, lite.interface.encodeFunctionData('claim', [])))
+  const paidSoFar = await lite.totalClaimed()
+
   await sendAs(HOOKR, erc.encodeFunctionData('approve', [B.addresses.lite, 50n * 10n ** 18n]))
   await sendAs(B.addresses.lite, lite.interface.encodeFunctionData('lock', [50n * 10n ** 18n]))
   await c1.provider.send('evm_increaseTime', [600]); await c1.provider.send('evm_mine', [])
   const before = await wif.balanceOf(HOOKR_HOLDER)
   await sendAs(B.addresses.lite, lite.interface.encodeFunctionData('claim', []))
   const got = (await wif.balanceOf(HOOKR_HOLDER)) - before
-  t('a user locks 50 HOOKR and claims real WIF paid by the reward wallet', got > 0n && (await wif.balanceOf(B.deployer)) === X.LITE.budget - got, `${Number(got) / 1e18} WIF`)
+  t('a user locks 50 HOOKR and claims real WIF paid by the reward wallet', got > 0n && (await wif.balanceOf(B.deployer)) === X.LITE.budget - paidSoFar - got, `${Number(got) / 1e18} WIF`)
   const after = await assess(node, B)
   t('after claims the deployment still verifies (allowance + claimed = budget)', after.status === 'complete' && after.steps[1].state === 'done')
   const m = manifestFor(B, 123)
