@@ -5,6 +5,8 @@
 //   - testnet scripts must be refused in EVERY variant (they never touch mainnet);
 //   - mainnet scripts (CreateMainnetSafes, SeedMainnetRewards) must be refused in every variant except the one that
 //     carries the exact sentence, where a read-only simulation is allowed (that is the authorised path);
+//   - DeployRixorLite must be refused in every variant here: without the sentence by the chain guard, and with it
+//     because the audit's sender holds no WIF (the reward wallet must be prefunded before anything is deployed);
 //   - DeployRixorV2 must be refused (here its owner/guardian are EOAs, so even the sentence cannot pass its guards).
 // Also runs the Safe CLI against mainnet (must refuse).
 //   npm run audit:mainnet-guards
@@ -23,7 +25,7 @@ const baseEnv = {
   RIXOR_CONFIG: 'deploy/config/mainnet.template.json', RIXOR_OWNER_SAFE: sender, RIXOR_GUARDIAN_SAFE: sender,
   RIXOR_DEPLOYMENT: 'deploy/config/mainnet.template.json',
 }
-const scripts = ['CreateTestnetSafes', 'DeployTestnetTokens', 'DeployRixorV2', 'SeedTestnetRewards', 'CreateMainnetSafes', 'SeedMainnetRewards']
+const scripts = ['CreateTestnetSafes', 'DeployTestnetTokens', 'DeployRixorV2', 'SeedTestnetRewards', 'CreateMainnetSafes', 'SeedMainnetRewards', 'DeployRixorLite']
 const MAINNET_SCRIPTS = new Set(['CreateMainnetSafes', 'SeedMainnetRewards'])
 const variants = [
   { name: 'pin 4663', env: { RIXOR_EXPECTED_CHAIN_ID: '4663' }, flags: [] },
