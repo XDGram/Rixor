@@ -27,7 +27,15 @@ function AddressRow({ label, address }: { label: string; address: string }) {
   return <div><dt>{label}</dt><dd><a className="mono" href={explorerAddr(address)} target="_blank" rel="noopener noreferrer">{shortAddr(address)}</a></dd></div>
 }
 
-export default function LiteApp() {
+const DEMO_PAGES = [
+  { hash: '#/explore', icon: 'trophy', title: 'Campaigns and challenges', body: 'Communities pool $WIF for holders who keep their lock.' },
+  { hash: '#/lock', icon: 'lock', title: 'Token listings and tiers', body: 'More meme tokens, with Flexible, Committed and Diamond locks.' },
+  { hash: '#/portfolio', icon: 'diamond', title: 'Portfolio dashboard', body: 'Positions, claims and refunds in one place.' },
+  { hash: '#/activity', icon: 'clock', title: 'Activity feed', body: 'Every lock, claim and challenge as it happens.' },
+] as const
+
+/** `envSwitch`: the Live / Demo switch from src/Root.tsx. `goDemo`: opens a page of the demo side. */
+export default function LiteApp({ envSwitch, goDemo }: { envSwitch?: ReactNode; goDemo?: (hash: string) => void } = {}) {
   const rpc = useMemo(makeProvider, [])
   const [deployment, setDeployment] = useState<Deployment | null | undefined>(undefined)
   const [bootError, setBootError] = useState<string | null>(null)
@@ -125,6 +133,25 @@ export default function LiteApp() {
 
   // ---------------------------------------------------------------- render
 
+  // The rest of the product, as a labelled demo. Shown under the live page (also before the contract is deployed).
+  const demoCard = goDemo && (
+    <section className="card view">
+      <header className="panel-head"><div><small className="kicker">The rest of Rixor</small><h2>Explore the full product</h2></div><span className="tag tag--sim">Demo</span></header>
+      <p className="figure-sub" style={{ marginTop: 0 }}>These pages run in a simulation on your device with demo tokens. They show where Rixor is going. Nothing in them is onchain, and they never use your wallet.</p>
+      <ul className="token-list">
+        {DEMO_PAGES.map((d) => (
+          <li key={d.hash}>
+            <button type="button" className="token-line" onClick={() => goDemo(d.hash)}>
+              <span className="token-mark" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>{icon(d.icon, 18)}</span>
+              <span className="token-line-copy"><strong>{d.title}</strong><span>{d.body}</span></span>
+              <span className="token-line-side">{icon('arrowRight', 18)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+
   // Plain functions, not components: a component created during render would remount (and reset inputs) every tick.
   const shell = (children: ReactNode) => (
     <main className="app dashboard theme-dark">
@@ -139,7 +166,8 @@ export default function LiteApp() {
           </div>
         </div>
       </header>
-      <div className="container app-body">{children}</div>
+      {envSwitch && <div className="container env-switch">{envSwitch}</div>}
+      <div className="container app-body">{children}{demoCard}</div>
     </main>
   )
   const plan = (
@@ -216,7 +244,7 @@ export default function LiteApp() {
   return shell(
     <>
       <section className="card view">
-        <small className="kicker">Robinhood Chain mainnet · real $WIF</small>
+        <small className="kicker"><span className="tag tag--lime">Live · onchain</span> Robinhood Chain mainnet · real $WIF</small>
         <h1 className="section-title">Lock {TOKEN.symbol}. Earn $WIF.</h1>
         <p className="figure-sub" style={{ marginTop: 0 }}>Lock the {TOKEN.symbol} you already hold for {LOCK_PERIOD}. Earn $WIF every second while it is locked, and claim whenever you like.</p>
         <div className="stat-grid">
@@ -234,7 +262,7 @@ export default function LiteApp() {
 
       {account && u && (
         <section className="card view">
-          <header className="panel-head"><div><small className="kicker">Your position</small><h2>{u.locked > 0n ? `${fmtToken(u.locked, TOKEN.decimals)} ${TOKEN.symbol} locked` : 'Nothing locked yet'}</h2></div></header>
+          <header className="panel-head"><div><small className="kicker">Your position · read from the chain</small><h2>{u.locked > 0n ? `${fmtToken(u.locked, TOKEN.decimals)} ${TOKEN.symbol} locked` : 'Nothing locked yet'}</h2></div></header>
           <div>
             <small className="kicker">WIF earned</small>
             <div className="figure figure--xl" data-testid="earned" style={{ color: 'var(--lime)' }}>{fmtWif(earned)}</div>
@@ -289,6 +317,7 @@ export default function LiteApp() {
           <AddressRow label="$WIF (reward token)" address={WIF.address} />
           <AddressRow label="Reward wallet" address={deployment.rewardWallet} />
           <div><dt>WIF paid out so far</dt><dd>{s ? fmtToken(s.totalClaimed, 18) : '…'} WIF</dd></div>
+          <div><dt>All activity</dt><dd><a href={explorerAddr(deployment.lite)} target="_blank" rel="noopener noreferrer">Every lock, claim and exit on the explorer</a></dd></div>
         </dl>
         {plan}
         <p className="fine-print">

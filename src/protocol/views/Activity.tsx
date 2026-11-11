@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { icon } from '../../ui'
-import { Empty } from '../components'
+import { DemoTag, Empty } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDate, fmtPoints, fmtToken, shortAddr, TIERS } from '../model'
 import type { ActivityItem } from '../useProtocol'
-import { ENV } from '../envtext'
+import { ENV, MODE } from '../envtext'
 
 function describe(ctx: Ctx, a: ActivityItem): { title: string; detail: string; amount?: string; icon: 'lock' | 'arrowUp' | 'trophy' | 'coins' | 'check' | 'flame' | 'plus' } {
   const who = ctx.label(a.actor)
@@ -37,7 +37,7 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
     <div className="view">
       <section className="card">
         <header className="panel-head">
-          <div><small className="kicker">Contract events · {ENV.whereShort}</small><h2>{mine ? 'Your transactions' : 'Everything happening'}</h2></div>
+          <div><small className="kicker">Contract events · {ENV.whereShort}</small><h2>{mine ? (MODE === 'simulation' ? 'Your simulated actions' : 'Your transactions') : 'Everything happening'} <DemoTag /></h2></div>
           <div className="seg">
             <button type="button" className={!mine ? 'is-active' : ''} onClick={() => setMine(false)}>All</button>
             <button type="button" className={mine ? 'is-active' : ''} onClick={() => setMine(true)} disabled={!ctx.wallet}>Mine</button>
@@ -56,7 +56,8 @@ export function ActivityView({ ctx }: { ctx: Ctx }) {
                   </span>
                   <span className="feed-amount">
                     {d.amount && <strong>{d.amount}</strong>}
-                    <small className="mono">{shortAddr(a.tx)}</small>
+                    {/* Simulated events have no onchain transaction, so no hash is shown for them. */}
+                    {MODE === 'simulation' ? <small>simulated</small> : <small className="mono">{shortAddr(a.tx)}</small>}
                   </span>
                 </li>
               )

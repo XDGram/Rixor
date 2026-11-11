@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { contractsFor } from '../chain'
-import { TxNotice } from '../components'
+import { DemoTag, TxNotice } from '../components'
 import type { Ctx } from '../ctx'
 import { ENV } from '../envtext'
 import { fmtDate, fmtDuration, fmtPoints, fmtToken, MAX_DURATION, MAX_POOL, MIN_POOL, parseAmount, TIERS } from '../model'
@@ -77,7 +77,7 @@ export function CreateView({ ctx }: { ctx: Ctx }) {
   return (
     <div className="view">
       <section className="card lock-card">
-        <header className="panel-head"><div><small className="kicker">New community challenge</small><h2>Create and fund a challenge</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">New community challenge</small><h2>Create and fund a challenge</h2></div><DemoTag /></header>
 
         <div className="commit-field">
           <span>Eligible tokens <small>(1 to 3; holders of any of them can join)</small></span>

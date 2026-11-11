@@ -78,23 +78,24 @@ try {
     // Optional: a Vercel share link for a protected preview. Visiting it sets the access cookie.
     if (process.env.PRELOAD_URL) await page.goto(process.env.PRELOAD_URL)
     const t0 = Date.now()
-    await page.goto(`${appUrl}/?full`)
+    await page.goto(`${appUrl}/?view=demo`)
     await page.locator('.demo-strip', { hasText: 'Not live Robinhood Chain' }).waitFor({ timeout: 120_000 })
     await page.locator('.challenge-link').first().waitFor({ timeout: 60_000 })
     metrics.firstVisitBootMs = Date.now() - t0
-    // No testnet deployment is published in this build: the Testnet tab must be disabled, not silently empty.
-    if (!(await page.locator('.demo-strip .seg button', { hasText: 'Testnet' }).isDisabled())) throw new Error('Testnet tab enabled without a deployment')
+    // The demo side is labelled as demo data, and the Live / Demo switch shows Demo as selected.
+    await page.locator('.demo-strip .tag', { hasText: 'Demo data' }).waitFor()
+    if ((await page.locator('.env-seg button[aria-selected="true"]').innerText()).trim() !== 'Demo') throw new Error('the Live / Demo switch does not show Demo')
+    // No deployment of the full protocol is published in this build: its Testnet and Mainnet modes are not offered.
+    if (await page.locator('.demo-strip .seg button').count()) throw new Error('a network mode of the full protocol is offered without a deployment')
     await shot('01-explore')
   })
 
-  await step('real wallet (read-only): detect Robinhood Chain holdings, HOOKR under review, nothing supported', async () => {
-    await page.getByRole('button', { name: 'Connect wallet (read-only)' }).click()
-    const card = page.locator('.card', { hasText: 'Meme tokens you hold on Robinhood Chain' })
-    await card.locator('.kicker', { hasText: 'Under review' }).waitFor({ timeout: 60_000 })
-    await card.locator('.token-line', { hasText: 'HOOKR' }).locator('.tag', { hasText: 'Under review' }).waitFor({ timeout: 30_000 })
-    await card.locator('.fine-print', { hasText: 'None yet: no Rixor Locker is deployed on Robinhood Chain.' }).waitFor()
-    if (await card.locator('.tag', { hasText: /^Supported$/ }).count()) throw new Error('a token was shown as supported without an on-chain listing')
-    await shot('01b-detected-holdings')
+  await step('the demo side never reads a real wallet, and points to the Live side for the real HOOKR lock', async () => {
+    if (await page.getByRole('button', { name: 'Connect wallet (read-only)' }).count()) throw new Error('the demo offers to read a real wallet')
+    if (await page.locator('.card', { hasText: 'Meme tokens you hold on Robinhood Chain' }).count()) throw new Error('real-wallet balances are shown on the demo side')
+    await page.locator('.live-callout', { hasText: 'Lock HOOKR for real' }).waitFor()
+    await page.locator('.panel-head .tag', { hasText: 'Demo' }).first().waitFor()
+    await shot('01b-demo-labels')
   })
 
   await step('create demo wallet and get demo tokens from the faucet', async () => {

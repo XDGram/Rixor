@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { zeroPadValue, toBeHex } from 'ethers'
 import { icon } from '../../ui'
 import { challengesIface, contractsFor } from '../chain'
-import { TxNotice } from '../components'
+import { DemoTag, TxNotice } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDate, fmtDuration, fmtPoints, fmtToken, MAX_POOL, MIN_SPONSOR, parseAmount, pct, phaseOf, PHASE_LABEL, TIERS, type Challenge } from '../model'
 import { loadStandings, type Standing } from '../useProtocol'
@@ -241,7 +241,7 @@ export function ChallengeView({ ctx, id }: { ctx: Ctx; id: number }) {
 
       {/* ---------------------------------------------------------------- standings */}
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Rankings</small><h2>Participants by points</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">Rankings</small><h2>Participants by points</h2></div><DemoTag /></header>
         {standings === null ? <p className="fine-print">Loading standings…</p> : standings.length === 0 ? <p className="fine-print">No participants yet.</p> : (
           <ol className="board">
             {standings.map((s, i) => (

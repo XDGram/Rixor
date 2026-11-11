@@ -26,6 +26,8 @@ export type Ctx = {
   refresh: () => Promise<void>
   openWallet: () => void
   label: (address: string) => string
+  /** True on the demo side of the hackathon build: these pages then never read the visitor's real wallet. */
+  demoSide?: boolean
 }
 
 export function routeToHash(r: Route): string {

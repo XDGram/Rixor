@@ -57,7 +57,12 @@ function useLive(network: LiveNetwork, enabled: boolean) {
 }
 const storedMode = (): Mode => { const m = safeStorage.get('rixor.mode'); return m === 'testnet' || m === 'mainnet' ? m : 'simulation' }
 
-export default function RixorApp() {
+/**
+ * `envSwitch`: the top-level Live / Demo switch (src/Root.tsx). `goLive`: opens the real, onchain HOOKR lock.
+ * In the hackathon build this app is the DEMO side: it runs in the browser simulation with demo tokens. Its own
+ * testnet / mainnet modes still exist but only appear when a deployment of the full protocol is published.
+ */
+export default function RixorApp({ envSwitch, goLive }: { envSwitch?: ReactNode; goLive?: () => void } = {}) {
   const [mode, setModeState] = useState<Mode>(storedMode)
   const testnet = useLive('testnet', mode === 'testnet')
   const mainnet = useLive('mainnet', mode === 'mainnet')
@@ -240,6 +245,7 @@ export default function RixorApp() {
   const Shell = ({ children }: { children: ReactNode }) => (
     <main className={`app dashboard ${themeClass}`}>
       <header className="app-bar"><div className="container app-bar-inner"><Brand /></div></header>
+      {envSwitch && <div className="container env-switch">{envSwitch}</div>}
       <div className="container app-body">{children}</div>
     </main>
   )
@@ -278,7 +284,7 @@ export default function RixorApp() {
     )
   }
 
-  const ctx: Ctx = { manifest, provider, snapshot, now, wallet, write, tx, go, refresh, openWallet: () => setWalletOpen(true), label }
+  const ctx: Ctx = { manifest, provider, snapshot, now, wallet, write, tx, go, refresh, openWallet: () => setWalletOpen(true), label, demoSide: isSim && Boolean(goLive) }
   const holdsNothing = snapshot.tokens.every((t) => t.balance === 0n) && snapshot.wif.balance === 0n
   const active = route.name === 'token' || route.name === 'challenge' || route.name === 'create' ? 'explore' : route.name
 
@@ -298,21 +304,25 @@ export default function RixorApp() {
               <span className="dot-live" />
               <span className="wallet-btn-copy">
                 <small>{isSim ? 'Simulation' : net.short}</small>
-                <b>{wallet ? shortAddr(wallet.address) : 'Connect'}</b>
+                <b>{wallet ? shortAddr(wallet.address) : isSim ? 'Demo wallet' : 'Connect'}</b>
               </span>
             </button>
           </div>
         </div>
       </header>
 
+      {envSwitch && <div className="container env-switch">{envSwitch}</div>}
       <div className="container demo-strip" role="note">
-        <div className="seg" role="tablist" aria-label="Environment">
-          <button type="button" role="tab" aria-selected={isSim} className={isSim ? 'is-active' : ''} onClick={() => switchMode('simulation')}>Simulation</button>
-          {mainnet.deployment && <button type="button" role="tab" aria-selected={isMainnet} className={isMainnet ? 'is-active' : ''} onClick={() => switchMode('mainnet')}>Mainnet</button>}
-          <button type="button" role="tab" aria-selected={effectiveMode === 'testnet'} className={effectiveMode === 'testnet' ? 'is-active' : ''} disabled={!testnet.deployment} title={testnet.deployment ? undefined : 'Not deployed to testnet yet'} onClick={() => switchMode('testnet')}>Testnet</button>
-        </div>
+        {/* The full protocol's own networks appear only if such a deployment is published (none is, in the hackathon build). */}
+        {(testnet.deployment || mainnet.deployment) && (
+          <div className="seg" role="tablist" aria-label="Environment">
+            <button type="button" role="tab" aria-selected={isSim} className={isSim ? 'is-active' : ''} onClick={() => switchMode('simulation')}>Simulation</button>
+            {mainnet.deployment && <button type="button" role="tab" aria-selected={isMainnet} className={isMainnet ? 'is-active' : ''} onClick={() => switchMode('mainnet')}>Mainnet</button>}
+            {testnet.deployment && <button type="button" role="tab" aria-selected={effectiveMode === 'testnet'} className={effectiveMode === 'testnet' ? 'is-active' : ''} onClick={() => switchMode('testnet')}>Testnet</button>}
+          </div>
+        )}
         {isSim
-          ? <span>Isolated EVM on this device, started from Robinhood Chain mainnet block {manifest.upstream.forkBlock.toLocaleString('en-US')}. Not live Robinhood Chain. Assets here have no value.{mainnet.deployment ? ' The live mainnet deployment is under Mainnet.' : ''}{testnet.deployment ? '' : ' Testnet: not deployed yet.'}</span>
+          ? <><span className="tag tag--sim">Demo data</span><span>Everything on this side is simulated on this device with demo tokens (an isolated EVM started from Robinhood Chain mainnet block {manifest.upstream.forkBlock.toLocaleString('en-US')}). Not live Robinhood Chain. Nothing here is onchain or has value.{mainnet.deployment ? ' The live mainnet deployment is under Mainnet.' : ''}</span></>
           : isMainnet
             ? <span><strong>Robinhood Chain mainnet · real assets.</strong> Real transactions signed by your wallet on chain {manifest.chainId}, with your real tokens and the official WIF. The contracts are tested but not audited; lock only what you can afford to lose.</span>
             : <span>{manifest.label} Real transactions signed by your wallet on chain {manifest.chainId}. TEST tokens only; "WIF" here means the valueless tWIF.</span>}
@@ -342,6 +352,12 @@ export default function RixorApp() {
         )}
         {effectiveMode === 'testnet' && <TxNotice tx={tx.tx} for="faucet" />}
 
+        {isSim && goLive && (route.name === 'explore' || route.name === 'lock') && (
+          <div className="empty empty--action live-callout">
+            <div><strong><span className="tag tag--lime">Live · onchain</span> Lock HOOKR for real</strong><span>The part of Rixor that runs on Robinhood Chain today: lock HOOKR in one contract and earn real $WIF. Everything else on this side is a demo.</span></div>
+            <button type="button" className="btn btn--lime btn--sm" onClick={goLive}>Go to Live</button>
+          </div>
+        )}
         {route.name === 'explore' && <Explore ctx={ctx} />}
         {route.name === 'token' && <TokenView ctx={ctx} address={route.address} />}
         {route.name === 'lock' && <LockView ctx={ctx} />}

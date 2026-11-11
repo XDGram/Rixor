@@ -2,7 +2,19 @@
 
 **One-liner:** Lock the meme token you already hold and get paid in $WIF for holding it.
 
-## The demo (Rixor Lite)
+## What is real and what is a demo
+
+The app has two sides, switched at the top of every page, and it never mixes them.
+
+| Side | What it is | Data |
+|---|---|---|
+| **Live** | Lock HOOKR in one contract on Robinhood Chain mainnet; earn and claim the official $WIF | Read from the chain. Real transactions signed by your wallet |
+| **Demo** | The broader product: several tokens, three conviction tiers, community challenges, portfolio, activity | Simulated on your device with demo tokens. Every page is tagged "Demo". Nothing is onchain |
+
+The demo side never reads your real wallet, and nothing from it (balances, simulated actions, challenge prizes) is ever
+shown as a real balance, transaction or claim.
+
+## Live: Rixor Lite
 
 One smart contract on Robinhood Chain mainnet, one lockable token (HOOKR), rewards in the official $WIF.
 
@@ -26,7 +38,8 @@ $WIF is the only reward currency. A reward wallet commits a $WIF budget; lockers
 |---|---|
 | `contracts/RixorLite.sol` | Holds locked HOOKR, tracks what each locker has earned, pays claims. About 150 lines. |
 | Reward wallet | A separate wallet holding the $WIF budget. It approves the contract to pay claims from it. |
-| Frontend (`src/lite`) | One page: connect, lock, earn, claim, exit. React, Vite, ethers v6. |
+| Frontend, Live (`src/lite`) | One page: connect, lock, earn, claim, exit. React, Vite, ethers v6. |
+| Frontend, Demo (`src/protocol`) | The broader product, running the full protocol's contracts inside a browser simulation. |
 
 - **No admin at all.** The contract has no owner, no pause, no upgrade path and no fee. Every parameter is fixed at
   deployment. The only way a locked token leaves is `exit()` by the wallet that locked it.
@@ -44,12 +57,11 @@ Planned parameters: 1,000 $WIF over 7 days (about 143 $WIF a day, shared), 1-day
 - **Contract:** done and tested. 25 Foundry tests (unit, fuzz and invariants: custody is exact, rewards never exceed
   the budget), plus 3 fork tests with the real HOOKR and $WIF token code. Internal review only; **no external audit**.
 - **Mainnet:** **not deployed yet.** The deployment is two transactions (deploy, then approve the $WIF budget),
-  scripted, rehearsed on a local fork of Robinhood Chain mainnet, and gated until approved. The full journey through
-  the real UI passes on that fork (12 steps). Real transaction links will be added here once it is live.
-  See `docs/LITE_DEMO.md`.
-- **Not in the demo:** the larger design (three conviction tiers, several tokens, community challenges, Safe-governed
+  scripted and rehearsed on a local fork of Robinhood Chain mainnet. The full journey through the real UI passes on
+  that fork (14 steps). Real transaction links will be added here once it is live. See `docs/LITE_DEMO.md`.
+- **Demo side only:** the larger design (three conviction tiers, several tokens, community challenges, Safe-governed
   listings) is built and tested in this repository (`contracts/RixorLocker.sol`, `RixorRewards.sol`,
-  `RixorChallenges.sol`, `src/protocol`) but is not deployed and is hidden in the app.
+  `RixorChallenges.sol`, `src/protocol`). It is **not deployed**; the app runs it in a simulation, labelled as demo.
 
 ## Notes
 

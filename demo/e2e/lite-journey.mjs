@@ -98,6 +98,8 @@ try {
     await p0.locator('.notice', { hasText: 'Not deployed yet' }).waitFor({ timeout: 60_000 })
     if (await p0.getByRole('button', { name: /Lock|Claim|Exit/ }).count()) throw new Error('action buttons shown without a deployment')
     if (!(await p0.locator('.wallet-btn').isDisabled())) throw new Error('connect must be disabled without a deployment')
+    // The rest of the product is still explorable, as a labelled demo.
+    await p0.locator('.card', { hasText: 'Explore the full product' }).locator('.tag', { hasText: 'Demo' }).first().waitFor()
   })
 
   const page = await newPage(manifest)
@@ -107,13 +109,17 @@ try {
   onFail = async () => { await shot('lite-fail'); for (const n of await page.locator('.notice, .receipt, .field-error, .tx-progress').allInnerTexts()) console.log(`[lite-e2e]   ui: ${n.replace(/\s+/g, ' ').slice(0, 300)}`) }
   const connect = async () => { await page.getByRole('button', { name: 'Connect wallet', exact: true }).click(); await page.locator('.wallet-btn b', { hasText: '0xA522' }).waitFor({ timeout: 30_000 }) }
 
-  await step('the verified deployment is shown: funded reward wallet, rate, contract links; only the demo is visible', async () => {
+  await step('the verified deployment is shown as LIVE: funded reward wallet, rate, contract links; no demo data on the live page', async () => {
     await page.goto(`${appUrl}/`)
     await page.locator('.stat', { hasText: 'Reward wallet' }).locator('strong', { hasText: '1,000' }).waitFor({ timeout: 90_000 })
     await page.locator('.stat', { hasText: 'Reward rate' }).locator('strong', { hasText: '142.86' }).waitFor()
-    await page.locator(`a[href$="${manifest.lite}"]`).waitFor()
+    await page.locator(`a[href$="${manifest.lite}"]`).first().waitFor()
+    await page.locator('.kicker .tag', { hasText: 'Live · onchain' }).waitFor()
+    if ((await page.locator('.env-seg button[aria-selected="true"]').innerText()).trim() !== 'Live') throw new Error('the Live / Demo switch does not show Live')
+    // The live page shows chain data only: no simulated token, balance or challenge. The demo is a tagged link away.
     const text = await page.locator('body').innerText()
-    for (const hidden of ['Simulation', 'Testnet', 'Challenge', 'Diamond', 'TORCH']) if (text.includes(hidden)) throw new Error(`"${hidden}" is still visible in the demo`)
+    for (const sim of ['TORCH', 'demo wallet', 'Get demo tokens', 'Simulated on this device']) if (text.includes(sim)) throw new Error(`"${sim}" appears on the live page`)
+    await page.locator('.card', { hasText: 'Explore the full product' }).locator('.tag', { hasText: 'Demo' }).first().waitFor()
     await shot('l01-home')
   })
   await step('connect the wallet on chain 4663', async () => {
@@ -179,10 +185,25 @@ try {
     await bad.goto(`${appUrl}/`)
     await bad.locator('.notice--error', { hasText: 'Deployment refused' }).waitFor({ timeout: 60_000 })
   })
-  await step('the full protocol is hidden, not removed: it still loads with ?full', async () => {
+  await step('Demo side: opens from the live page, is tagged as demo data, and never shows the real wallet', async () => {
+    await page.locator('.token-line', { hasText: 'Campaigns and challenges' }).click()
+    await page.locator('.demo-strip .tag', { hasText: 'Demo data' }).waitFor({ timeout: 120_000 })
+    await page.locator('.challenge-link').first().waitFor({ timeout: 60_000 })
+    await page.locator('.panel-head .tag', { hasText: 'Demo' }).first().waitFor()
+    await page.locator('.live-callout', { hasText: 'Lock HOOKR for real' }).waitFor()
+    const label = await page.locator('.wallet-btn b').innerText()
+    if (label.toLowerCase().includes('a522')) throw new Error('the real wallet leaked into the demo')
+    await shot('l06-demo-explore')
+  })
+  await step('Demo → Live: the callout returns to the real page, which is still reading the chain', async () => {
+    await page.locator('.live-callout').getByRole('button', { name: 'Go to Live' }).click()
+    await page.locator('.kicker .tag', { hasText: 'Live · onchain' }).waitFor({ timeout: 30_000 })
+    await page.locator('.stat', { hasText: 'Reward wallet' }).locator('strong', { hasText: /999|1,000/ }).waitFor({ timeout: 60_000 })
+  })
+  await step('old ?full links still open the demo side', async () => {
     const old = await newPage(null)
     await old.goto(`${appUrl}/?full`)
-    await old.locator('.demo-strip .seg button', { hasText: 'Simulation' }).waitFor({ timeout: 120_000 })
+    await old.locator('.demo-strip .tag', { hasText: 'Demo data' }).waitFor({ timeout: 120_000 })
   })
 } catch (e) { if (!results.some((r) => !r.ok)) { results.push({ name: 'setup', ok: false }); console.log(`[lite-e2e] FAIL setup: ${e.message.split('\n')[0]}`) } } finally {
   await browser?.close()

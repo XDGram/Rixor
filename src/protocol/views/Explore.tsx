@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { icon } from '../../ui'
-import { Empty } from '../components'
+import { DemoTag, Empty } from '../components'
 import type { Ctx } from '../ctx'
 import { fmtDuration, fmtPoints, fmtToken, pct, phaseOf, PHASE_LABEL, RISK_CLASS, TIERS, type Challenge } from '../model'
 import { HoldingsCard } from './Holdings'
@@ -60,7 +60,7 @@ export function Explore({ ctx }: { ctx: Ctx }) {
   return (
     <div className="view">
       <section className="card explore-hero">
-        <small className="kicker">Conviction locking on Robinhood Chain</small>
+        <small className="kicker">Conviction locking on Robinhood Chain {MODE === 'simulation' && <DemoTag />}</small>
         <h1 className="section-title">Lock the memes you already hold. Earn WIF from prefunded streams.</h1>
         <p className="figure-sub">
           Lock a supported community token straight from your wallet, choose how long you commit, and share the WIF that sponsors stream to that community.
@@ -79,10 +79,11 @@ export function Explore({ ctx }: { ctx: Ctx }) {
         </div>
       </section>
 
-      <HoldingsCard ctx={ctx} />
+      {/* The demo side never reads a real wallet: real balances belong to the Live side only. */}
+      {!ctx.demoSide && <HoldingsCard ctx={ctx} />}
 
       <section className="card">
-        <header className="panel-head"><div><small className="kicker">Token communities · {ENV.whereShort}</small><h2>Tokens you can lock here</h2></div></header>
+        <header className="panel-head"><div><small className="kicker">Token communities · {ENV.whereShort}</small><h2>Tokens you can lock here</h2></div><DemoTag /></header>
         <ul className="token-list">
           {snapshot.tokens.map((t) => (
             <li key={t.address}>
@@ -95,14 +96,14 @@ export function Explore({ ctx }: { ctx: Ctx }) {
           ))}
         </ul>
         <p className="fine-print">
-          {MODE === 'testnet' ? 'These are valueless TEST tokens deployed for the testnet demo. They represent no real asset. ' : MODE === 'mainnet' ? 'These real tokens are listed in the Rixor Locker on Robinhood Chain mainnet after exact-address vetting (Class B: Flexible and Committed only, capped). ' : 'HOOKR and TORCH are candidate tokens listed only in this simulation for testing; neither is approved for production listing. '}
+          {MODE === 'testnet' ? 'These are valueless TEST tokens deployed for the testnet demo. They represent no real asset. ' : MODE === 'mainnet' ? 'These real tokens are listed in the Rixor Locker on Robinhood Chain mainnet after exact-address vetting (Class B: Flexible and Committed only, capped). ' : 'Demo data: these listings, amounts and rates exist only in the simulation on this device. Of these tokens, only HOOKR can be locked for real today, in the single-token contract under Live. '}
           {MODE === 'mainnet' ? 'Any further listing needs vetting, approval and a 48-hour on-chain timelock.' : 'On Robinhood Chain, a token becomes supported only after exact-address vetting, approval and a 48-hour on-chain timelock.'}
         </p>
       </section>
 
       <section className="challenges">
         <header className="panel-head">
-          <div><small className="kicker">Challenges</small><h2>Hold together, share the pool</h2></div>
+          <div><small className="kicker">Challenges</small><h2>Hold together, share the pool <DemoTag /></h2></div>
           <button type="button" className="btn btn--dark btn--sm" onClick={() => ctx.go({ name: 'create' })}>{icon('plus', 16)} New</button>
         </header>
         <div className="seg seg--wrap" role="tablist" aria-label="Filter challenges">
